@@ -108,6 +108,7 @@ class PerformanceEvaluationModel extends BaseModel
         $empId = !empty($filters['employee_id']) ? strtolower(trim($filters['employee_id'])) : null;
         $status = !empty($filters['status']) ? strtolower(trim($filters['status'])) : null;
         $cycle = !empty($filters['cycle_period']) ? trim($filters['cycle_period']) : null;
+        $goalId = !empty($filters['goal_id']) ? (int)$filters['goal_id'] : null;
 
         foreach ($all as $item) {
             if ($empId !== null && isset($item['employee_id']) && strtolower(trim($item['employee_id'])) !== $empId) {
@@ -119,6 +120,9 @@ class PerformanceEvaluationModel extends BaseModel
             if ($cycle !== null && isset($item['cycle_period']) && trim($item['cycle_period']) !== $cycle) {
                 continue;
             }
+            if ($goalId !== null && isset($item['goal_id']) && (int)$item['goal_id'] !== $goalId) {
+                continue;
+            }
             $filtered[] = $item;
         }
 
@@ -126,25 +130,44 @@ class PerformanceEvaluationModel extends BaseModel
     }
 
     /**
-     * Get active evaluation for a specific employee from database
+     * Get active evaluation for a specific employee and goal from database
      */
-    public function getEvaluationByEmployee(string $empId): ?array
+    public function getEvaluationByEmployee(string $empId, ?int $goalId = null): ?array
     {
         $normalizedId = strtolower(trim($empId));
-        $res = supabaseRequest($this->table . '?employee_id=eq.' . urlencode($normalizedId), 'GET', null, true);
+        $query = $this->table . '?employee_id=eq.' . urlencode($normalizedId);
+        if ($goalId !== null) {
+            $query .= '&goal_id=eq.' . urlencode((string)$goalId);
+        } else {
+            $query .= '&order=created_at.desc';
+        }
+
+        $res = supabaseRequest($query, 'GET', null, true);
         if ($res['status'] === 200 && is_array($res['data']) && !empty($res['data'][0])) {
             return $res['data'][0];
         }
 
         // Support alias IDs if needed
         if ($normalizedId === 'emp-101') {
-            $aliasRes = supabaseRequest($this->table . '?employee_id=in.(emp-1,OXF-EMP-1001)', 'GET', null, true);
+            $aliasQuery = $this->table . '?employee_id=in.(emp-1,OXF-EMP-1001)';
+            if ($goalId !== null) {
+                $aliasQuery .= '&goal_id=eq.' . urlencode((string)$goalId);
+            } else {
+                $aliasQuery .= '&order=created_at.desc';
+            }
+            $aliasRes = supabaseRequest($aliasQuery, 'GET', null, true);
             if ($aliasRes['status'] === 200 && !empty($aliasRes['data'][0])) {
                 return $aliasRes['data'][0];
             }
         }
         if ($normalizedId === 'emp-102') {
-            $aliasRes = supabaseRequest($this->table . '?employee_id=in.(emp-2,OXF-SUP-2001)', 'GET', null, true);
+            $aliasQuery = $this->table . '?employee_id=in.(emp-2,OXF-SUP-2001)';
+            if ($goalId !== null) {
+                $aliasQuery .= '&goal_id=eq.' . urlencode((string)$goalId);
+            } else {
+                $aliasQuery .= '&order=created_at.desc';
+            }
+            $aliasRes = supabaseRequest($aliasQuery, 'GET', null, true);
             if ($aliasRes['status'] === 200 && !empty($aliasRes['data'][0])) {
                 return $aliasRes['data'][0];
             }
@@ -159,7 +182,8 @@ class PerformanceEvaluationModel extends BaseModel
     public function saveSupervisorAppraisal(array $data): array
     {
         $empId = $data['employee_id'] ?? 'emp-101';
-        $existing = $this->getEvaluationByEmployee($empId);
+        $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
+        $existing = $this->getEvaluationByEmployee($empId, $goalId);
 
         $evalId = $existing['id'] ?? ($data['id'] ?? ('eval-' . substr(bin2hex(random_bytes(4)), 0, 8)));
         $cycle = $data['cycle_period'] ?? ($existing['cycle_period'] ?? '2026 Q3');
@@ -195,12 +219,12 @@ class PerformanceEvaluationModel extends BaseModel
             'supervisor_endorsed_at' => date('c')
         ]);
 
-        $goalId = isset($data['goal_id']) ? (is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null) : ($existing['goal_id'] ?? null);
+        $finalGoalId = $goalId !== null ? $goalId : ($existing['goal_id'] ?? null);
 
         $record = [
             'id'                     => $evalId,
             'employee_id'            => $empId,
-            'goal_id'                => $goalId,
+            'goal_id'                => $finalGoalId,
             'evaluator_id'           => $evaluatorId,
             'cycle_period'           => $cycle,
             'supervisor_rating'      => $supervisorRating,
@@ -235,18 +259,19 @@ class PerformanceEvaluationModel extends BaseModel
     public function saveSelfAssessment(array $data): array
     {
         $empId = $data['employee_id'] ?? 'emp-101';
-        $existing = $this->getEvaluationByEmployee($empId);
+        $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
+        $existing = $this->getEvaluationByEmployee($empId, $goalId);
 
         $selfEvaluation = isset($data['self_evaluation']) ? round((float)$data['self_evaluation'], 2) : ($existing['self_evaluation'] ?? null);
         $evalId = $existing['id'] ?? ($data['id'] ?? ('eval-' . substr(bin2hex(random_bytes(4)), 0, 8)));
         $supervisorRating = isset($existing['supervisor_rating']) ? (float)$existing['supervisor_rating'] : (isset($data['supervisor_rating']) ? (float)$data['supervisor_rating'] : 0.00);
         $calibratedScore = isset($data['calibrated_score']) && $data['calibrated_score'] !== '' ? round((float)$data['calibrated_score'], 2) : ($existing['calibrated_score'] ?? 0.00);
-        $goalId = isset($data['goal_id']) ? (is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null) : ($existing['goal_id'] ?? null);
+        $finalGoalId = $goalId !== null ? $goalId : ($existing['goal_id'] ?? null);
 
         $record = [
             'id'                => $evalId,
             'employee_id'       => $empId,
-            'goal_id'           => $goalId,
+            'goal_id'           => $finalGoalId,
             'self_evaluation'   => $selfEvaluation,
             'calibrated_score'  => $calibratedScore,
             'updated_at'        => date('c')
@@ -275,7 +300,8 @@ class PerformanceEvaluationModel extends BaseModel
     public function calibrateEvaluation(array $data): array
     {
         $empId = $data['employee_id'] ?? 'emp-101';
-        $existing = $this->getEvaluationByEmployee($empId);
+        $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
+        $existing = $this->getEvaluationByEmployee($empId, $goalId);
 
         if (!$existing) {
             $existing = $this->saveSupervisorAppraisal($data);
@@ -291,7 +317,7 @@ class PerformanceEvaluationModel extends BaseModel
 
         $effectiveScore = $isRetry && $newCalibratedScore ? $newCalibratedScore : $calibratedScore;
         $tierLabel = $data['tier_label'] ?? ($effectiveScore >= 4.5 ? 'Master Tier' : ($effectiveScore >= 3.5 ? 'Advanced Tier' : ($effectiveScore >= 3.0 ? 'Proficient' : 'Developing (Needs PIP)')));
-        $goalId = isset($data['goal_id']) ? (is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null) : ($existing['goal_id'] ?? null);
+        $finalGoalId = $goalId !== null ? $goalId : ($existing['goal_id'] ?? null);
 
         $record = [
             'self_evaluation'       => $selfEvaluation,
@@ -299,7 +325,7 @@ class PerformanceEvaluationModel extends BaseModel
             'new_calibrated_score'  => $newCalibratedScore,
             'tier_label'            => $tierLabel,
             'status'                => 'Calibrated',
-            'goal_id'               => $goalId,
+            'goal_id'               => $finalGoalId,
             'updated_at'            => date('c')
         ];
 

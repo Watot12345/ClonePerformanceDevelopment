@@ -75,13 +75,19 @@ function checkEmployeeStage5Tasks(empId) {
 window.checkEmployeeStage5Tasks = checkEmployeeStage5Tasks;
 
     tbody.innerHTML = roster.map((emp, idx) => {
-        const evalRec = dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+            ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+            : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+
         const initialRating = evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0
             ? parseFloat(evalRec.supervisor_rating)
-            : (emp.supervisorRating && emp.supervisorRating > 0 ? parseFloat(emp.supervisorRating) : null);
+            : null;
         const calibratedScore = evalRec && typeof evalRec.calibrated_score !== 'undefined' && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0
             ? parseFloat(evalRec.calibrated_score)
-            : (emp.calibratedScore && emp.calibratedScore > 0 ? parseFloat(emp.calibratedScore) : null);
+            : null;
         const isCalibrated = !!(calibratedScore !== null && calibratedScore > 0 && (evalRec?.status === 'Calibrated' || emp.reviewStatus === 'Calibrated'));
         const isRated = !!(initialRating !== null && initialRating > 0);
         const isBelowBenchmark = isCalibrated && calibratedScore !== null && calibratedScore < 3.0;
@@ -97,8 +103,8 @@ window.checkEmployeeStage5Tasks = checkEmployeeStage5Tasks;
 
         const taskCheck = checkEmployeeStage5Tasks(emp.id);
         const allTasksDone = taskCheck.allTasksDone;
-        const inTraining = typeof isEmployeeInTraining === 'function' ? isEmployeeInTraining(emp.id) : false;
-        const isScored = typeof isEmployeeTrainingScored === 'function' ? isEmployeeTrainingScored(emp.id) : false;
+        const inTraining = typeof isEmployeeInTraining === 'function' ? isEmployeeInTraining(emp.id, activeGoalId) : false;
+        const isScored = typeof isEmployeeTrainingScored === 'function' ? isEmployeeTrainingScored(emp.id, activeGoalId) : false;
 
         let actionBtnHtml = '';
         if (inTraining && !isScored) {
@@ -228,14 +234,18 @@ function showCalibrationDetail(empId, openModalImmediately = false) {
     if (idEl) idEl.textContent = `EMP #${emp.id}`;
     if (avatarEl) avatarEl.textContent = emp.avatar || emp.name.charAt(0);
 
+    const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+    const activeGoalId = activeGoal ? activeGoal.id : null;
     const dbEvals = getDbEvaluations();
-    const evalRec = dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+    const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+        ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+        : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
 
-    const initialRating = evalRec?.supervisor_rating ? parseFloat(evalRec.supervisor_rating) : (emp.supervisorRating || 0);
-    const calibratedScore = evalRec?.calibrated_score ? parseFloat(evalRec.calibrated_score) : (emp.calibratedScore || 0);
-    const isCalibrated = !!evalRec?.calibrated_score || emp.reviewStatus === 'Calibrated';
+    const initialRating = evalRec?.supervisor_rating ? parseFloat(evalRec.supervisor_rating) : 0;
+    const calibratedScore = evalRec?.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
+    const isCalibrated = !!(calibratedScore > 0 && evalRec?.status === 'Calibrated');
     const isBelowBenchmark = (calibratedScore > 0 ? calibratedScore : initialRating) > 0 && (calibratedScore > 0 ? calibratedScore : initialRating) < 3.0;
-    const tierLabel = evalRec?.tier_label || emp.tierLabel || (isCalibrated ? (calibratedScore >= 4.5 ? 'Master Tier' : (calibratedScore >= 3.5 ? 'Advanced Tier' : 'Proficient')) : 'Pending Calibration');
+    const tierLabel = evalRec?.tier_label || (isCalibrated ? (calibratedScore >= 4.5 ? 'Master Tier' : (calibratedScore >= 3.5 ? 'Advanced Tier' : 'Proficient')) : 'Pending Calibration');
 
     const statusBadge = document.getElementById('calib-detail-status-badge') || document.getElementById('calib-modal-status-badge');
     if (statusBadge) {
@@ -493,21 +503,22 @@ async function handleCalibrationSubmit(e) {
             }
 
             try {
-                const empGoals = (window.dbGoals || []).filter(g => g.status === 'Approved' && isSameEmployee(g.employee_id, empId));
-                const needsTraining = empGoals.some(g => !!g.needs_training);
-                const inTrainingScored = isEmployeeInTraining(empId) && isEmployeeTrainingScored(empId);
+                const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
+                const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : empGoals[0];
+                const targetGoal = activeGoal;
+                const goalId = targetGoal ? targetGoal.id : null;
+
+                const needsTraining = !!targetGoal?.needs_training;
+                const inTrainingScored = isEmployeeInTraining(empId, goalId) && isEmployeeTrainingScored(empId, goalId);
                 const isRetry = needsTraining || inTrainingScored;
 
                 if (inTrainingScored) {
                     try {
-                        await PerformanceAPI.setNeedsTraining({ employee_id: empId, needs_training: false, retry_count: 3 });
+                        await PerformanceAPI.setNeedsTraining({ employee_id: empId, goal_id: goalId, needs_training: false, retry_count: 3 });
                     } catch (err) {
                         console.warn('Set retry_count error in calibration:', err);
                     }
                 }
-
-                const targetGoal = empGoals[0];
-                const goalId = targetGoal ? targetGoal.id : null;
 
                 const saved = await PerformanceAPI.calibrateEvaluation({
                     employee_id: empId,
@@ -533,10 +544,10 @@ async function handleCalibrationSubmit(e) {
                 // Update dbEvaluations array
                 updateDbEvaluationRecord(saved);
 
-                // Update final_rating on dbGoals array and invalidate competency goals cache
+                // Update final_rating on dbGoals array for targetGoal only
                 if (Array.isArray(window.dbGoals)) {
                     window.dbGoals.forEach(g => {
-                        if (isSameEmployee(g.employee_id, empId)) {
+                        if (isSameEmployee(g.employee_id, empId) && (targetGoal ? String(g.id) === String(targetGoal.id) : true)) {
                             g.final_rating = calibratedScore;
                         }
                     });

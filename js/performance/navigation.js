@@ -477,11 +477,16 @@ function getPerformanceStageStatus(stageKey) {
 
     // Helper to find evaluation record for an employee from both dbEvaluations and perfRoster
     const getEvalForEmployee = (empId) => {
-        let ev = evals.find(e => isSameEmployee(e.employee_id, empId));
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : null;
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+        if (typeof getEmployeeGoalEvaluation === 'function') {
+            return getEmployeeGoalEvaluation(empId, activeGoalId);
+        }
+        let ev = evals.find(e => isSameEmployee(e.employee_id, empId) && (!activeGoalId || !e.goal_id || String(e.goal_id) === String(activeGoalId)));
         if (!ev) {
             const empObj = roster.find(r => isSameEmployee(r.id, empId));
             if (empObj) {
-                if (empObj.evaluationRecord) {
+                if (empObj.evaluationRecord && (!activeGoalId || !empObj.evaluationRecord.goal_id || String(empObj.evaluationRecord.goal_id) === String(activeGoalId))) {
                     ev = empObj.evaluationRecord;
                 } else if (empObj.supervisorRating || empObj.managerRating) {
                     ev = {
@@ -636,9 +641,11 @@ function updateAllPerfStepperBadges() {
     const pendingEvaluationCount = roster.filter(emp => {
         const hasApprovedGoal = typeof employeeHasApprovedGoal === 'function' ? employeeHasApprovedGoal(emp) : false;
         if (!hasApprovedGoal) return false;
-        if (!isEmployeeTasksFullyCompleted(emp)) return false;
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : null;
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+        if (!isEmployeeTasksFullyCompleted(emp, activeGoalId)) return false;
 
-        const evalRec = evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function' ? getEmployeeGoalEvaluation(emp.id, activeGoalId) : (evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord);
         const hasRatedScore = evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0;
         return !hasRatedScore;
     }).length;
@@ -646,14 +653,18 @@ function updateAllPerfStepperBadges() {
     const evaluatedEmployeesCount = roster.filter(emp => {
         const hasApprovedGoal = typeof employeeHasApprovedGoal === 'function' ? employeeHasApprovedGoal(emp) : false;
         if (!hasApprovedGoal) return false;
-        const evalRec = evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : null;
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function' ? getEmployeeGoalEvaluation(emp.id, activeGoalId) : (evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord);
         return evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0;
     }).length;
 
     const calibratedEmployeesCount = roster.filter(emp => {
         const hasApprovedGoal = typeof employeeHasApprovedGoal === 'function' ? employeeHasApprovedGoal(emp) : false;
         if (!hasApprovedGoal) return false;
-        const evalRec = evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : null;
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function' ? getEmployeeGoalEvaluation(emp.id, activeGoalId) : (evals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord);
         return evalRec && evalRec.status === 'Calibrated' && typeof evalRec.calibrated_score !== 'undefined' && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0;
     }).length;
 

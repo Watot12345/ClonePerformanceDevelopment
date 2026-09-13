@@ -499,16 +499,22 @@ function renderMonitoringRosterTable() {
 
         const progressColor = emp.monitoringProgress >= 90 ? 'bg-emerald-500' : (emp.monitoringProgress >= 70 ? 'bg-primary' : 'bg-amber-500');
         
-        // Find existing evaluation if any
-        const evalRec = dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
-        const hasEval = evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0;
-        const supScore = hasEval ? parseFloat(evalRec.supervisor_rating) : (emp.supervisorRating || 0);
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+        const activeGoalId = activeGoal ? activeGoal.id : null;
 
-        const inTraining = isEmployeeInTraining(emp.id);
-        const tnNeed = getEmployeeTrainingNeed(emp.id);
-        const isScored = isEmployeeTrainingScored(emp.id);
-        const retryCount = getEmployeeRetryCount(emp.id);
-        const allTasksDone = isEmployeeTasksFullyCompleted(emp);
+        // Find existing evaluation strictly for this active goal
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+            ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+            : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+
+        const hasEval = evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0;
+        const supScore = hasEval ? parseFloat(evalRec.supervisor_rating) : 0;
+
+        const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
+        const tnNeed = getEmployeeTrainingNeed(emp.id, activeGoalId);
+        const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
+        const retryCount = getEmployeeRetryCount(emp.id, activeGoalId);
+        const allTasksDone = isEmployeeTasksFullyCompleted(emp, activeGoalId);
 
         return `
             <tr class="hover:bg-slate-50 transition text-xs border-b border-slate-100">
@@ -733,7 +739,16 @@ function renderEmployeeMonitoringStream(emp) {
     if (!container) return;
 
     container.innerHTML = '';
-    const empGoals = (emp.goals || []).filter(g => g.status === 'Approved' || g.status === 'Completed');
+    const seenGoals = new Set();
+    const empGoals = (emp.goals || []).filter(g => {
+        const st = (g.status || '').toLowerCase().trim();
+        const isValid = st === 'approved' || st === 'completed';
+        if (!isValid) return false;
+        const gid = String(g.id);
+        if (seenGoals.has(gid)) return false;
+        seenGoals.add(gid);
+        return true;
+    });
 
     if (empGoals.length === 0) {
         container.innerHTML = `
@@ -746,11 +761,13 @@ function renderEmployeeMonitoringStream(emp) {
     }
 
     const isSupervisor = (window.activePersonaRole !== 'Associate');
+    const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : empGoals[0];
+    const activeGoalId = activeGoal ? activeGoal.id : null;
 
     // Display Active Enrolled Training Curriculum Banner if in training
-    const inTraining = isEmployeeInTraining(emp.id);
-    const tnNeed = getEmployeeTrainingNeed(emp.id);
-    const isScored = isEmployeeTrainingScored(emp.id);
+    const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
+    const tnNeed = getEmployeeTrainingNeed(emp.id, activeGoalId);
+    const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
 
     if (inTraining && tnNeed) {
         const trainingCard = document.createElement('div');
@@ -823,9 +840,9 @@ function renderEmployeeMonitoringStream(emp) {
                         <h4 class="font-bold text-slate-900 text-xs">${goal.title}</h4>
                     </div>
                     <p class="text-[10px] text-slate-500 flex items-center space-x-2">
-                        <span>Target Metric: <strong class="text-primary font-mono">${goal.target_metric}</strong></span>
+                        <span>Target Metric: <strong class="text-primary font-mono">${goal.target_metric || goal.kpi || 'Key Metric'}</strong></span>
                         <span>·</span>
-                        <span>Due: <strong class="text-slate-700">${goal.target_date || 'Q3 2026'}</strong></span>
+                        <span>Due: <strong class="text-slate-700">${goal.target_date || goal.targetDate || 'Q3 2026'}</strong></span>
                     </p>
                 </div>
                 <div class="flex items-center space-x-3 shrink-0">
@@ -1025,14 +1042,17 @@ async function saveMilestoneLog(event) {
     if (event) event.preventDefault();
 
     const empId = document.getElementById('milestone-emp-id')?.value;
-    const goalId = document.getElementById('milestone-goal-select')?.value;
-    const milestoneTitle = document.getElementById('milestone-title')?.value.trim();
-    const actualMetric = document.getElementById('milestone-actual-metric')?.value.trim();
-    const progressVal = parseInt(document.getElementById('milestone-progress-range')?.value || '85', 10);
-    const accomplishments = document.getElementById('milestone-accomplishments')?.value.trim();
-    const challenges = document.getElementById('milestone-challenges')?.value.trim();
-    const feedback = document.getElementById('milestone-feedback')?.value.trim();
-    const supportingEvidence = document.getElementById('milestone-evidence')?.value.trim();
+    const goalSelect = document.getElementById('milestone-goal-select');
+    const goalId = goalSelect?.value;
+    const selectedOpt = goalSelect && goalSelect.selectedIndex >= 0 ? goalSelect.options[goalSelect.selectedIndex] : null;
+    const milestoneTitle = document.getElementById('milestone-title')?.value?.trim();
+    const actualMetric = document.getElementById('milestone-actual-metric')?.value?.trim() || (selectedOpt?.dataset?.kpi || '');
+    const rangeInput = document.getElementById('milestone-progress-range');
+    const progressVal = rangeInput ? parseInt(rangeInput.value || '0', 10) : parseInt(selectedOpt?.dataset?.progress || '0', 10);
+    const accomplishments = document.getElementById('milestone-accomplishments')?.value?.trim();
+    const challenges = document.getElementById('milestone-challenges')?.value?.trim();
+    const feedback = document.getElementById('milestone-feedback')?.value?.trim();
+    const supportingEvidence = document.getElementById('milestone-evidence')?.value?.trim();
     const notes = document.getElementById('milestone-notes')?.value?.trim() || feedback;
 
     const emp = window.perfRoster.find(e => e.id === empId);
@@ -1064,7 +1084,7 @@ async function saveMilestoneLog(event) {
             const targetGoal = emp.goals.find(g => String(g.id) === String(goalId));
             if (targetGoal) {
                 targetGoal.milestoneProgress = progressVal;
-                targetGoal.actualMetric = actualMetric;
+                if (actualMetric) targetGoal.actualMetric = actualMetric;
                 if (notes) targetGoal.supervisor_notes = notes;
             }
         }

@@ -3558,53 +3558,38 @@
                         <input id="milestone-title" type="text" required placeholder="e.g., Completed 45 VIP check-ins with 100% Medallia rating" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:ring-2 focus:ring-primary focus:outline-none bg-slate-50">
                     </div>
 
-                    <!-- 3. Actual Metric & Progress Slider -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div class="space-y-1">
-                            <label class="font-bold text-slate-800 text-[11px]">3. Actual Metric Achieved *</label>
-                            <input id="milestone-actual-metric" type="text" required placeholder="e.g., +94 NPS or 48s Response" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-primary focus:ring-2 focus:ring-primary focus:outline-none bg-white">
-                        </div>
-                        <div class="space-y-1">
-                            <div class="flex justify-between items-center">
-                                <label class="font-bold text-slate-800 text-[11px]">4. Goal Progress Achieved</label>
-                                <span id="milestone-progress-val" class="font-bold font-mono text-emerald-700 text-xs">0%</span>
-                            </div>
-                            <input id="milestone-progress-range" type="range" min="0" max="100" step="5" value="0" oninput="document.getElementById('milestone-progress-val').textContent = this.value + '%'" class="w-full accent-primary mt-2 cursor-pointer">
-                        </div>
-                    </div>
-
-                    <!-- 4. Accomplishments Recorded -->
+                    <!-- 3. Accomplishments Recorded -->
                     <div class="space-y-1">
                         <label class="font-bold text-slate-800 text-[11px] flex items-center space-x-1.5">
                             <i class="fas fa-trophy text-amber-500"></i>
-                            <span>5. Accomplishments Recorded</span>
+                            <span>3. Accomplishments Recorded</span>
                         </label>
                         <textarea id="milestone-accomplishments" rows="2" placeholder="Record key shift wins, guest commendations, revenue upsell milestones, or audit achievements..." class="w-full p-3 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-primary focus:outline-none custom-scrollbar bg-slate-50"></textarea>
                     </div>
 
-                    <!-- 5. Challenges Encountered -->
+                    <!-- 4. Challenges Encountered -->
                     <div class="space-y-1">
                         <label class="font-bold text-slate-800 text-[11px] flex items-center space-x-1.5">
                             <i class="fas fa-triangle-exclamation text-rose-500"></i>
-                            <span>6. Challenges &amp; Obstacles Encountered</span>
+                            <span>4. Challenges &amp; Obstacles Encountered</span>
                         </label>
                         <textarea id="milestone-challenges" rows="2" placeholder="Record shift bottlenecks, high-occupancy rushes, inventory delays, or operational hurdles..." class="w-full p-3 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-primary focus:outline-none custom-scrollbar bg-slate-50"></textarea>
                     </div>
 
-                    <!-- 6. Feedback & Coaching -->
+                    <!-- 5. Feedback & Coaching -->
                     <div class="space-y-1">
                         <label class="font-bold text-slate-800 text-[11px] flex items-center space-x-1.5">
                             <i class="fas fa-comments text-indigo-500"></i>
-                            <span>7. Coaching &amp; Operational Feedback</span>
+                            <span>5. Coaching &amp; Operational Feedback</span>
                         </label>
                         <textarea id="milestone-feedback" rows="2" placeholder="Record supervisor calibration notes, peer observations, or actionable next steps..." class="w-full p-3 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-primary focus:outline-none custom-scrollbar bg-slate-50"></textarea>
                     </div>
 
-                    <!-- 7. Supporting Evidence -->
+                    <!-- 6. Supporting Evidence -->
                     <div class="space-y-1">
                         <label class="font-bold text-slate-800 text-[11px] flex items-center space-x-1.5">
                             <i class="fas fa-paperclip text-slate-500"></i>
-                            <span>8. Supporting Evidence / Verification Source</span>
+                            <span>6. Supporting Evidence / Verification Source</span>
                         </label>
                         <input id="milestone-evidence" type="text" placeholder="e.g., Medallia Guest Survey #4412, Micros POS Shift Report, Opera PMS Speed Log" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-primary focus:outline-none bg-slate-50">
                     </div>

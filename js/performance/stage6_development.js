@@ -607,18 +607,24 @@ function renderIDPRosterTable() {
     const dbEvals = getDbEvaluations();
 
     container.innerHTML = pageList.map((emp, idx) => {
-        const evalRec = dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+        const activeGoalId = activeGoal ? activeGoal.id : null;
+
+        const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+            ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+            : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+
         const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
         const score = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
         const hasPassed = score >= 3.0;
-        const retryCount = getEmployeeRetryCount(emp.id);
-        const inTraining = isEmployeeInTraining(emp.id);
-        const isScored = isEmployeeTrainingScored(emp.id);
-        const isGoalFailed = isEmployeeGoalFailed(emp.id);
+        const retryCount = getEmployeeRetryCount(emp.id, activeGoalId);
+        const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
+        const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
+        const isGoalFailed = isEmployeeGoalFailed(emp.id, activeGoalId);
         const isNeeds1on1 = (retryCount >= 3 && isScored && !hasPassed) || retryCount >= 4 || isGoalFailed;
         const isExceededRetry = (retryCount >= 3 && !hasPassed) || isNeeds1on1;
         const xpPts = getKudosXP(score);
-        const isGoalDone = (window.dbGoals || []).some(g => isSameEmployee(g.employee_id, emp.id) && (g.status === 'Done' || g.status === 'Completed' || !!g.exp_id));
+        const isGoalDone = activeGoal && (activeGoal.status === 'Done' || activeGoal.status === 'Completed' || !!activeGoal.exp_id);
         const isKudosDisabled = !!(emp.kudosSent || isGoalDone);
 
         const objCheck = checkEmployeeStage6ObjectivesProgress(emp.id);
@@ -731,7 +737,13 @@ function showIDPDetail(empId, openModalImmediately = false) {
         return;
     }
 
-    const evalRec = getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+    const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+    const activeGoalId = activeGoal ? activeGoal.id : null;
+
+    const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+        ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+        : (activeGoalId ? getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+
     const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
     const score = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
 
@@ -754,15 +766,15 @@ function showIDPDetail(empId, openModalImmediately = false) {
 
     const isPIP = score < 3.0;
     const hasPassedBenchmark = score >= 3.0;
-    const retryCount = getEmployeeRetryCount(emp.id);
-    const inTraining = isEmployeeInTraining(emp.id);
-    const tnNeed = getEmployeeTrainingNeed(emp.id);
-    const isScored = isEmployeeTrainingScored(emp.id);
-    const isGoalFailed = isEmployeeGoalFailed(emp.id);
+    const retryCount = getEmployeeRetryCount(emp.id, activeGoalId);
+    const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
+    const tnNeed = getEmployeeTrainingNeed(emp.id, activeGoalId);
+    const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
+    const isGoalFailed = isEmployeeGoalFailed(emp.id, activeGoalId);
     const isNeeds1on1 = (retryCount >= 3 && isScored && !hasPassedBenchmark) || retryCount >= 4 || isGoalFailed;
     const isExceededRetry = (retryCount >= 3 && !hasPassedBenchmark) || isNeeds1on1;
     const xpPts = getKudosXP(score);
-    const isGoalDone = (window.dbGoals || []).some(g => isSameEmployee(g.employee_id, emp.id) && (g.status === 'Done' || g.status === 'Completed' || !!g.exp_id));
+    const isGoalDone = activeGoal && (activeGoal.status === 'Done' || activeGoal.status === 'Completed' || !!activeGoal.exp_id);
     const isKudosDisabled = !!(emp.kudosSent || isGoalDone);
 
     if (titleEl) {

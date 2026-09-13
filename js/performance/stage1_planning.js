@@ -78,18 +78,20 @@ async function loadAndRenderPlanningGoals(silent = false) {
             if (emp.employee_code) empMap.set(String(emp.employee_code).toLowerCase().trim(), emp);
         });
 
-        // Apply monitoring roster fields if available
+        // Apply monitoring roster fields if available (without overwriting goals array)
         if (monResult.status === 'fulfilled' && monResult.value?.roster && Array.isArray(monResult.value.roster)) {
             monResult.value.roster.forEach(dynEmp => {
                 const idKey = String(dynEmp.id || '').toLowerCase().trim();
                 const codeKey = String(dynEmp.employee_code || '').toLowerCase().trim();
                 const existing = empMap.get(idKey) || (codeKey ? empMap.get(codeKey) : null) || (window.perfRoster || []).find(e => isSameEmployee(e.id, dynEmp.id) || isSameEmployee(e.employee_code, dynEmp.id));
+                const { goals: dynGoals, ...dynEmpAttrs } = dynEmp;
                 if (existing) {
-                    Object.assign(existing, dynEmp);
+                    Object.assign(existing, dynEmpAttrs);
                 } else {
-                    window.perfRoster.push(dynEmp);
-                    if (dynEmp.id) empMap.set(idKey, dynEmp);
-                    if (dynEmp.employee_code) empMap.set(codeKey, dynEmp);
+                    const newEmp = { ...dynEmpAttrs, goals: [] };
+                    window.perfRoster.push(newEmp);
+                    if (dynEmp.id) empMap.set(idKey, newEmp);
+                    if (dynEmp.employee_code) empMap.set(codeKey, newEmp);
                 }
             });
         }
@@ -100,60 +102,91 @@ async function loadAndRenderPlanningGoals(silent = false) {
             let emp = empMap.get(empId) || (window.perfRoster || []).find(e => isSameEmployee(e.id, empId) || isSameEmployee(e.employee_code, empId));
 
             if (emp) {
-                emp.goals.push({
-                    id: g.id,
-                    title: g.title,
-                    category: g.department,
-                    kpi: g.target_metric,
-                    weight: g.weight,
-                    deliverables: g.evidence || 'Standard shift operational log verification',
-                    targetDate: g.target_date,
-                    status: g.status || 'Pending Approval',
-                    supervisor_notes: g.supervisor_notes,
-                    tasks: g.tasks || [],
-                    general_tasks: g.general_tasks || [],
-                    specific_tasks: g.specific_tasks || [],
-                    task_progress: typeof g.task_progress === 'number' ? g.task_progress : (g.total_tasks ? Math.round((g.completed_tasks / g.total_tasks) * 100) : 0),
-                    created_at: g.created_at
-                });
+                emp.goals = emp.goals || [];
+                const alreadyExists = emp.goals.some(eg => String(eg.id) === String(g.id));
+                if (!alreadyExists) {
+                    emp.goals.push({
+                        id: g.id,
+                        title: g.title,
+                        category: g.department,
+                        department: g.department,
+                        kpi: g.target_metric,
+                        target_metric: g.target_metric,
+                        weight: g.weight,
+                        evidence: g.evidence,
+                        deliverables: g.evidence || 'Standard shift operational log verification',
+                        targetDate: g.target_date,
+                        target_date: g.target_date,
+                        status: g.status || 'Pending Approval',
+                        supervisor_notes: g.supervisor_notes,
+                        tasks: g.tasks || [],
+                        general_tasks: g.general_tasks || [],
+                        specific_tasks: g.specific_tasks || [],
+                        task_progress: typeof g.task_progress === 'number' ? g.task_progress : (g.total_tasks ? Math.round((g.completed_tasks / g.total_tasks) * 100) : 0),
+                        created_at: g.created_at
+                    });
+                }
             }
         });
 
-        // Recalculate employee counts & status
+        // Recalculate employee counts & status based on active goals
         window.perfRoster.forEach(emp => {
             emp.goalsCount = emp.goals.length;
+            const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : emp.goals[0];
             const hasPending = emp.goals.some(g => {
                 const st = (g.status || '').toLowerCase();
                 return st !== 'approved' && st !== 'completed' && st !== 'failed';
             });
+            const hasApproved = emp.goals.some(g => {
+                const st = (g.status || '').toLowerCase();
+                return st === 'approved' || st === 'active' || st === 'in progress';
+            });
             const allFailed = emp.goals.length > 0 && emp.goals.every(g => (g.status || '').toLowerCase() === 'failed');
-            emp.planningStatus = allFailed ? 'Failed' : (hasPending ? 'Pending Approval' : (emp.goals.length > 0 ? 'Approved' : 'Draft'));
+            emp.planningStatus = hasApproved ? 'Approved' : (hasPending ? 'Pending Approval' : (allFailed ? 'Failed' : (emp.goals.length > 0 ? 'Approved' : 'Draft')));
             emp.approvalStatus = emp.planningStatus;
         });
 
-        // Parse evaluations data
+        // Parse evaluations data strictly matching active goal
         if (evalResult.status === 'fulfilled' && evalResult.value) {
             const evalData = evalResult.value;
             const evList = Array.isArray(evalData) ? evalData : (Array.isArray(evalData?.evaluations) ? evalData.evaluations : (Array.isArray(evalData?.data) ? evalData.data : []));
             window.dbEvaluations = evList;
 
             (window.perfRoster || []).forEach(emp => {
-                const ev = evList.find(rec => isSameEmployee(emp.id, rec.employee_id)) || emp.evaluationRecord;
+                const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
+                const activeGoalId = activeGoal ? String(activeGoal.id) : null;
+                const ev = activeGoalId
+                    ? evList.find(rec => isSameEmployee(emp.id, rec.employee_id) && String(rec.goal_id) === activeGoalId)
+                    : (evList.find(rec => isSameEmployee(emp.id, rec.employee_id)) || null);
+
                 if (ev) {
                     emp.evaluationRecord = ev;
                     const selfScore = (ev.self_evaluation !== undefined && ev.self_evaluation !== null && parseFloat(ev.self_evaluation) > 0)
                         ? parseFloat(ev.self_evaluation)
                         : ((ev.self_rating !== undefined && ev.self_rating !== null && parseFloat(ev.self_rating) > 0)
                             ? parseFloat(ev.self_rating)
-                            : (emp.selfRating || 0.0));
+                            : 0.0);
                     const supScore = (ev.supervisor_rating !== undefined && ev.supervisor_rating !== null && parseFloat(ev.supervisor_rating) > 0)
                         ? parseFloat(ev.supervisor_rating)
-                        : (emp.supervisorRating || 0.0);
+                        : 0.0;
+                    const calibScore = (ev.calibrated_score !== undefined && ev.calibrated_score !== null && parseFloat(ev.calibrated_score) > 0)
+                        ? parseFloat(ev.calibrated_score)
+                        : null;
+
                     emp.selfRating = selfScore || 0.0;
                     emp.supervisorRating = supScore;
                     emp.managerRating = supScore;
-                    emp.evaluationStatus = ev.status || (supScore > 0 ? 'Rated' : (selfScore ? 'Self-Reviewed' : 'Pending Evaluation'));
+                    if (calibScore) emp.calibratedScore = calibScore;
+                    emp.evaluationStatus = ev.status || (calibScore ? 'Calibrated' : (supScore > 0 ? 'Rated' : (selfScore ? 'Self-Reviewed' : 'Pending Evaluation')));
                     if (ev.tier_label) emp.tierLabel = ev.tier_label;
+                } else {
+                    emp.evaluationRecord = null;
+                    emp.selfRating = 0.0;
+                    emp.supervisorRating = 0.0;
+                    emp.managerRating = 0.0;
+                    emp.calibratedScore = null;
+                    emp.evaluationStatus = 'Pending Evaluation';
+                    emp.tierLabel = null;
                 }
             });
         }
@@ -1830,11 +1863,7 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                 const freshTasks = res.data;
                 displayGoals.forEach(dg => {
                     const matched = freshTasks.filter(t => String(t.goal_id) === String(dg.id));
-                    if (matched.length > 0) {
-                        dg.tasks = matched;
-                    } else if (isSpecificGoal && freshTasks.length > 0) {
-                        dg.tasks = freshTasks;
-                    }
+                    dg.tasks = matched;
                     if (Array.isArray(window.dbGoals)) {
                         const targetDbGoal = window.dbGoals.find(item => String(item.id) === String(dg.id));
                         if (targetDbGoal) {

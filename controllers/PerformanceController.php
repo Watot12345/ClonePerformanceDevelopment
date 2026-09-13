@@ -982,7 +982,8 @@ class PerformanceController
             $empLogs = array_values(array_filter($allLogs, fn($l) => strtolower(trim($l['employee_id'] ?? '')) === $eId));
             $empTasks = array_values(array_filter($allTasks, fn($t) => strtolower(trim($t['employee_id'] ?? '')) === $eId));
 
-            $evalRecord = $this->evaluationModel->getEvaluationByEmployee($eId);
+            $primaryGoalId = !empty($goals[0]['id']) ? (int)$goals[0]['id'] : null;
+            $evalRecord = $this->evaluationModel->getEvaluationByEmployee($eId, $primaryGoalId);
             $evalStatus = $evalRecord['status'] ?? 'Pending';
             $selfRating = isset($evalRecord['self_evaluation']) && $evalRecord['self_evaluation'] !== null && (float)$evalRecord['self_evaluation'] > 0
                 ? (float)$evalRecord['self_evaluation']
@@ -998,33 +999,33 @@ class PerformanceController
                     'avatar'             => strtoupper(substr($name, 0, 2)),
                     'avatarBg'           => $eId === 'emp-102' ? 'bg-amber-600' : 'bg-primary',
                     'attendance'         => ['present' => 22, 'absent' => 1, 'total' => 23, 'percentage' => '95.6%'],
-                    'selfRating'         => $selfRating,
-                    'managerRating'      => $mgrRating,
-                    'supervisorRating'   => $mgrRating,
-                    'customerRating'     => ($mgrRating > 0 ? 4.9 : 0.0),
-                    'tierLabel'          => $tierLabel,
-                    'goalsCount'         => count($goals),
-                    'approvedCount'      => $approvedCount,
-                    'goals'              => $goals,
-                    'tasks'              => $empTasks,
-                    'monitoringLogs'     => $empLogs,
+                    'shift'              => 'Morning',
+                    'attendanceStatus'   => 'Present',
                     'monitoringProgress' => $overallProgress,
                     'monitoringStatus'   => $statusStr,
+                    'selfRating'         => $selfRating,
+                    'supervisorRating'   => $mgrRating,
                     'evaluationStatus'   => $evalStatus,
+                    'tierLabel'          => $tierLabel,
+                    'reviewStatus'       => $evalStatus === 'Calibrated' ? 'Calibrated' : ($mgrRating > 0 ? 'Pending Calibration' : 'Pending Evaluation'),
+                    'goals'              => $goals,
+                    'logs'               => $empLogs,
+                    'tasks'              => $empTasks,
                     'evaluationRecord'   => $evalRecord
-                ];
+            ];
         }
 
         return [
             'success' => true,
             'data'    => [
-                'roster'          => $roster,
-                'total_employees' => count($roster),
-                'total_goals'     => count($approvedGoals),
-                'tasks'           => $allTasks,
-                'logs'            => $allLogs
+                'roster'       => $roster,
+                'logs'         => $allLogs,
+                'total_goals'  => count($approvedGoals),
+                'total_logs'   => count($allLogs),
+                'total_tasks'  => count($allTasks),
+                'count'        => count($roster)
             ],
-            'message' => 'Monitoring data dynamically loaded with approved goals, tasks and live progress calculations.'
+            'message' => 'Dynamic monitoring stage data retrieved successfully.'
         ];
     }
 
@@ -1054,7 +1055,8 @@ class PerformanceController
     public function getEvaluation(array $payload): array
     {
         $empId = $payload['employee_id'] ?? $payload['id'] ?? 'emp-101';
-        $evaluation = $this->evaluationModel->getEvaluationByEmployee($empId);
+        $goalId = !empty($payload['goal_id']) ? (int)$payload['goal_id'] : null;
+        $evaluation = $this->evaluationModel->getEvaluationByEmployee($empId, $goalId);
 
         // Fetch employee's approved goals to construct criteria
         $allGoals = $this->enrichGoalsWithTasks($this->goalModel->getGoalsByEmployee($empId));

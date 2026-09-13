@@ -226,10 +226,14 @@ function initSupabaseRealtime() {
                                             id: newRow.id,
                                             title: newRow.title,
                                             category: newRow.department,
+                                            department: newRow.department,
                                             kpi: newRow.target_metric,
+                                            target_metric: newRow.target_metric,
                                             weight: newRow.weight,
+                                            evidence: newRow.evidence,
                                             deliverables: newRow.evidence || 'Standard shift operational log verification',
                                             targetDate: newRow.target_date,
+                                            target_date: newRow.target_date,
                                             status: newRow.status || 'Pending Approval',
                                             supervisor_notes: newRow.supervisor_notes,
                                             tasks: newRow.tasks || [],
@@ -245,10 +249,14 @@ function initSupabaseRealtime() {
                                         Object.assign(emp.goals[gIdx], {
                                             title: newRow.title || emp.goals[gIdx].title,
                                             category: newRow.department || emp.goals[gIdx].category,
+                                            department: newRow.department || emp.goals[gIdx].department,
                                             kpi: newRow.target_metric || emp.goals[gIdx].kpi,
+                                            target_metric: newRow.target_metric || emp.goals[gIdx].target_metric,
                                             weight: newRow.weight || emp.goals[gIdx].weight,
                                             deliverables: newRow.evidence || emp.goals[gIdx].deliverables,
+                                            evidence: newRow.evidence || emp.goals[gIdx].evidence,
                                             targetDate: newRow.target_date || emp.goals[gIdx].targetDate,
+                                            target_date: newRow.target_date || emp.goals[gIdx].target_date,
                                             status: newRow.status || emp.goals[gIdx].status,
                                             supervisor_notes: newRow.supervisor_notes !== undefined ? newRow.supervisor_notes : emp.goals[gIdx].supervisor_notes,
                                             needs_training: newRow.needs_training !== undefined ? newRow.needs_training : emp.goals[gIdx].needs_training,
@@ -373,29 +381,32 @@ function initSupabaseRealtime() {
                         // 1. Live Sync window.dbEvaluations
                         if (Array.isArray(window.dbEvaluations)) {
                             if (payload.eventType === 'INSERT' && newRow.id) {
-                                const exists = window.dbEvaluations.some(ev => ev.id == newRow.id || (empId && isSameEmployee(ev.employee_id, empId)));
+                                const exists = window.dbEvaluations.some(ev => ev.id == newRow.id || (newRow.goal_id && ev.goal_id && String(ev.goal_id) === String(newRow.goal_id) && isSameEmployee(ev.employee_id, empId)));
                                 if (!exists) {
                                     window.dbEvaluations.unshift(newRow);
                                 } else {
-                                    const idx = window.dbEvaluations.findIndex(ev => ev.id == newRow.id || (empId && isSameEmployee(ev.employee_id, empId)));
+                                    const idx = window.dbEvaluations.findIndex(ev => ev.id == newRow.id || (newRow.goal_id && ev.goal_id && String(ev.goal_id) === String(newRow.goal_id) && isSameEmployee(ev.employee_id, empId)));
                                     if (idx >= 0) window.dbEvaluations[idx] = Object.assign({}, window.dbEvaluations[idx], newRow);
                                 }
                             } else if (payload.eventType === 'UPDATE' && (newRow.id || empId)) {
-                                const idx = window.dbEvaluations.findIndex(ev => (newRow.id && ev.id == newRow.id) || (empId && isSameEmployee(ev.employee_id, empId)));
+                                const idx = window.dbEvaluations.findIndex(ev => (newRow.id && ev.id == newRow.id) || (newRow.goal_id && ev.goal_id && String(ev.goal_id) === String(newRow.goal_id) && isSameEmployee(ev.employee_id, empId)));
                                 if (idx >= 0) {
                                     window.dbEvaluations[idx] = Object.assign({}, window.dbEvaluations[idx], newRow);
                                 } else {
                                     window.dbEvaluations.unshift(newRow);
                                 }
                             } else if (payload.eventType === 'DELETE' && (oldRow.id || empId)) {
-                                window.dbEvaluations = window.dbEvaluations.filter(ev => (oldRow.id && ev.id != oldRow.id) || (empId && !isSameEmployee(ev.employee_id, empId)));
+                                window.dbEvaluations = window.dbEvaluations.filter(ev => (oldRow.id && ev.id != oldRow.id));
                             }
                         }
 
-                        // 2. Sync matching employee in window.perfRoster
+                        // 2. Sync matching employee in window.perfRoster only if matching active goal
                         if (Array.isArray(window.perfRoster) && empId) {
                             const emp = window.perfRoster.find(e => isSameEmployee(e.id, empId) || isSameEmployee(e.employee_code, empId));
-                            if (emp) {
+                            const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : null;
+                            const matchesActiveGoal = !newRow.goal_id || !activeGoal || String(newRow.goal_id) === String(activeGoal.id);
+
+                            if (emp && matchesActiveGoal) {
                                 emp.evaluationRecord = Object.assign({}, emp.evaluationRecord || {}, newRow);
                                 const supScore = (newRow.supervisor_rating !== undefined && newRow.supervisor_rating !== null && parseFloat(newRow.supervisor_rating) > 0)
                                     ? parseFloat(newRow.supervisor_rating)

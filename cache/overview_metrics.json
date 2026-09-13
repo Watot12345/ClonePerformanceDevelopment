@@ -3,11 +3,11 @@
     "liveKudosSent": 7,
     "liveBadgesCount": 2,
     "liveActiveStaffCount": 5,
-    "liveTotalGoals": 1,
-    "liveApprovedGoals": 0,
+    "liveTotalGoals": 2,
+    "liveApprovedGoals": 1,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
-    "liveGoalsApprovalRate": 0,
+    "liveGoalsApprovalRate": 50,
     "liveTotalPrescribed": 1,
     "livePassedPrescribed": 1,
     "liveLmsAvgScore": 100,
@@ -77,8 +77,8 @@
                 "3bb792e6-b25e-460e-a8fa-712c65c3b2e2",
                 "b7e1a2c4-9d3f-4a1e-8c6b-1f2e3d4a5b6c"
             ],
-            "goals_total": 0,
-            "goals_approved": 0,
+            "goals_total": 1,
+            "goals_approved": 1,
             "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
@@ -158,5 +158,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789224447
+    "cached_at": 1789288086
 }

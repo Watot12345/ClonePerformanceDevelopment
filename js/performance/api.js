@@ -348,7 +348,16 @@ function updateDbEvaluationRecord(record) {
     if (!Array.isArray(window.dbEvaluations)) {
         window.dbEvaluations = getDbEvaluations();
     }
-    const idx = window.dbEvaluations.findIndex(ev => isSameEmployee(ev.employee_id, record.employee_id));
+    const idx = window.dbEvaluations.findIndex(ev => {
+        if (record.id && ev.id && String(ev.id) === String(record.id)) return true;
+        if (record.goal_id && ev.goal_id && String(ev.goal_id) === String(record.goal_id)) {
+            return isSameEmployee(ev.employee_id, record.employee_id);
+        }
+        if (!record.goal_id && !ev.goal_id) {
+            return isSameEmployee(ev.employee_id, record.employee_id);
+        }
+        return false;
+    });
     if (idx >= 0) {
         window.dbEvaluations[idx] = Object.assign({}, window.dbEvaluations[idx], record);
     } else {
@@ -358,25 +367,74 @@ function updateDbEvaluationRecord(record) {
 window.updateDbEvaluationRecord = updateDbEvaluationRecord;
 
 /**
- * Get active training need record for employee from training_needs
- * Strictly scopes to:
- * 1. Matching target_goal_id if provided
- * 2. Records with source_type === 'performance_gap' or source_label referencing Performance/IDP/Stage 7
- * 3. Records with non-null target_goal_id
- * Ignores unlinked generic competency TNA gaps (source_type = 'competency_gap' with target_goal_id = null)
+ * Get active goal for an employee.
+ * Prioritizes:
+ * 1. Matching preferredGoalId if provided
+ * 2. Active open goals: 'Approved', 'Active', 'In Progress'
+ * 3. Pending/draft goals: 'Pending Approval', 'Pending', 'In Review', 'Submitted', 'Draft'
+ * 4. Latest goal in general
+ */
+function getEmployeeActiveGoal(empId, preferredGoalId = null) {
+    const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
+    if (empGoals.length === 0) return null;
+
+    if (preferredGoalId) {
+        const match = empGoals.find(g => String(g.id) === String(preferredGoalId));
+        if (match) return match;
+    }
+
+    const approvedGoal = empGoals.find(g => {
+        const st = (g.status || '').toLowerCase().trim();
+        return st === 'approved' || st === 'active' || st === 'in progress';
+    });
+    if (approvedGoal) return approvedGoal;
+
+    const pendingGoal = empGoals.find(g => {
+        const st = (g.status || '').toLowerCase().trim();
+        return st !== 'failed' && st !== 'completed';
+    });
+    if (pendingGoal) return pendingGoal;
+
+    return empGoals[empGoals.length - 1];
+}
+window.getEmployeeActiveGoal = getEmployeeActiveGoal;
+
+/**
+ * Get evaluation record strictly scoped to employee AND goal_id
+ */
+function getEmployeeGoalEvaluation(empId, goalId = null) {
+    const allEvals = getDbEvaluations();
+    if (!allEvals || allEvals.length === 0) return null;
+
+    const targetGoal = goalId ? { id: goalId } : getEmployeeActiveGoal(empId);
+    if (!targetGoal) {
+        return allEvals.find(ev => isSameEmployee(ev.employee_id, empId)) || null;
+    }
+
+    const targetGoalId = String(targetGoal.id);
+    const goalEval = allEvals.find(ev => isSameEmployee(ev.employee_id, empId) && String(ev.goal_id) === targetGoalId);
+    return goalEval || null;
+}
+window.getEmployeeGoalEvaluation = getEmployeeGoalEvaluation;
+
+/**
+ * Get active training need record for employee strictly scoped to a specific goal
  */
 function getEmployeeTrainingNeed(empId, goalId = null) {
     if (!Array.isArray(window.dbTrainingNeeds) || window.dbTrainingNeeds.length === 0) return null;
     const list = window.dbTrainingNeeds.filter(tn => isSameEmployee(tn.employee_id, empId) || isSameEmployee(tn.employeeId, empId));
     if (list.length === 0) return null;
 
-    // 1. If goalId is provided, look for exact target_goal_id match first
-    if (goalId) {
-        const goalMatch = list.find(tn => (tn.target_goal_id && String(tn.target_goal_id) === String(goalId)) || (tn.targetGoalId && String(tn.targetGoalId) === String(goalId)));
+    const targetGoal = goalId ? { id: goalId } : getEmployeeActiveGoal(empId);
+    const targetGoalId = targetGoal ? String(targetGoal.id) : null;
+
+    if (targetGoalId) {
+        const goalMatch = list.find(tn => (tn.target_goal_id && String(tn.target_goal_id) === targetGoalId) || (tn.targetGoalId && String(tn.targetGoalId) === targetGoalId));
         if (goalMatch) return goalMatch;
+        return null;
     }
 
-    // 2. Filter for performance-specific training needs (not unlinked competency gap assessments)
+    // Filter for performance-specific training needs
     const perfNeeds = list.filter(tn => {
         const hasGoalId = !!(tn.target_goal_id || tn.targetGoalId);
         const isPerfSource = tn.source_type === 'performance_gap' || 
@@ -386,39 +444,35 @@ function getEmployeeTrainingNeed(empId, goalId = null) {
     });
 
     if (perfNeeds.length === 0) return null;
-
-    // Prioritize active In Training records
     const active = perfNeeds.find(tn => tn.status === 'In Training' || tn.status === 'In Progress');
     return active || perfNeeds[perfNeeds.length - 1];
 }
 window.getEmployeeTrainingNeed = getEmployeeTrainingNeed;
 
 /**
- * Check if employee is currently flagged for Needs Training or enrolled in training_needs for a performance goal
+ * Check if employee is currently flagged for Needs Training or enrolled in training_needs for the goal
  */
 function isEmployeeInTraining(empId, goalId = null) {
-    const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
-    const targetGoals = goalId ? empGoals.filter(g => String(g.id) === String(goalId)) : empGoals;
-    const hasInTrainingGoal = targetGoals.some(g => !!g.in_training);
-    const hasNeedsTrainingGoal = targetGoals.some(g => !!g.needs_training);
-
-    if (hasInTrainingGoal || hasNeedsTrainingGoal) return true;
-
-    // Check if there is an active performance-linked training need
-    const tn = getEmployeeTrainingNeed(empId, goalId);
-    if (tn && (tn.status === 'In Training' || tn.status === 'In Progress')) return true;
+    const targetGoal = goalId ? (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, empId) && String(g.id) === String(goalId)) : getEmployeeActiveGoal(empId);
+    if (targetGoal) {
+        const hasInTrainingGoal = (targetGoal.in_training === true || targetGoal.in_training === 1 || targetGoal.in_training === '1' || targetGoal.in_training === 'true' || targetGoal.in_training === 't');
+        const hasNeedsTrainingGoal = (targetGoal.needs_training === true || targetGoal.needs_training === 1 || targetGoal.needs_training === '1' || targetGoal.needs_training === 'true' || targetGoal.needs_training === 't');
+        if (hasInTrainingGoal || hasNeedsTrainingGoal) return true;
+        const tn = getEmployeeTrainingNeed(empId, targetGoal.id);
+        if (tn && (tn.status === 'In Training' || tn.status === 'In Progress')) return true;
+        return false;
+    }
     return false;
 }
 window.isEmployeeInTraining = isEmployeeInTraining;
 
 /**
- * Check if employee has a recorded score / completed training in training_needs for the performance goal
+ * Check if employee has a recorded score / completed training in training_needs for the goal
  */
 function isEmployeeTrainingScored(empId, goalId = null) {
     const tn = getEmployeeTrainingNeed(empId, goalId);
     if (!tn) return false;
     const status = (tn.status || '').toLowerCase();
-    // Only completed/resolved/passed or active post-training quiz score counts
     if (status === 'resolved' || status === 'completed' || status === 'passed') return true;
     if (tn.status === 'In Training' && parseFloat(tn.current_score || tn.currentScore || 0) > 0 && tn.notes && (tn.notes.includes('Quiz Passed') || tn.notes.includes('Completed'))) return true;
     return false;
@@ -426,25 +480,25 @@ function isEmployeeTrainingScored(empId, goalId = null) {
 window.isEmployeeTrainingScored = isEmployeeTrainingScored;
 
 /**
- * Check if employee is currently flagged for Needs Training or active In Training
- * (and has not yet scored/passed the formal training curriculum).
+ * Check if employee is currently flagged for Needs Training or active In Training for the goal
  */
 function isEmployeeNeedsTraining(empId, goalId = null) {
-    const isGoalFailed = isEmployeeGoalFailed(empId);
+    const isGoalFailed = isEmployeeGoalFailed(empId, goalId);
     if (isGoalFailed) return false;
 
-    const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
-    const targetGoals = goalId ? empGoals.filter(g => String(g.id) === String(goalId)) : empGoals;
-    const hasNeedsTrainingGoal = targetGoals.some(g => (g.needs_training === true || g.needs_training === 1 || g.needs_training === '1' || g.needs_training === 'true' || g.needs_training === 't'));
-    const hasInTrainingGoal = targetGoals.some(g => (g.in_training === true || g.in_training === 1 || g.in_training === '1' || g.in_training === 'true' || g.in_training === 't'));
+    const targetGoal = goalId ? (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, empId) && String(g.id) === String(goalId)) : getEmployeeActiveGoal(empId);
+    if (!targetGoal) return false;
+
+    const hasNeedsTrainingGoal = (targetGoal.needs_training === true || targetGoal.needs_training === 1 || targetGoal.needs_training === '1' || targetGoal.needs_training === 'true' || targetGoal.needs_training === 't');
+    const hasInTrainingGoal = (targetGoal.in_training === true || targetGoal.in_training === 1 || targetGoal.in_training === '1' || targetGoal.in_training === 'true' || targetGoal.in_training === 't');
 
     if (hasNeedsTrainingGoal || hasInTrainingGoal) {
-        return !isEmployeeTrainingScored(empId, goalId);
+        return !isEmployeeTrainingScored(empId, targetGoal.id);
     }
 
-    const tn = getEmployeeTrainingNeed(empId, goalId);
+    const tn = getEmployeeTrainingNeed(empId, targetGoal.id);
     if (tn && (tn.status === 'In Training' || tn.status === 'In Progress' || tn.status === 'Identified')) {
-        return !isEmployeeTrainingScored(empId, goalId);
+        return !isEmployeeTrainingScored(empId, targetGoal.id);
     }
 
     return false;
@@ -452,54 +506,57 @@ function isEmployeeNeedsTraining(empId, goalId = null) {
 window.isEmployeeNeedsTraining = isEmployeeNeedsTraining;
 
 /**
- * Get max retry_count for employee
+ * Get retry_count for employee's specific or active goal
  */
-function getEmployeeRetryCount(empId) {
-    const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
-    return empGoals.reduce((max, g) => Math.max(max, parseInt(g.retry_count || 0)), 0);
+function getEmployeeRetryCount(empId, goalId = null) {
+    const targetGoal = goalId ? (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, empId) && String(g.id) === String(goalId)) : getEmployeeActiveGoal(empId);
+    if (targetGoal) {
+        return parseInt(targetGoal.retry_count || 0);
+    }
+    return 0;
 }
 window.getEmployeeRetryCount = getEmployeeRetryCount;
 
 /**
- * Check if employee's active goal is permanently Failed
+ * Check if employee's specific or active goal is permanently Failed
  */
-function isEmployeeGoalFailed(empId) {
+function isEmployeeGoalFailed(empId, goalId = null) {
+    if (goalId) {
+        const targetGoal = (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, empId) && String(g.id) === String(goalId));
+        if (!targetGoal) return false;
+        return (targetGoal.status || '').toLowerCase() === 'failed' || parseInt(targetGoal.retry_count || 0) >= 4;
+    }
+    const activeGoal = getEmployeeActiveGoal(empId);
+    if (activeGoal) {
+        return (activeGoal.status || '').toLowerCase() === 'failed' || parseInt(activeGoal.retry_count || 0) >= 4;
+    }
     const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
-    return empGoals.some(g => (g.status || '').toLowerCase() === 'failed');
+    if (empGoals.length === 0) return false;
+    return empGoals.every(g => (g.status || '').toLowerCase() === 'failed');
 }
 window.isEmployeeGoalFailed = isEmployeeGoalFailed;
 
 /**
- * Check if all shift monitoring tasks for an employee's approved goals are 100% completed
+ * Check if all shift monitoring tasks for an employee's approved goal are 100% completed
  */
-function isEmployeeTasksFullyCompleted(emp) {
+function isEmployeeTasksFullyCompleted(emp, goalId = null) {
     const empId = typeof emp === 'object' ? emp.id : emp;
-    const empGoals = (window.dbGoals || []).filter(g => (g.status === 'Approved' || g.status === 'Completed') && isSameEmployee(g.employee_id, empId));
-    if (empGoals.length === 0) return false;
+    const targetGoal = goalId ? (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, empId) && String(g.id) === String(goalId)) : getEmployeeActiveGoal(empId);
+    if (!targetGoal) return false;
 
-    let totalTasks = 0;
-    let completedTasks = 0;
+    const st = (targetGoal.status || '').toLowerCase().trim();
+    if (st !== 'approved' && st !== 'completed') return false;
 
-    empGoals.forEach(g => {
-        const tasks = g.tasks || [];
-        if (tasks.length > 0) {
-            tasks.forEach(t => {
-                totalTasks++;
-                if (t.status === 'completed') completedTasks++;
-            });
-        } else if (g.status === 'Completed') {
-            totalTasks++;
-            completedTasks++;
-        } else {
-            // Check milestone or task progress
-            const prog = typeof g.task_progress === 'number' ? g.task_progress : (g.milestoneProgress || g.progress || 0);
-            totalTasks++;
-            if (prog >= 100) completedTasks++;
-        }
-    });
-
-    if (totalTasks === 0) return false;
-    return completedTasks === totalTasks;
+    const tasks = targetGoal.tasks || [];
+    if (tasks.length > 0) {
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        return completed === tasks.length;
+    } else if (st === 'completed') {
+        return true;
+    } else {
+        const prog = typeof targetGoal.task_progress === 'number' ? targetGoal.task_progress : (targetGoal.milestoneProgress || targetGoal.progress || 0);
+        return prog >= 100;
+    }
 }
 window.isEmployeeTasksFullyCompleted = isEmployeeTasksFullyCompleted;
 

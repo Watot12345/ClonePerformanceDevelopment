@@ -30,15 +30,22 @@ window.getEmployeeTaskStats = getEmployeeTaskStats;
 /**
  * Resolves evaluation data (record, supervisor score, self score) for an employee.
  */
-function getEmployeeEvalData(emp) {
+function getEmployeeEvalData(emp, goalId = null) {
     if (!emp) return { record: null, supervisorRating: null, selfRating: null, isRated: false };
-    const evalRec = getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
+    const empId = typeof emp === 'object' ? emp.id : emp;
+    const activeGoal = goalId ? { id: goalId } : (typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : null);
+    const activeGoalId = activeGoal ? activeGoal.id : null;
+
+    const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+        ? getEmployeeGoalEvaluation(empId, activeGoalId)
+        : (activeGoalId ? getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, empId) && String(ev.goal_id) === String(activeGoalId)) : null);
+
     const rawSup = evalRec && evalRec.supervisor_rating !== undefined && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0
         ? parseFloat(evalRec.supervisor_rating)
-        : (emp.supervisorRating && emp.supervisorRating > 0 ? parseFloat(emp.supervisorRating) : null);
+        : null;
     const rawSelf = evalRec && evalRec.self_evaluation !== undefined && evalRec.self_evaluation !== null && parseFloat(evalRec.self_evaluation) > 0
         ? parseFloat(evalRec.self_evaluation)
-        : (emp.selfRating && emp.selfRating > 0 ? parseFloat(emp.selfRating) : null);
+        : null;
     return {
         record: evalRec,
         supervisorRating: rawSup,
@@ -66,11 +73,14 @@ window.getTierInfo = getTierInfo;
 /**
  * Determines action lock status and button labels for appraisal operations.
  */
-function getAppraisalActionState(empId, allTasksDone) {
-    const isGoalFailed = isEmployeeGoalFailed(empId);
-    const retryCount = getEmployeeRetryCount(empId);
-    const inTraining = isEmployeeInTraining(empId);
-    const isScored = isEmployeeTrainingScored(empId);
+function getAppraisalActionState(empId, allTasksDone, goalId = null) {
+    const targetGoal = goalId ? { id: goalId } : (typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : null);
+    const targetGoalId = targetGoal ? targetGoal.id : null;
+
+    const isGoalFailed = isEmployeeGoalFailed(empId, targetGoalId);
+    const retryCount = getEmployeeRetryCount(empId, targetGoalId);
+    const inTraining = isEmployeeInTraining(empId, targetGoalId);
+    const isScored = isEmployeeTrainingScored(empId, targetGoalId);
 
     if (isGoalFailed || retryCount >= 4) {
         return { state: 'locked_failed', label: 'Locked (Goal Failed)', canOpen: false, reason: 'Goal Failed. Performance appraisal locked - final score is in Phase 7.' };
@@ -600,16 +610,18 @@ async function handleAppraisalSubmit(e) {
         const supervisorNotes = document.getElementById('eval-supervisor-notes')?.value.trim() || 'Appraisal successfully endorsed with positive hospitality benchmarking.';
 
         const empGoals = (window.dbGoals || []).filter(g => isSameEmployee(g.employee_id, empId));
-        const needsTraining = empGoals.some(g => !!g.needs_training);
-        const inTrainingScored = isEmployeeInTraining(empId) && isEmployeeTrainingScored(empId);
-        const isRetry = needsTraining || inTrainingScored;
-
-        const targetGoal = empGoals[0];
+        const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : empGoals[0];
+        const targetGoal = activeGoal;
         const goalId = document.getElementById('eval-target-goal-id')?.value || (targetGoal ? targetGoal.id : null);
+        const targetGoalId = goalId || (targetGoal ? targetGoal.id : null);
+
+        const needsTraining = !!targetGoal?.needs_training;
+        const inTrainingScored = isEmployeeInTraining(empId, targetGoalId) && isEmployeeTrainingScored(empId, targetGoalId);
+        const isRetry = needsTraining || inTrainingScored;
 
         if (inTrainingScored) {
             try {
-                await PerformanceAPI.setNeedsTraining({ employee_id: empId, needs_training: false, retry_count: 3 });
+                await PerformanceAPI.setNeedsTraining({ employee_id: empId, goal_id: targetGoalId, needs_training: false, retry_count: 3 });
             } catch (err) {
                 console.warn('Set retry_count error:', err);
             }
@@ -617,7 +629,7 @@ async function handleAppraisalSubmit(e) {
 
         const saved = await PerformanceAPI.submitAppraisal({
             employee_id: empId,
-            goal_id: goalId ? (!isNaN(parseInt(goalId, 10)) ? parseInt(goalId, 10) : null) : undefined,
+            goal_id: targetGoalId ? (!isNaN(parseInt(targetGoalId, 10)) ? parseInt(targetGoalId, 10) : null) : undefined,
             supervisor_rating: finalScore,
             new_supervisor_rating: isRetry ? finalScore : undefined,
             is_retry: isRetry,
