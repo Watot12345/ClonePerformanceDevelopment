@@ -173,10 +173,26 @@
                 display: none !important;
             }
 
+            /* Ensure Associate sees Pulse panel and tabs immediately */
+            html.role-associate #sub-dashboard-pulse {
+                display: block !important;
+            }
+            html.role-associate [data-sub="pulse"] {
+                display: inline-flex !important;
+            }
+
             /* Zero-Flash RBAC Guard Styles - Instantly hide individual employee pulse tabs & panels for Supervisor/Management */
             html.role-management [data-sub="pulse"],
             html.role-management #sub-dashboard-pulse {
                 display: none !important;
+            }
+
+            /* Ensure Supervisor / Management sees System Analytics panel and tabs immediately */
+            html.role-management #sub-dashboard-system {
+                display: block !important;
+            }
+            html.role-management [data-sub="system"] {
+                display: inline-flex !important;
             }
 
             html.role-associate #subtab-btn-comp-assessment,
@@ -386,6 +402,7 @@
         <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
         <script src="js/supabase.js"></script>
         <script src="js/charts.js"></script>
+        <script src="js/overview.js?v=<?= time() ?>"></script>
         <!-- Core Application Controller (Foundation Routing, Modals & Pillar Switching) -->
         <script src="js/app.js"></script>
         <!-- Performance Management Modular Architecture (Stages 1 through 7) -->

@@ -527,6 +527,35 @@ try {
             }
             $sysSuccRate = $sysSuccPositionsCount > 0 ? round(($sysSuccCoveredCount / $sysSuccPositionsCount) * 100, 1) : 0.0;
 
+            // Total Property XP, Kudos, and Badges from live unified ledger
+            $sysPropertyXp = 0;
+            $sysKudosSent = 0;
+            $sysBadgesCount = 0;
+            try {
+                if ($pdo) {
+                    $xpStmt = $pdo->query("SELECT COALESCE(SUM(points), 0) AS total_xp, COUNT(*) FILTER (WHERE source_type IN ('peer_kudos', 'supervisor_kudos', 'training_cert', 'lms_quiz')) AS badge_cnt FROM public.xp_ledger");
+                    $xpRow = $xpStmt ? $xpStmt->fetch(PDO::FETCH_ASSOC) : null;
+                    if ($xpRow) {
+                        $sysPropertyXp = (int)($xpRow['total_xp'] ?? 0);
+                        $sysBadgesCount = (int)($xpRow['badge_cnt'] ?? 0);
+                    }
+                    $kudosStmt = $pdo->query("SELECT COUNT(*) AS kudos_cnt FROM public.social_recognitions");
+                    $kudosRow = $kudosStmt ? $kudosStmt->fetch(PDO::FETCH_ASSOC) : null;
+                    if ($kudosRow) $sysKudosSent = (int)($kudosRow['kudos_cnt'] ?? 0);
+                }
+            } catch (\Throwable $xErr) {}
+
+            if ($sysPropertyXp === 0) {
+                try {
+                    require_once __DIR__ . '/../models/SocialModel.php';
+                    $smOverview = new SocialModel();
+                    $allLedgerRows = $smOverview->getLedger(null);
+                    foreach ($allLedgerRows as $alr) {
+                        $sysPropertyXp += (int)($alr['points'] ?? ($alr['amount'] ?? 0));
+                    }
+                } catch (\Throwable $smErr) {}
+            }
+
             $response = [
                 'success' => true,
                 'matrix'  => $matrixRows,
@@ -550,7 +579,10 @@ try {
                         'rate_pct'   => $sysSuccRate,
                         'fast_track' => $sysSuccFastTrack
                     ],
-                    'staff_count' => count($allEmps)
+                    'staff_count' => count($allEmps),
+                    'property_xp' => $sysPropertyXp,
+                    'kudos_sent'  => $sysKudosSent,
+                    'badges_count'=> $sysBadgesCount
                 ],
                 'updated' => date('c'),
                 'source'  => 'supabase'
@@ -562,9 +594,9 @@ try {
                 if (!is_dir(dirname($cachePath))) @mkdir(dirname($cachePath), 0777, true);
                 $existingCache = file_exists($cachePath) ? @json_decode(file_get_contents($cachePath), true) : [];
                 $toCache = [
-                    'livePropertyXp'        => $existingCache['livePropertyXp'] ?? 0,
-                    'liveKudosSent'         => $existingCache['liveKudosSent'] ?? 0,
-                    'liveBadgesCount'       => $existingCache['liveBadgesCount'] ?? 0,
+                    'livePropertyXp'        => $sysPropertyXp > 0 ? $sysPropertyXp : ($existingCache['livePropertyXp'] ?? 0),
+                    'liveKudosSent'         => $sysKudosSent > 0 ? $sysKudosSent : ($existingCache['liveKudosSent'] ?? 0),
+                    'liveBadgesCount'       => $sysBadgesCount > 0 ? $sysBadgesCount : ($existingCache['liveBadgesCount'] ?? 0),
                     'liveActiveStaffCount'  => count($allEmps),
                     'liveTotalGoals'        => $sysTotalGoals,
                     'liveApprovedGoals'     => $sysApprovedGoals,

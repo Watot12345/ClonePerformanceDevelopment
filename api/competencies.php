@@ -5,7 +5,7 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
@@ -14,7 +14,7 @@ require_once __DIR__ . '/../controllers/CompetencyController.php';
 
 // Parse incoming request
 $action = $_GET['action'] ?? '';
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // Parse JSON body or form data
 $rawBody = file_get_contents('php://input');
@@ -50,6 +50,12 @@ try {
             $response = $controller->getAssessments($payload);
             break;
 
+        // 4.1 Get Employee-Specific Competency Matrix (Applicable Role Competencies + Assessments)
+        case 'get_employee_competencies':
+            $empIdParam = $payload['employee_id'] ?? ($payload['emp_id'] ?? 'emp-101');
+            $response = $controller->getEmployeeCompetencies($empIdParam);
+            break;
+
         // 5. Save Single / Batch Competency Evaluation into Database
         case 'save_assessment':
         case 'save_evaluations':
@@ -67,6 +73,18 @@ try {
         case 'get_employees':
         case 'list_employees':
             $response = $controller->getEmployees($payload);
+            break;
+
+        // 8. Delete Single Competency
+        case 'delete_competency':
+        case 'delete':
+            $response = $controller->deleteCompetency($payload);
+            break;
+
+        // 9. Bulk Delete Competencies
+        case 'bulk_delete_competencies':
+        case 'bulk_delete':
+            $response = $controller->bulkDeleteCompetencies($payload);
             break;
 
         default:

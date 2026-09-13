@@ -59,6 +59,14 @@ if (!$activeStanding) {
         'percentile'       => 0
     ];
 }
+
+global $isAssociate;
+if (!isset($isAssociate)) {
+    $role = $_SESSION['role'] ?? 'Associate';
+    $isAssociate = in_array(strtolower(trim($role)), ['associate', 'employee', 'staff']);
+}
+$pulseTabClass = $isAssociate ? 'active' : '';
+$systemTabClass = $isAssociate ? '' : 'active';
 ?>
 <!-- ======================================================== -->
 <div id="panel-dashboard" class="pillar-panel active space-y-6">
@@ -68,12 +76,12 @@ if (!$activeStanding) {
                                 class="subnav-track flex items-center justify-between gap-2 p-1.5 overflow-x-auto custom-scrollbar">
                                 <div class="flex items-center space-x-1.5 flex-nowrap">
                                     <button onclick="switchSubTab('dashboard', 'pulse')"
-                                        class="subnav-pill subnav-dashboard active whitespace-nowrap" data-sub="pulse">
+                                        class="subnav-pill subnav-dashboard <?= $pulseTabClass ?> whitespace-nowrap" data-sub="pulse">
                                         <i class="fas fa-user-clock mr-1.5 text-primary"></i>
                                         <span>1. Shift Focus &amp; My Pulse</span>
                                     </button>
                                     <button onclick="switchSubTab('dashboard', 'system')"
-                                        class="subnav-pill subnav-dashboard whitespace-nowrap" data-sub="system">
+                                        class="subnav-pill subnav-dashboard <?= $systemTabClass ?> whitespace-nowrap" data-sub="system">
                                         <i class="fas fa-chart-line mr-1.5 text-dusty-dark"></i>
                                         <span>2. System &amp; Property Analytics</span>
                                     </button>
@@ -81,11 +89,15 @@ if (!$activeStanding) {
                             </div>
 
                             <!-- SUB-TAB 1: INDIVIDUAL SHIFT FOCUS & MY PULSE -->
-                            <div id="sub-dashboard-pulse" class="sub-panel-dashboard active space-y-6">
+                            <div id="sub-dashboard-pulse" class="sub-panel-dashboard <?= $pulseTabClass ?> space-y-6">
 
                                 <!-- 1. Focused "Today's Shift Action" Card -->
-                                <div
-                                    class="card-hero p-6 relative overflow-hidden bg-white">
+                                <div onclick="openOverviewDrilldown('shift_action')"
+                                    class="card-hero p-6 relative overflow-hidden bg-white cursor-pointer hover:shadow-lg hover:border-slate-300 transition-all duration-200 group" title="Click to view Shift Milestones & Calibration Details">
+                                    <div class="absolute top-4 right-4 text-slate-300 group-hover:text-primary transition-colors text-xs pointer-events-none hidden sm:flex items-center space-x-1 font-semibold">
+                                        <span>Shift Telemetry</span>
+                                        <i class="fas fa-arrow-up-right-from-square text-[10px]"></i>
+                                    </div>
                                     <div
                                         class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div class="space-y-1.5">
@@ -93,15 +105,15 @@ if (!$activeStanding) {
                                                 class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-brand-canvas text-slate-700 text-[11px] font-semibold border border-brand-border">
                                                 <span
                                                     class="w-1.5 h-1.5 rounded-full bg-sage-dark animate-pulse"></span>
-                                                <span>On Shift: 07:00 - 15:30 · Front Office</span>
+                                                <span>Active Shift Telemetry · <?= htmlspecialchars($activeStanding['department'] ?? 'Front Office') ?></span>
                                             </div>
                                             <h2 id="hero-greeting-text"
                                                 class="font-heading font-bold text-2xl sm:text-3xl text-slate-900">
-                                                Good morning, Maria Santos</h2>
-                                            <p class="text-xs text-slate-500">You have <strong>1 milestone review</strong> and <strong>1 LMS handbook</strong> scheduled for calibration this week.</p>
+                                                Welcome back, <?= htmlspecialchars($activeStanding['name'] ?? 'Associate') ?></h2>
+                                            <p id="hero-greeting-subtext" class="text-xs text-slate-500">Personal Performance &amp; Development Pulse · <?= htmlspecialchars($activeStanding['role'] ?? 'Associate') ?></p>
                                         </div>
                                         <div class="flex items-center gap-2.5 flex-wrap">
-                                            <button onclick="openModal('modal-create-goal')"
+                                            <button onclick="event.stopPropagation(); openModal('modal-create-goal')"
                                                 class="btn-primary px-4 py-2.5 text-xs font-bold flex items-center space-x-2">
                                                 <i class="fas fa-plus text-xs"></i>
                                                 <span>Set New Goal</span>
@@ -114,14 +126,17 @@ if (!$activeStanding) {
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                                     <!-- Card 1: Q3 Goals Progress -->
-                                    <div class="card-clean p-5 space-y-3 relative overflow-hidden">
+                                    <div onclick="openOverviewDrilldown('goals_progress')" class="card-clean p-5 space-y-3 relative overflow-hidden cursor-pointer hover:shadow-md hover:border-sage/40 transition-all duration-200 group" title="Click to view Goals Breakdown & Progress">
+                                        <div class="absolute top-3.5 right-3 text-slate-300 group-hover:text-sage-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-0.5 font-semibold">
+                                            <i class="fas fa-expand text-[9px]"></i>
+                                        </div>
                                         <!-- Loading Overlay -->
                                         <div id="kpi-goals-loading" class="overview-loading-overlay hidden absolute inset-0 bg-white/85 backdrop-blur-2xs flex-col items-center justify-center z-10">
                                             <div class="w-6 h-6 rounded-full border-2 border-sage-dark/20 border-t-sage-dark animate-spin mb-1"></div>
                                             <span class="text-[10px] font-semibold text-slate-500">Querying Goals...</span>
                                         </div>
 
-                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium pr-4">
                                             <span class="font-semibold text-slate-700">Q3 Goals Progress</span>
                                             <span id="kpi-goals-ratio" class="badge-sage">0 of 0 Passed (0/2 Set)</span>
                                         </div>
@@ -136,14 +151,17 @@ if (!$activeStanding) {
                                     </div>
 
                                     <!-- Card 2: Competency Matrix -->
-                                    <div class="card-clean p-5 space-y-3 relative overflow-hidden">
+                                    <div onclick="openOverviewDrilldown('competencies')" class="card-clean p-5 space-y-3 relative overflow-hidden cursor-pointer hover:shadow-md hover:border-dusty/40 transition-all duration-200 group" title="Click to view Competency Standards & Radar">
+                                        <div class="absolute top-3.5 right-3 text-slate-300 group-hover:text-dusty-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-0.5 font-semibold">
+                                            <i class="fas fa-expand text-[9px]"></i>
+                                        </div>
                                         <!-- Loading Overlay -->
                                         <div id="kpi-comp-loading" class="overview-loading-overlay hidden absolute inset-0 bg-white/85 backdrop-blur-2xs flex-col items-center justify-center z-10">
                                             <div class="w-6 h-6 rounded-full border-2 border-dusty-dark/20 border-t-dusty-dark animate-spin mb-1"></div>
                                             <span class="text-[10px] font-semibold text-slate-500">Querying Competencies...</span>
                                         </div>
 
-                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium pr-4">
                                             <span class="font-semibold text-slate-700">Competency Matrix</span>
                                             <span id="kpi-comp-level" class="badge-dusty">Level 1</span>
                                         </div>
@@ -158,14 +176,17 @@ if (!$activeStanding) {
                                     </div>
 
                                     <!-- Card 3: Gamified XP -->
-                                    <div class="card-clean p-5 space-y-3 relative overflow-hidden">
+                                    <div onclick="openOverviewDrilldown('xp_ledger')" class="card-clean p-5 space-y-3 relative overflow-hidden cursor-pointer hover:shadow-md hover:border-gold/40 transition-all duration-200 group" title="Click to view XP Ledger & Recognition History">
+                                        <div class="absolute top-3.5 right-3 text-slate-300 group-hover:text-gold-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-0.5 font-semibold">
+                                            <i class="fas fa-expand text-[9px]"></i>
+                                        </div>
                                         <!-- Loading Overlay -->
                                         <div id="kpi-xp-loading" class="overview-loading-overlay hidden absolute inset-0 bg-white/85 backdrop-blur-2xs flex-col items-center justify-center z-10">
                                             <div class="w-6 h-6 rounded-full border-2 border-gold/20 border-t-gold animate-spin mb-1"></div>
                                             <span class="text-[10px] font-semibold text-slate-500">Querying XP Ledger...</span>
                                         </div>
 
-                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+                                        <div class="flex justify-between items-center text-xs text-slate-500 font-medium pr-4">
                                             <span class="font-semibold text-slate-700">Gamified XP</span>
                                             <span id="kpi-xp-level-badge" class="badge-gold">Level 1</span>
                                         </div>
@@ -200,15 +221,18 @@ if (!$activeStanding) {
                                     <!-- Left Column: Individual Performance Objectives Card (Live Supabase Data) -->
                                     <div class="card-clean p-6 space-y-4 flex flex-col justify-between">
                                         <div class="flex flex-col h-full">
-                                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 shrink-0">
+                                            <div onclick="openOverviewDrilldown('active_objectives')" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 shrink-0 cursor-pointer group" title="Click to view Objectives Drilldown">
                                                 <div class="space-y-0.5">
                                                     <div class="flex items-center space-x-2">
-                                                        <h3 class="font-heading font-bold text-base text-slate-900">
+                                                        <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors">
                                                             My Active Performance Objectives</h3>
                                                         <span id="emp-pulse-goals-count" class="badge-primary">0 Goals</span>
+                                                        <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-primary font-semibold hidden sm:inline-flex items-center gap-0.5">
+                                                            <i class="fas fa-expand text-[9px]"></i>
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                <button onclick="openModal('modal-create-goal')"
+                                                <button onclick="event.stopPropagation(); openModal('modal-create-goal')"
                                                     class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 self-start sm:self-auto shadow-2xs">
                                                     <i class="fas fa-plus text-xs"></i>
                                                     <span>Set Objective</span>
@@ -220,7 +244,116 @@ if (!$activeStanding) {
                                         </div>
                                     </div>
 
-                                    <!-- Right Column: Employee View: Top 5 Gamified XP Champions & Personal Rank Standing -->
+                                    <?php if ($isAssociate): ?>
+                                    <!-- Right Column: Employee View: My Personal Gamified XP & Recognition Standing -->
+                                    <div class="card-clean p-6 space-y-5 flex flex-col justify-between">
+                                        <?php
+                                        $isRankedPulse = !empty($activeStanding['is_ranked']) && (int)($activeStanding['total_xp'] ?? 0) > 0;
+                                        $inTop5Pulse = !empty($activeStanding['in_top_5']) && $isRankedPulse;
+                                        ?>
+                                        <div>
+                                            <!-- Card Header: Title & Personal Standing Pill -->
+                                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                                <div class="space-y-0.5">
+                                                    <div class="flex items-center space-x-2">
+                                                        <h3 class="font-heading font-bold text-base text-slate-900">
+                                                            My Gamified XP &amp; Standing</h3>
+                                                        <span class="badge-gold">Personal Record</span>
+                                                    </div>
+                                                </div>
+                                                <?php if ($isRankedPulse): ?>
+                                                    <div id="emp-pulse-standing-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-gold-50/90 border border-gold-200 text-gold-dark text-xs font-bold shadow-2xs self-start sm:self-auto">
+                                                        <i class="fas fa-medal text-gold"></i>
+                                                        <span id="emp-pulse-standing-pill-text">Your Rank: <?= htmlspecialchars($activeStanding['rank_display']) ?> (<?= htmlspecialchars($activeStanding['place_display']) ?>)</span>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div id="emp-pulse-standing-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold shadow-2xs self-start sm:self-auto">
+                                                        <i class="fas fa-award text-slate-400"></i>
+                                                        <span id="emp-pulse-standing-pill-text">Not in ranking (0 XP)</span>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <!-- Personal Standing Card (Full & Prominent) -->
+                                            <div id="employee-personal-standing-card" onclick="openOverviewDrilldown('champions_podium')" class="p-5 rounded-2xl bg-white border border-brand-border shadow-2xs flex flex-col gap-4 transition-all mt-4 cursor-pointer hover:shadow-md hover:border-gold/40 group relative" title="Click to view My Recognition Drilldown">
+                                                <div class="absolute top-3 right-3 text-slate-300 group-hover:text-gold-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-0.5 font-semibold">
+                                                    <i class="fas fa-expand text-[9px]"></i>
+                                                </div>
+                                                <!-- Top Row: Rank Badge + Identity -->
+                                                <div class="flex items-center space-x-3.5 min-w-0 pr-4">
+                                                    <?php $rankBadgeStyle = $inTop5Pulse ? 'bg-linear-to-br from-gold via-amber-400 to-amber-600 text-white' : ($isRankedPulse ? 'bg-slate-900 text-white border-2 border-slate-700' : 'bg-slate-100 text-slate-400 border border-slate-200'); ?>
+                                                    <div id="emp-standing-rank-badge" class="w-14 h-14 rounded-2xl <?= $rankBadgeStyle ?> flex flex-col items-center justify-center font-heading font-black shadow-2xs shrink-0">
+                                                        <span class="text-[8px] sm:text-[9px] uppercase tracking-wider <?= $isRankedPulse ? 'opacity-80 text-white' : 'text-slate-400' ?> leading-none"><?= $isRankedPulse ? 'RANK' : 'UNRANKED' ?></span>
+                                                        <span id="emp-standing-rank-num" class="text-base sm:text-xl font-bold leading-none mt-0.5 <?= $isRankedPulse ? 'text-white' : 'text-slate-400' ?>"><?= $isRankedPulse ? htmlspecialchars($activeStanding['rank_display']) : '—' ?></span>
+                                                    </div>
+                                                    <!-- Name, Role, & Status -->
+                                                    <div class="space-y-1 min-w-0 flex-1">
+                                                        <div class="flex items-center space-x-1.5 flex-wrap">
+                                                            <h4 id="emp-standing-name" class="font-heading font-bold text-slate-900 text-sm truncate">
+                                                                <?= htmlspecialchars($activeStanding['name']) ?>
+                                                            </h4>
+                                                            <span id="emp-standing-tier-badge" class="badge-gold text-[9px] py-0.2">
+                                                                <?= htmlspecialchars($activeStanding['tier']) ?>
+                                                            </span>
+                                                        </div>
+                                                        <p id="emp-standing-role-dept" class="text-[11px] text-slate-500 font-medium truncate">
+                                                            <?= htmlspecialchars($activeStanding['role']) ?> · <?= htmlspecialchars($activeStanding['department']) ?>
+                                                        </p>
+                                                        <div id="emp-standing-place-summary" class="inline-flex items-center space-x-1.5 text-[10px] font-semibold text-slate-600 bg-slate-100/90 px-2.5 py-0.5 rounded-full border border-slate-200">
+                                                            <?php if ($isRankedPulse): ?>
+                                                                <i class="fas fa-chart-simple text-slate-400 text-[9px]"></i>
+                                                                <span>Currently in <strong><?= htmlspecialchars($activeStanding['place_display']) ?></strong></span>
+                                                            <?php else: ?>
+                                                                <i class="fas fa-info-circle text-slate-400 text-[9px]"></i>
+                                                                <span>Not in ranking (0 XP) · Earn XP to rank</span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Live XP Metrics Grid -->
+                                                <div class="grid grid-cols-3 gap-2.5 w-full pt-2 border-t border-slate-100">
+                                                    <div class="px-3 py-2 rounded-xl bg-brand-canvas border border-brand-border text-center">
+                                                        <span class="text-[9px] font-semibold text-slate-400 block uppercase tracking-wider">Total XP</span>
+                                                        <span id="emp-standing-xp-val" class="text-base font-heading font-bold text-gold-dark"><?= number_format((int)$activeStanding['total_xp']) ?></span>
+                                                    </div>
+                                                    <div class="px-3 py-2 rounded-xl bg-brand-canvas border border-brand-border text-center">
+                                                        <span class="text-[9px] font-semibold text-slate-400 block uppercase tracking-wider">Trophies</span>
+                                                        <span id="emp-standing-trophies-val" class="text-base font-heading font-bold text-slate-800"><?= (int)$activeStanding['trophies'] ?> <i class="fas fa-trophy text-[11px] text-amber-500"></i></span>
+                                                    </div>
+                                                    <div class="px-3 py-2 rounded-xl bg-brand-canvas border border-brand-border text-center">
+                                                        <span class="text-[9px] font-semibold text-slate-400 block uppercase tracking-wider">Next Target</span>
+                                                        <span id="emp-standing-gap-val" class="text-xs font-heading font-bold <?= $inTop5Pulse ? 'text-emerald-700' : ($isRankedPulse ? 'text-terracotta-dark' : 'text-slate-500') ?>">
+                                                            <?= $inTop5Pulse ? 'Podium Top 5' : ($isRankedPulse ? ('+' . number_format((int)$activeStanding['xp_to_next_rank']) . ' XP') : '+50 XP to rank') ?>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Personal Recognition Milestone Info Banner -->
+                                            <div class="mt-4 p-4 rounded-2xl bg-amber-50/60 border border-amber-200/70 flex items-start space-x-3">
+                                                <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center text-sm shrink-0 mt-0.5">
+                                                    <i class="fas fa-hand-holding-heart"></i>
+                                                </div>
+                                                <div class="space-y-1">
+                                                    <h5 class="font-bold text-xs text-slate-900">Gamification &amp; Recognition Rules</h5>
+                                                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                                                        Earn <strong>+50 XP</strong> for peer kudos, <strong>+100 XP</strong> for supervisor commendations, and points for passing SOP quizzes. All transactions are logged to your personal immutable ledger.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                            <span class="text-[11px] text-slate-500">Unified XP Ledger: <strong class="text-slate-800">Immutable Audit Trail</strong></span>
+                                            <button type="button" onclick="switchPillar('pillar-social')" class="text-xs font-bold text-primary hover:underline inline-flex items-center space-x-1">
+                                                <span>Recognition Wall</span>
+                                                <i class="fas fa-arrow-right text-[10px]"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <?php else: ?>
+                                    <!-- Right Column: Supervisor View: Top 5 Gamified XP Champions & Personal Rank Standing -->
                                     <div class="card-clean p-6 space-y-5 flex flex-col justify-between">
                                         <?php
                                         $isRankedPulse = !empty($activeStanding['is_ranked']) && (int)($activeStanding['total_xp'] ?? 0) > 0;
@@ -236,17 +369,10 @@ if (!$activeStanding) {
                                                         <span class="badge-gold">Property Leaderboard</span>
                                                     </div>
                                                 </div>
-                                                <?php if ($isRankedPulse): ?>
-                                                    <div id="emp-pulse-standing-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-gold-50/90 border border-gold-200 text-gold-dark text-xs font-bold shadow-2xs self-start sm:self-auto">
-                                                        <i class="fas fa-medal text-gold"></i>
-                                                        <span id="emp-pulse-standing-pill-text">Your Rank: <?= htmlspecialchars($activeStanding['rank_display']) ?> (<?= htmlspecialchars($activeStanding['place_display']) ?>)</span>
-                                                    </div>
-                                                <?php else: ?>
-                                                    <div id="emp-pulse-standing-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold shadow-2xs self-start sm:self-auto">
-                                                        <i class="fas fa-award text-slate-400"></i>
-                                                        <span id="emp-pulse-standing-pill-text">Not in ranking (0 XP)</span>
-                                                    </div>
-                                                <?php endif; ?>
+                                                 <div id="emp-pulse-standing-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-sage-50 border border-sage-200 text-sage-dark text-xs font-bold shadow-2xs self-start sm:self-auto">
+                                                     <i class="fas fa-users-gear text-sage-dark"></i>
+                                                     <span id="emp-pulse-standing-pill-text">Associate Rankings Oversight</span>
+                                                 </div>
                                             </div>
 
                                             <!-- 5-Column Stepped Podium (Always exactly 5 slots) -->
@@ -354,9 +480,12 @@ if (!$activeStanding) {
                                         </div>
 
                                         <!-- Personal Standing & Rank Progression Strip (Shows exact rank even if in 45th place!) -->
-                                        <div id="employee-personal-standing-card" class="p-3.5 sm:p-4 rounded-2xl bg-white border border-brand-border shadow-2xs flex flex-col gap-3 transition-all mt-3">
+                                        <div id="employee-personal-standing-card" onclick="openOverviewDrilldown('champions_podium')" class="p-3.5 sm:p-4 rounded-2xl bg-white border border-brand-border shadow-2xs flex flex-col gap-3 transition-all mt-3 cursor-pointer hover:shadow-md hover:border-gold/40 group relative" title="Click to view Leaderboard & Champions Drilldown">
+                                            <div class="absolute top-3 right-3 text-slate-300 group-hover:text-gold-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-0.5 font-semibold">
+                                                <i class="fas fa-expand text-[9px]"></i>
+                                            </div>
                                             <!-- Top Row: Rank Badge + Identity -->
-                                            <div class="flex items-center space-x-3 min-w-0">
+                                            <div class="flex items-center space-x-3 min-w-0 pr-4">
                                                 <!-- Prominent Rank Badge -->
                                                 <?php $rankBadgeStyle = $inTop5Pulse ? 'bg-linear-to-br from-gold via-amber-400 to-amber-600 text-white' : ($isRankedPulse ? 'bg-slate-900 text-white border-2 border-slate-700' : 'bg-slate-100 text-slate-400 border border-slate-200'); ?>
                                                 <div id="emp-standing-rank-badge" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl <?= $rankBadgeStyle ?> flex flex-col items-center justify-center font-heading font-black shadow-2xs shrink-0">
@@ -407,22 +536,26 @@ if (!$activeStanding) {
                                             </div>
                                         </div>
                                     </div>
+                                    <?php endif; ?>
 
                                 </div>
 
                                 <!-- Employee Specific Evaluated Competencies Card -->
                                 <div class="card-clean p-6 space-y-4">
-                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                    <div onclick="openOverviewDrilldown('competencies')" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 cursor-pointer group" title="Click to view Competency Standards Details">
                                         <div class="space-y-0.5">
                                             <div class="flex items-center space-x-2">
-                                                <h3 class="font-heading font-bold text-base text-slate-900">
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-dusty-dark transition-colors">
                                                     My Evaluated Competencies &amp; Standards</h3>
-                                                <span id="emp-overview-comp-count" class="badge-dusty">4 Assigned Competencies</span>
+                                                <span id="emp-overview-comp-count" class="badge-dusty">11 Assigned (1 Not Rated)</span>
+                                                <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-dusty-dark font-semibold hidden sm:inline-flex items-center gap-0.5">
+                                                    <i class="fas fa-expand text-[9px]"></i>
+                                                </span>
                                             </div>
                                             <p class="text-xs text-slate-500">Baseline competency ratings and target benchmarks specifically evaluated for your position.</p>
                                         </div>
-                                        <button onclick="switchPillar('pillar-comp')"
-                                            class="px-3.5 py-1.5 bg-brand-canvas hover:bg-slate-100 border border-brand-border text-slate-700 rounded-xl text-xs font-semibold inline-flex items-center space-x-1.5 transition">
+                                        <button onclick="event.stopPropagation(); switchPillar('pillar-comp')"
+                                            class="px-3.5 py-1.5 bg-brand-canvas hover:bg-slate-100 border border-brand-border text-slate-700 rounded-xl text-xs font-semibold inline-flex items-center space-x-1.5 transition self-start sm:self-auto shadow-2xs">
                                             <i class="fas fa-cubes text-xs text-primary"></i>
                                             <span>View Full Competency Radar</span>
                                         </button>
@@ -436,10 +569,14 @@ if (!$activeStanding) {
                                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                                     <!-- XP Received & Gamification Trajectory -->
-                                    <div class="card-clean p-6 space-y-3">
-                                        <div class="flex items-center justify-between">
+                                    <div onclick="openOverviewDrilldown('xp_trajectory')" class="card-clean p-6 space-y-3 cursor-pointer hover:shadow-md hover:border-gold/40 transition-all duration-200 group relative" title="Click to view XP Trajectory & Ledger Drilldown">
+                                        <div class="absolute top-4 right-4 text-slate-300 group-hover:text-gold-dark transition-colors text-[10px] pointer-events-none flex items-center space-x-1 font-semibold">
+                                            <span>XP History</span>
+                                            <i class="fas fa-expand text-[9px]"></i>
+                                        </div>
+                                        <div class="flex items-center justify-between pr-16">
                                             <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900">
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-gold-dark transition-colors">
                                                     XP Received &amp; Rewards Trajectory</h3>
                                                 <p class="text-xs text-slate-500">Monthly Points &amp; Rewards History Sourced from <code class="text-[10px] bg-slate-100 px-1 py-0.5 rounded text-slate-700">xp_ledger</code></p>
                                             </div>
@@ -474,26 +611,80 @@ if (!$activeStanding) {
                                                     My Shift Climate &amp; Well-being</h3>
                                                 <p class="text-xs text-slate-500">Your personal shift sentiment and mood log</p>
                                             </div>
-                                            <button id="btn-log-checkin-modal" onclick="openModal('modal-sentiment-pulse')"
+                                            <button id="btn-log-checkin-modal" onclick="event.stopPropagation(); openModal('modal-sentiment-pulse')"
                                                 class="text-xs font-bold text-primary hover:underline flex items-center space-x-1 transition">
                                                 <i class="fas fa-pen text-[10px]"></i>
                                                 <span id="btn-log-checkin-text">Log Check-In</span>
                                             </button>
                                         </div>
 
+                                        <?php
+                                        // Dynamic database query for the active employee's shift sentiments
+                                        $liveEmpShiftsCount = 0;
+                                        $liveEmpSmoothCount = 0;
+                                        $latestSentiment = null;
+                                        try {
+                                            if (!isset($pdo)) {
+                                                require_once __DIR__ . '/../config/config.php';
+                                                $pdo = getSupabaseDb();
+                                            }
+                                            if ($pdo && !empty($activeEmpId)) {
+                                                $stSent = $pdo->prepare("SELECT id, sentiment_score, shift_period, note, created_at FROM public.shift_sentiments WHERE employee_id = :empId ORDER BY created_at DESC");
+                                                $stSent->execute([':empId' => $activeEmpId]);
+                                                $empSents = $stSent->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                                                $liveEmpShiftsCount = count($empSents);
+                                                if ($liveEmpShiftsCount > 0) {
+                                                    $latestSentiment = $empSents[0];
+                                                    foreach ($empSents as $s) {
+                                                        if ((int)($s['sentiment_score'] ?? 0) >= 4) $liveEmpSmoothCount++;
+                                                    }
+                                                }
+                                            }
+                                        } catch (\Throwable $e) {}
+                                        $liveEmpClimatePct = $liveEmpShiftsCount > 0 ? round(($liveEmpSmoothCount / $liveEmpShiftsCount) * 100) : 0;
+
+                                        $sentimentEmoji = '😊';
+                                        $sentimentTitle = 'Smooth &amp; Energized';
+                                        $sentimentDesc = 'Shift operating on schedule with zero blockers.';
+                                        $sentimentTag = "Today's Check-in";
+                                        if ($latestSentiment) {
+                                            $sc = (int)($latestSentiment['sentiment_score'] ?? 4);
+                                            if ($sc >= 4) {
+                                                $sentimentEmoji = '😊';
+                                                $sentimentTitle = 'Smooth &amp; Energized';
+                                            } elseif ($sc === 3) {
+                                                $sentimentEmoji = '😐';
+                                                $sentimentTitle = 'Manageable &amp; Steady';
+                                            } else {
+                                                $sentimentEmoji = '😟';
+                                                $sentimentTitle = 'Friction Experienced';
+                                            }
+                                            $sentimentDesc = htmlspecialchars($latestSentiment['note'] ?: ($latestSentiment['shift_period'] ?: 'Shift check-in logged.'));
+                                            $sentimentTag = date('M d, Y', strtotime($latestSentiment['created_at'])) . ' Check-in';
+                                        } elseif ($liveEmpShiftsCount === 0) {
+                                            $sentimentEmoji = '📝';
+                                            $sentimentTitle = 'No Check-In Recorded';
+                                            $sentimentDesc = 'Log your first shift check-in to record personal operational well-being.';
+                                            $sentimentTag = 'Awaiting Check-in';
+                                        }
+                                        ?>
+
                                         <!-- Active Personal Status Banner -->
-                                        <div id="my-shift-sentiment-banner" class="p-4 rounded-2xl bg-sage-50/70 border border-sage-200/80 flex items-center justify-between gap-3 transition-all">
+                                        <div id="my-shift-sentiment-banner" onclick="openOverviewDrilldown('shift_sentiment')" class="p-4 rounded-2xl bg-sage-50/70 border border-sage-200/80 flex items-center justify-between gap-3 transition-all cursor-pointer hover:shadow-xs hover:border-sage-300 group" title="Click to view Shift Climate Pulse Details">
                                             <div class="flex items-center space-x-3">
                                                 <div id="my-shift-sentiment-emoji" class="w-12 h-12 rounded-2xl bg-sage-dark text-white flex items-center justify-center text-2xl shadow-xs transition-all">
-                                                    😊
+                                                    <?= $sentimentEmoji ?>
                                                 </div>
                                                 <div>
-                                                    <span id="my-shift-sentiment-tag" class="text-[10px] font-bold uppercase tracking-wider text-sage-dark">Today's Check-in</span>
-                                                    <h4 id="my-shift-sentiment-title" class="font-heading font-bold text-slate-900 text-sm">Smooth &amp; Energized</h4>
-                                                    <p id="my-shift-sentiment-desc" class="text-[11px] text-slate-500">Front Desk shift operating on schedule with zero blockers.</p>
+                                                    <span id="my-shift-sentiment-tag" class="text-[10px] font-bold uppercase tracking-wider text-sage-dark"><?= $sentimentTag ?></span>
+                                                    <h4 id="my-shift-sentiment-title" class="font-heading font-bold text-slate-900 text-sm group-hover:text-sage-dark transition-colors"><?= $sentimentTitle ?></h4>
+                                                    <p id="my-shift-sentiment-desc" class="text-[11px] text-slate-500"><?= $sentimentDesc ?></p>
                                                 </div>
                                             </div>
-                                            <span id="my-shift-sentiment-badge" class="badge-sage shrink-0">Active</span>
+                                            <div class="flex items-center space-x-2 shrink-0">
+                                                <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-sage-dark font-semibold hidden sm:inline">Details <i class="fas fa-arrow-right text-[8px]"></i></span>
+                                                <span id="my-shift-sentiment-badge" class="<?= $latestSentiment ? 'badge-sage' : 'badge-neutral' ?> shrink-0"><?= $latestSentiment ? 'Logged' : 'Pending' ?></span>
+                                            </div>
                                         </div>
 
                                         <!-- Quick Sentiment Logger Buttons -->
@@ -505,17 +696,17 @@ if (!$activeStanding) {
                                                 </span>
                                             </div>
                                             <div class="grid grid-cols-3 gap-2" id="quick-mood-btn-group">
-                                                <button id="quick-mood-btn-smooth" type="button" onclick="logQuickSentiment('smooth')" class="quick-sentiment-btn p-2.5 rounded-xl border border-sage-200 bg-white hover:bg-sage-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
+                                                <button id="quick-mood-btn-smooth" type="button" onclick="event.stopPropagation(); logQuickSentiment('smooth')" class="quick-sentiment-btn p-2.5 rounded-xl border border-sage-200 bg-white hover:bg-sage-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
                                                     <span class="text-lg group-hover:scale-110 transition-transform">😊</span>
                                                     <span class="text-[11px] font-bold text-sage-dark">Smooth</span>
                                                     <span class="text-[9px] text-slate-400">Clear focus</span>
                                                 </button>
-                                                <button id="quick-mood-btn-manageable" type="button" onclick="logQuickSentiment('manageable')" class="quick-sentiment-btn p-2.5 rounded-xl border border-dusty-200 bg-white hover:bg-dusty-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
+                                                <button id="quick-mood-btn-manageable" type="button" onclick="event.stopPropagation(); logQuickSentiment('manageable')" class="quick-sentiment-btn p-2.5 rounded-xl border border-dusty-200 bg-white hover:bg-dusty-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
                                                     <span class="text-lg group-hover:scale-110 transition-transform">😐</span>
                                                     <span class="text-[11px] font-bold text-dusty-dark">Manageable</span>
                                                     <span class="text-[9px] text-slate-400">Steady load</span>
                                                 </button>
-                                                <button id="quick-mood-btn-friction" type="button" onclick="logQuickSentiment('friction')" class="quick-sentiment-btn p-2.5 rounded-xl border border-terracotta-200 bg-white hover:bg-terracotta-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
+                                                <button id="quick-mood-btn-friction" type="button" onclick="event.stopPropagation(); logQuickSentiment('friction')" class="quick-sentiment-btn p-2.5 rounded-xl border border-terracotta-200 bg-white hover:bg-terracotta-50 text-slate-800 flex flex-col items-center justify-center space-y-1 transition group">
                                                     <span class="text-lg group-hover:scale-110 transition-transform">😟</span>
                                                     <span class="text-[11px] font-bold text-terracotta-dark">Friction</span>
                                                     <span class="text-[9px] text-slate-400">Need support</span>
@@ -524,9 +715,9 @@ if (!$activeStanding) {
                                         </div>
 
                                         <!-- 7-Day Personal Consistency Track -->
-                                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                                            <span>Weekly Streak: <strong class="text-slate-900">7 Shifts Logged</strong></span>
-                                            <span class="text-sage-dark font-semibold"><i class="fas fa-shield-heart mr-1"></i>94% Positive Climate</span>
+                                        <div onclick="openOverviewDrilldown('shift_sentiment')" class="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 cursor-pointer hover:text-slate-900 transition-colors">
+                                            <span>Weekly Streak: <strong id="emp-pulse-shifts-count" class="text-slate-900"><?= $liveEmpShiftsCount ?> <?= $liveEmpShiftsCount === 1 ? 'Shift' : 'Shifts' ?> Logged</strong></span>
+                                            <span id="emp-pulse-climate-tag" class="text-sage-dark font-semibold"><i class="fas fa-shield-heart mr-1"></i><?= $liveEmpClimatePct ?>% Positive Climate <i class="fas fa-chevron-right text-[8px] ml-1"></i></span>
                                         </div>
                                     </div>
 
@@ -535,7 +726,7 @@ if (!$activeStanding) {
                             </div>
 
                             <!-- SUB-TAB 2: SYSTEM & PROPERTY ANALYTICS (Organization-Wide Overview) -->
-                            <div id="sub-dashboard-system" class="sub-panel-dashboard space-y-6 relative">
+                            <div id="sub-dashboard-system" class="sub-panel-dashboard <?= $systemTabClass ?> space-y-6 relative">
 
                                 <!-- Sub-Tab 2 Loading Shimmer & State -->
                                 <div id="overview-tab2-loading" class="overview-loading-overlay hidden absolute inset-0 z-30 bg-white/80 backdrop-blur-2xs rounded-3xl flex-col items-center justify-center space-y-3 transition-opacity duration-300">
@@ -676,6 +867,16 @@ if (!$activeStanding) {
                                             if ($xpRow) {
                                                 $livePropertyXp = (int)($xpRow['total_xp'] ?? 0);
                                                 $liveBadgesCount = (int)($xpRow['badge_cnt'] ?? 0);
+                                            }
+                                            if ($livePropertyXp === 0) {
+                                                try {
+                                                    require_once __DIR__ . '/../models/SocialModel.php';
+                                                    $smOverview = new SocialModel();
+                                                    $allLg = $smOverview->getLedger(null);
+                                                    foreach ($allLg as $alg) {
+                                                        $livePropertyXp += (int)($alg['points'] ?? ($alg['amount'] ?? 0));
+                                                    }
+                                                } catch (Throwable $e) {}
                                             }
 
                                             // 2. Kudos count
@@ -928,14 +1129,17 @@ if (!$activeStanding) {
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
                                     <!-- System KPI 1: Approved Goals Count (100% Dynamic from performance_goals) -->
-                                    <div class="card-clean p-5 space-y-3">
+                                    <div onclick="openOverviewDrilldown('sys_goals')" class="card-clean p-5 space-y-3 cursor-pointer hover:border-sage hover:shadow-md transition-all group" title="Click to view all property goals & approval status">
                                         <div
                                             class="flex justify-between items-center text-xs text-slate-500 font-medium">
-                                            <span>Goal Approval Rate</span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <span>Goal Approval Rate</span>
+                                                <i class="fas fa-arrow-up-right-from-square text-[9px] text-slate-400 group-hover:text-sage-dark transition-colors"></i>
+                                            </span>
                                             <span class="<?= $liveGoalsApprovalRate >= 80 ? 'badge-sage' : ($liveGoalsApprovalRate > 0 ? 'badge-dusty' : 'bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded-full') ?>" id="sys-kpi-goals-rate-badge"><?= $liveGoalsApprovalRate ?>% Approved</span>
                                         </div>
                                         <div class="flex items-baseline space-x-2">
-                                            <span class="text-3xl font-heading font-bold text-slate-900" id="sys-kpi-goals-ratio"><?= $liveApprovedGoals ?>
+                                            <span class="text-3xl font-heading font-bold text-slate-900 group-hover:text-sage-dark transition-colors" id="sys-kpi-goals-ratio"><?= $liveApprovedGoals ?>
                                                 <span class="text-sm font-normal text-slate-400">/ <?= $liveTotalGoals ?></span></span>
                                             <span class="text-xs text-slate-400 font-medium" id="sys-kpi-goals-subtext"><?= $liveTotalGoals > 0 ? 'Live Database' : 'No Goals Set' ?></span>
                                         </div>
@@ -951,14 +1155,17 @@ if (!$activeStanding) {
                                     </div>
 
                                     <!-- System KPI 2: Total Gamified XP (100% Dynamic from xp_ledger) -->
-                                    <div class="card-clean p-5 space-y-3">
+                                    <div onclick="openOverviewDrilldown('xp_ledger')" class="card-clean p-5 space-y-3 cursor-pointer hover:border-gold hover:shadow-md transition-all group" title="Click to inspect property XP transactions & recognition ledger">
                                         <div
                                             class="flex justify-between items-center text-xs text-slate-500 font-medium">
-                                            <span>Total Property XP</span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <span>Total Property XP</span>
+                                                <i class="fas fa-arrow-up-right-from-square text-[9px] text-slate-400 group-hover:text-gold-dark transition-colors"></i>
+                                            </span>
                                             <span class="badge-gold" id="sys-kpi-property-xp-grade"><?= htmlspecialchars($liveXpGrade) ?></span>
                                         </div>
                                         <div class="flex items-baseline space-x-2">
-                                            <span class="text-3xl font-heading font-bold text-gold-dark" id="sys-kpi-property-xp-val"><?= number_format($livePropertyXp) ?>
+                                            <span class="text-3xl font-heading font-bold text-gold-dark group-hover:scale-[1.02] transition-transform" id="sys-kpi-property-xp-val"><?= number_format($livePropertyXp) ?>
                                                 <span class="text-xs font-normal text-slate-400">XP</span></span>
                                             <span class="text-xs text-slate-500 font-medium" id="sys-kpi-property-xp-staff"><?= $liveActiveStaffCount ?> Staff</span>
                                         </div>
@@ -973,14 +1180,17 @@ if (!$activeStanding) {
                                     </div>
 
                                     <!-- System KPI 3: Average LMS Completion Rate (100% Dynamic from lms_prescribed) -->
-                                    <div class="card-clean p-5 space-y-3">
+                                    <div onclick="openOverviewDrilldown('sys_lms')" class="card-clean p-5 space-y-3 cursor-pointer hover:border-primary hover:shadow-md transition-all group" title="Click to view full hotel LMS course catalog & completion stats">
                                         <div
                                             class="flex justify-between items-center text-xs text-slate-500 font-medium">
-                                            <span>LMS Course Completion</span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <span>LMS Course Completion</span>
+                                                <i class="fas fa-arrow-up-right-from-square text-[9px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                            </span>
                                             <span class="<?= $liveLmsRate >= 80 ? 'badge-primary' : ($liveLmsRate > 0 ? 'badge-dusty' : 'bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded-full') ?>" id="sys-kpi-lms-rate-badge"><?= $liveLmsRate ?>% Rate</span>
                                         </div>
                                         <div class="flex items-baseline space-x-2">
-                                            <span class="text-3xl font-heading font-bold text-slate-900" id="sys-kpi-lms-rate-val"><?= $liveLmsRate ?>%</span>
+                                            <span class="text-3xl font-heading font-bold text-slate-900 group-hover:text-primary transition-colors" id="sys-kpi-lms-rate-val"><?= $liveLmsRate ?>%</span>
                                             <span class="text-xs text-slate-400" id="sys-kpi-lms-target"><?= $liveTotalPrescribed > 0 ? 'Target: 80.0%' : 'No Courses' ?></span>
                                         </div>
                                         <div class="w-full bg-brand-canvas h-1.5 rounded-full overflow-hidden border border-brand-border/50">
@@ -994,14 +1204,17 @@ if (!$activeStanding) {
                                     </div>
 
                                     <!-- System KPI 4: Succession Pipeline Health Rate (100% Dynamic from succession tables) -->
-                                    <div class="card-clean p-5 space-y-3">
+                                    <div onclick="openOverviewDrilldown('sys_succession')" class="card-clean p-5 space-y-3 cursor-pointer hover:border-dusty hover:shadow-md transition-all group" title="Click to view leadership succession coverage & bench depth">
                                         <div
                                             class="flex justify-between items-center text-xs text-slate-500 font-medium">
-                                            <span>Succession Bench Depth</span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <span>Succession Bench Depth</span>
+                                                <i class="fas fa-arrow-up-right-from-square text-[9px] text-slate-400 group-hover:text-dusty-dark transition-colors"></i>
+                                            </span>
                                             <span class="<?= $benchBadgeClass ?>" id="sys-kpi-succession-badge"><?= $liveBenchDepthPct ?>% Ready</span>
                                         </div>
                                         <div class="flex items-baseline space-x-2">
-                                            <span class="text-3xl font-heading font-bold text-slate-900" id="sys-kpi-succession-val"><?= $liveBenchDepthPct ?>%</span>
+                                            <span class="text-3xl font-heading font-bold text-slate-900 group-hover:text-dusty-dark transition-colors" id="sys-kpi-succession-val"><?= $liveBenchDepthPct ?>%</span>
                                             <span class="text-xs <?= $benchRiskClass ?> font-semibold" id="sys-kpi-succession-risk"><?= $benchRisk ?></span>
                                         </div>
                                         <div class="w-full bg-brand-canvas h-1.5 rounded-full overflow-hidden border border-brand-border/50">
@@ -1061,16 +1274,19 @@ if (!$activeStanding) {
 
                                     <!-- Column 1: Top 5 Highest Gamified XP Staff Leaderboard (5 cols) -->
                                     <div class="lg:col-span-5 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('champions_podium')" title="Click for XP podium leaderboard telemetry">
                                             <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900">Top 5 Gamified XP Champions</h3>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-gold-dark transition-colors flex items-center space-x-1.5">
+                                                    <span>Top 5 Gamified XP Champions</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-gold-dark transition-colors"></i>
+                                                </h3>
                                                 <p class="text-xs text-slate-500">Highest accumulated recognition points &amp; badges</p>
                                             </div>
                                             <span class="badge-gold">Property Top 5</span>
                                         </div>
 
                                         <!-- Top 5 Vertical Bar Podium (Names & Stars on Top - Clean Solid Palette) -->
-                                        <div class="bg-brand-canvas border border-brand-border rounded-2xl p-3.5 sm:p-5">
+                                        <div onclick="openOverviewDrilldown('champions_podium')" class="bg-brand-canvas border border-brand-border rounded-2xl p-3.5 sm:p-5 cursor-pointer hover:border-gold/60 transition-all group" title="Click to view full podium standings & recognition feed">
                                             <div class="relative pt-2">
                                                 <!-- Connecting Horizontal Bar behind pillars -->
                                                 <div
@@ -1097,7 +1313,7 @@ if (!$activeStanding) {
                                                     if (!empty($c['is_ready'])):
                                                 ?>
                                                     <!-- Ready Empty State Slot -->
-                                                    <div class="flex flex-col items-center justify-end text-center group cursor-pointer" onclick="switchPillar('pillar-social')" title="Open Podium Position <?= $rank ?>: Ready for Contender">
+                                                    <div class="flex flex-col items-center justify-end text-center group cursor-pointer" onclick="event.stopPropagation(); openOverviewDrilldown('champions_podium')" title="Open Podium Position <?= $rank ?>: Ready for Contender">
                                                         <div class="mb-2 flex flex-col items-center space-y-1 w-full opacity-60">
                                                             <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-dashed border-slate-300 bg-white/70 text-slate-400 font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-2xs">
                                                                 <i class="fas fa-plus text-[9px] sm:text-[10px] text-slate-400"></i>
@@ -1137,7 +1353,7 @@ if (!$activeStanding) {
                                                     $roleShort = str_replace(['Director', 'Supervisor', 'Associate'], ['Dir', 'Sup', 'Assoc'], $c['role'] ?? 'Associate');
                                                 ?>
                                                     <!-- Active Champion Slot -->
-                                                    <div class="flex flex-col items-center justify-end text-center group cursor-pointer" onclick="switchPillar('pillar-social')" title="<?= htmlspecialchars($c['name']) ?> (<?= htmlspecialchars($c['role']) ?>): <?= number_format($xp) ?> XP">
+                                                    <div class="flex flex-col items-center justify-end text-center group cursor-pointer" onclick="event.stopPropagation(); openOverviewDrilldown('champions_podium')" title="<?= htmlspecialchars($c['name']) ?> (<?= htmlspecialchars($c['role']) ?>): <?= number_format($xp) ?> XP">
                                                         <div class="mb-2 flex flex-col items-center space-y-1 w-full">
                                                             <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full <?= $st['avatarBg'] ?> text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shadow-xs border-2 border-white">
                                                                 <?= htmlspecialchars($initials) ?>
@@ -1170,7 +1386,7 @@ if (!$activeStanding) {
                                             </div>
                                         </div>
 
-                                        <button onclick="switchPillar('pillar-social')"
+                                        <button onclick="event.stopPropagation(); switchPillar('pillar-social')"
                                             class="w-full py-2.5 bg-brand-canvas hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl border border-brand-border transition flex items-center justify-center space-x-1.5">
                                             <i class="fas fa-award text-gold"></i>
                                             <span>View All Leaderboard Ranks &amp; Kudos</span>
@@ -1179,33 +1395,30 @@ if (!$activeStanding) {
 
                                     <!-- Column 2: Department Completion & Progress Comparison (7 cols) -->
                                     <div class="lg:col-span-7 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('dept_matrix')" title="Click for detailed department execution metrics & rankings">
                                             <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900">Department Execution Matrix</h3>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
+                                                    <span>Department Execution Matrix</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                                </h3>
                                                 <p class="text-xs text-slate-500">Goal Approval %, LMS Completion %, and Succession Depth by Department</p>
                                             </div>
-                                            <div class="flex items-center space-x-2">
-                                                <span class="badge-primary">Q3 Cycle</span>
-                                                <span class="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-all duration-300" id="dept-matrix-realtime-badge" title="Connected to Supabase Realtime Telemetry">
-                                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                    <span>Live Telemetry</span>
-                                                </span>
-                                            </div>
+                                            <span class="badge-neutral text-[10px]">5 Departments</span>
                                         </div>
 
                                         <!-- Department Comparison Horizontal Bar Chart -->
-                                        <div class="h-44 w-full relative">
+                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="h-44 w-full relative cursor-pointer hover:opacity-95 transition-opacity" title="Click to view department comparison telemetry">
                                             <canvas id="chart-system-dept-progress"></canvas>
                                             <div id="dept-matrix-loading-overlay" class="overview-loading-overlay absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-lg hidden items-center justify-center transition-opacity">
                                                 <div class="flex items-center space-x-2 text-xs font-semibold text-slate-600 bg-white/90 shadow-sm px-3 py-1.5 rounded-full border border-slate-200">
                                                     <i class="fas fa-circle-notch fa-spin text-primary"></i>
-                                                    <span>Syncing with Database...</span>
+                                                    <span>Syncing...</span>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <!-- Department Breakdown Mini Table -->
-                                        <div class="overflow-x-auto custom-scrollbar pt-2 border-t border-brand-border">
+                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="overflow-x-auto custom-scrollbar pt-2 border-t border-brand-border cursor-pointer hover:bg-slate-50/40 transition-colors" title="Click to inspect full department breakdown">
                                             <table class="w-full text-left text-xs">
                                                 <thead>
                                                     <tr class="text-slate-400 font-semibold border-b border-brand-border">
@@ -1247,14 +1460,17 @@ if (!$activeStanding) {
 
                                     <!-- Column 1: Property Shift Climate Pulse (Doughnut Chart) (5 cols) -->
                                     <div class="lg:col-span-5 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('shift_sentiment')" title="Click for full shift climate & sentiment log">
                                             <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900">
-                                                    Shift Climate Pulse</h3>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
+                                                    <span>Shift Climate Pulse</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                                </h3>
                                                 <p id="pulse-total-staff-subtitle" class="text-xs text-slate-500">Aggregated Employee Sentiment (Live Supabase Telemetry)</p>
                                             </div>
+                                            <span class="badge-sage text-[10px]"><i class="fas fa-heart-pulse mr-1"></i>Live Pulse</span>
                                         </div>
-                                        <div class="h-48 w-full flex items-center justify-center relative">
+                                        <div onclick="openOverviewDrilldown('shift_sentiment')" class="h-48 w-full flex items-center justify-center relative cursor-pointer hover:scale-[1.01] transition-transform" title="Click for sentiment distribution & recent mood log">
                                             <canvas id="chart-sentiment-doughnut"></canvas>
                                             
                                             <!-- Empty State for Shift Climate Pulse -->
@@ -1266,8 +1482,8 @@ if (!$activeStanding) {
                                                 <p class="text-[10px] text-slate-400 mt-0.5 max-w-52.5 leading-tight">No employee shift sentiments recorded yet in Supabase. Check in above to start tracking live team pulse.</p>
                                             </div>
                                         </div>
-                                        <div
-                                            class="flex justify-around text-center text-xs pt-3 border-t border-brand-border">
+                                        <div onclick="openOverviewDrilldown('shift_sentiment')"
+                                            class="flex justify-around text-center text-xs pt-3 border-t border-brand-border cursor-pointer hover:bg-slate-50/50 transition-colors" title="Click for sentiment history">
                                             <div>
                                                 <p id="pulse-smooth-pct" class="font-bold text-sage-dark">0.0%</p>
                                                 <p class="text-[10px] text-slate-500">Smooth</p>
@@ -1285,22 +1501,25 @@ if (!$activeStanding) {
 
                                     <!-- Column 2: Governance & Operational Velocity (7 cols in a single clean card) -->
                                     <div class="lg:col-span-7 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('governance')" title="Click for governance & SLA compliance telemetry">
                                             <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900">Governance &amp; Operational Velocity</h3>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
+                                                    <span>Governance &amp; Operational Velocity</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                                </h3>
                                                 <p class="text-xs text-slate-500">Cross-module synchronization, calibration compliance, and succession pipeline throughput</p>
                                             </div>
-                                            <span class="badge-sage">Live Telemetry</span>
+                                            <span class="badge-neutral text-[10px]">Operations</span>
                                         </div>
 
                                         <!-- 2-Column Analytics Grid -->
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                                             <!-- Column 1: Appraisal Calibration & Review Velocity -->
-                                            <div class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                                            <div onclick="openOverviewDrilldown('governance')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-primary hover:shadow-xs transition-all group" title="Click to inspect appraisal calibration & SLA metrics">
                                                 <div class="space-y-2">
                                                     <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2">
+                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-primary transition-colors">
                                                             <i class="fas fa-scale-balanced text-primary text-xs"></i>
                                                             <span>Appraisal Calibration &amp; SLA</span>
                                                         </span>
@@ -1327,10 +1546,10 @@ if (!$activeStanding) {
                                             </div>
 
                                             <!-- Column 2: Training Ops & Succession Pipeline -->
-                                            <div class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                                            <div onclick="openOverviewDrilldown('sys_succession')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-dusty hover:shadow-xs transition-all group" title="Click to inspect succession bench & training metrics">
                                                 <div class="space-y-2">
                                                     <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2">
+                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-dusty-dark transition-colors">
                                                             <i class="fas fa-sitemap text-dusty-dark text-xs"></i>
                                                             <span>Succession &amp; Training Pipeline</span>
                                                         </span>
@@ -1363,6 +1582,64 @@ if (!$activeStanding) {
 
                             </div>
 
+                        </div>
+
+                        <!-- OVERVIEW DRILLDOWN & REALTIME TELEMETRY MODAL -->
+                        <div id="modal-overview-drilldown" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-xs p-4 sm:p-6 overflow-y-auto">
+                            <div class="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-brand-border flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                
+                                <!-- Modal Header -->
+                                <div class="p-5 sm:p-6 border-b border-brand-border flex items-start justify-between bg-brand-canvas/60">
+                                    <div class="flex items-start space-x-3.5">
+                                        <div id="overview-modal-icon-bg" class="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-lg font-bold shrink-0">
+                                            <i id="overview-modal-icon" class="fas fa-chart-line"></i>
+                                        </div>
+                                        <div class="space-y-0.5">
+                                            <div class="flex items-center space-x-2 flex-wrap">
+                                                <h3 id="overview-modal-title" class="font-heading font-bold text-base sm:text-lg text-slate-900 leading-tight">Metric Detail</h3>
+                                                <span id="overview-modal-cache-badge" class="badge-sage text-[10px]"><i class="fas fa-bolt mr-1"></i>Live Data</span>
+                                            </div>
+                                            <p id="overview-modal-subtitle" class="text-xs text-slate-500">Telemetry &amp; granular drilldown</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex items-center space-x-2 shrink-0">
+                                        <!-- Refresh Button with real-time feedback -->
+                                        <button type="button" id="btn-refresh-overview-modal" onclick="refreshCurrentOverviewModal()" class="w-8 h-8 rounded-full border border-brand-border bg-white hover:bg-slate-100 text-slate-600 flex items-center justify-center transition shadow-2xs" title="Refresh Live Telemetry">
+                                            <i class="fas fa-rotate text-xs"></i>
+                                        </button>
+                                        <!-- Close Button -->
+                                        <button type="button" onclick="closeModal('modal-overview-drilldown')" class="w-8 h-8 rounded-full border border-brand-border bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-400 flex items-center justify-center transition shadow-2xs" title="Close Modal">
+                                            <i class="fas fa-xmark text-sm"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Modal Body (Dynamic AJAX / Cache Content) -->
+                                <div id="overview-modal-body" class="p-5 sm:p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+                                    <!-- Dynamically populated by js/overview.js -->
+                                </div>
+
+                                <!-- Modal Footer -->
+                                <div class="p-4 sm:px-6 border-t border-brand-border bg-slate-50/80 flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2 text-slate-400 text-[11px]">
+                                        <i class="fas fa-clock text-[10px]"></i>
+                                        <span id="overview-modal-timestamp">Synced just now</span>
+                                        <span class="text-slate-300 hidden sm:inline">•</span>
+                                        <span id="overview-modal-cache-info" class="text-slate-400 hidden sm:inline">Realtime TTL 45s</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <button type="button" onclick="closeModal('modal-overview-drilldown')" class="btn-neutral px-4 py-2 text-xs font-semibold">
+                                            Close
+                                        </button>
+                                        <button type="button" id="overview-modal-action-btn" class="btn-primary px-4 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-xs">
+                                            <span>Go to Module</span>
+                                            <i class="fas fa-arrow-right text-[10px]"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                            </div>
                         </div>
 
                         <!-- ======================================================== -->

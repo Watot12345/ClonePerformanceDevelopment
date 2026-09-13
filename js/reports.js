@@ -905,10 +905,6 @@ async function executeExportSummary() {
                 <div class="space-y-4 pt-2">
                     <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
                         <span class="font-bold text-slate-800 text-xs uppercase tracking-wider">Executive Visual Telemetry &amp; Analytics</span>
-                        <span class="inline-flex items-center space-x-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>Live Telemetry Graphics</span>
-                        </span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <!-- Chart 1: Department Multi-Metric Execution Matrix -->

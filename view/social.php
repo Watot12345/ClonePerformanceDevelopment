@@ -15,18 +15,18 @@
         </div>
 
         <div class="card-clean p-4 border-l-4 border-l-primary space-y-1">
-            <span class="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">XP Points Awarded</span>
+            <span id="stat-social-xp-title" class="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">XP Points Awarded</span>
             <div class="flex items-baseline space-x-2">
                 <span id="stat-social-xp" class="text-xl font-heading font-extrabold text-slate-900">0</span>
-                <span class="text-[10px] font-bold text-primary">Deterministic Ledger</span>
+                <span id="stat-social-xp-sub" class="text-[10px] font-bold text-primary">Deterministic Ledger</span>
             </div>
         </div>
 
         <div class="card-clean p-4 border-l-4 border-l-sage space-y-1">
-            <span class="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Milestone Badges</span>
+            <span id="stat-social-badges-title" class="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Milestone Badges</span>
             <div class="flex items-baseline space-x-2">
                 <span id="stat-social-badges" class="text-xl font-heading font-extrabold text-slate-900">0</span>
-                <span class="text-[10px] font-bold text-emerald-600">Threshold Unlocked</span>
+                <span id="stat-social-badges-sub" class="text-[10px] font-bold text-emerald-600">Threshold Unlocked</span>
             </div>
         </div>
 
@@ -48,7 +48,7 @@
             </button>
             <button onclick="switchSubTab('social', 'ledger')" class="subnav-pill subnav-social" data-sub="ledger">
                 <i class="fas fa-receipt mr-1.5 text-primary"></i>
-                <span>Points &amp; XP Ledger</span>
+                <span id="subnav-social-ledger-label">Points &amp; XP Ledger</span>
             </button>
             <button onclick="switchSubTab('social', 'badges')" class="subnav-pill subnav-social" data-sub="badges">
                 <i class="fas fa-medal mr-1.5 text-amber-600"></i>
@@ -112,36 +112,153 @@
     <!-- ======================================================== -->
     <!-- SUB-PANEL 2: DETERMINISTIC POINT & XP LEDGER             -->
     <!-- ======================================================== -->
-    <div id="sub-social-ledger" class="sub-panel sub-panel-social hidden space-y-4 text-xs">
+    <div id="sub-social-ledger" class="sub-panel sub-panel-social hidden space-y-5 text-xs">
+        
+        <!-- Header Banner -->
         <div class="card-clean p-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[#E8DEDC]">
             <div>
-                <h4 class="font-heading font-bold text-sm text-slate-900">My Personal Points &amp; XP Ledger</h4>
-                <p class="text-slate-500 text-xs">Private account audit ledger recording your verified points earned across LMS quizzes, training certs, and kudos</p>
+                <h4 id="social-ledger-header-title" class="font-heading font-bold text-sm text-slate-900">Points &amp; XP Ledger</h4>
+                <p id="social-ledger-header-desc" class="text-slate-500 text-xs">Account audit ledger recording verified points earned across LMS quizzes, training certs, and kudos</p>
             </div>
             <div class="flex items-center space-x-2">
-                <span id="my-ledger-account-label" class="badge-primary"><i class="fas fa-user-shield mr-1"></i> Personal Account Ledger</span>
-                <input type="text" id="ledger-search-input" oninput="filterPointLedger(this.value)" placeholder="Filter my transactions..." class="px-3 py-1.5 bg-[#FAF8F7] border border-[#E8DEDC] rounded-xl text-xs font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none transition">
+                <span id="my-ledger-account-label" class="badge-primary"><i class="fas fa-user-shield mr-1"></i> Account Ledger</span>
             </div>
         </div>
 
-        <div class="card-clean overflow-x-auto border border-[#E8DEDC]">
-            <table class="w-full text-left text-xs min-w-[650px]">
-                <thead class="bg-[#FAF8F7] text-slate-500 font-semibold uppercase text-[10px] tracking-wider border-b border-[#E8DEDC]">
-                    <tr>
-                        <th class="px-5 py-3">Transaction ID</th>
-                        <th class="px-5 py-3">Date</th>
-                        <th class="px-5 py-3">Recipient Account</th>
-                        <th class="px-5 py-3">Issued By</th>
-                        <th class="px-5 py-3">Category / Reason</th>
-                        <th class="px-5 py-3">Points Earned</th>
-                        <th class="px-5 py-3">Running Balance</th>
-                    </tr>
-                </thead>
-                <tbody id="points-ledger-tbody" class="divide-y divide-[#E8DEDC]">
-                    <!-- Rendered dynamically by js/kudos.js -->
-                </tbody>
-            </table>
+        <!-- 1. SUPERVISOR VIEW ONLY: ALL EMPLOYEES & THEIR XP DIRECTORY -->
+        <div id="supervisor-employees-xp-container" class="hidden space-y-3">
+            <div class="card-clean p-4 bg-white border border-[#E8DEDC] space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                        <h4 class="font-heading font-bold text-sm text-slate-900 flex items-center">
+                            <i class="fas fa-users text-primary mr-2"></i> All Associates &amp; Accumulated XP
+                        </h4>
+                        <p class="text-slate-500 text-xs">Complete staff directory showing real-time accumulated XP points, performance tiers, and milestone badges for hotel associates</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span id="supervisor-staff-count-badge" class="badge-sage font-bold"><i class="fas fa-id-badge mr-1"></i> Associates</span>
+                    </div>
+                </div>
+
+                <!-- Search and Department Filters -->
+                <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-[#E8DEDC]">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                        <input type="text" id="supervisor-xp-search" oninput="filterSupervisorEmployeesXp(this.value)" placeholder="Filter employee, role, or dept..." class="pl-8 pr-3 py-1.5 bg-[#FAF8F7] border border-[#E8DEDC] rounded-xl text-xs font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-56 sm:w-64 transition">
+                    </div>
+
+                    <div class="flex items-center space-x-1 overflow-x-auto custom-scrollbar">
+                        <button onclick="setSupervisorXpDeptFilter('all')" data-xp-dept="all" class="supervisor-xp-chip px-3 py-1 rounded-full font-bold bg-primary text-white text-[11px] whitespace-nowrap shadow-2xs">All Staff</button>
+                        <button onclick="setSupervisorXpDeptFilter('front office')" data-xp-dept="front office" class="supervisor-xp-chip px-3 py-1 rounded-full font-semibold bg-[#FAF8F7] text-slate-600 border border-[#E8DEDC] hover:bg-slate-100 text-[11px] whitespace-nowrap">Front Office</button>
+                        <button onclick="setSupervisorXpDeptFilter('kitchen')" data-xp-dept="kitchen" class="supervisor-xp-chip px-3 py-1 rounded-full font-semibold bg-[#FAF8F7] text-slate-600 border border-[#E8DEDC] hover:bg-slate-100 text-[11px] whitespace-nowrap">Kitchen</button>
+                        <button onclick="setSupervisorXpDeptFilter('housekeeping')" data-xp-dept="housekeeping" class="supervisor-xp-chip px-3 py-1 rounded-full font-semibold bg-[#FAF8F7] text-slate-600 border border-[#E8DEDC] hover:bg-slate-100 text-[11px] whitespace-nowrap">Housekeeping</button>
+                    </div>
+                </div>
+
+                <!-- Employees XP Table -->
+                <div class="overflow-x-auto border border-[#E8DEDC] rounded-xl">
+                    <table class="w-full text-left text-xs min-w-[720px]">
+                        <thead class="bg-[#FAF8F7] text-slate-500 font-semibold uppercase text-[10px] tracking-wider border-b border-[#E8DEDC]">
+                            <tr>
+                                <th class="px-4 py-2.5">Rank</th>
+                                <th class="px-4 py-2.5">Employee</th>
+                                <th class="px-4 py-2.5">Department &amp; Role</th>
+                                <th class="px-4 py-2.5">Current Tier</th>
+                                <th class="px-4 py-2.5">Badges</th>
+                                <th class="px-4 py-2.5">Accumulated XP</th>
+                                <th class="px-4 py-2.5 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supervisor-employees-xp-tbody" class="divide-y divide-[#E8DEDC]">
+                            <!-- Rendered dynamically by js/kudos.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
+        <!-- 2. EMPLOYEE VIEW ONLY: MY PERSONAL XP & STANDING CARD -->
+        <div id="employee-personal-xp-container" class="hidden space-y-4">
+            <div class="card-clean p-5 bg-gradient-to-r from-white via-amber-50/10 to-brand-canvas border border-[#E8DEDC] rounded-2xl shadow-xs">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="flex items-center space-x-3.5">
+                        <img id="my-personal-xp-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" alt="Avatar" class="w-14 h-14 rounded-2xl object-cover border-2 border-gold/40 shadow-xs">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h3 id="my-personal-xp-name" class="font-heading font-extrabold text-base text-slate-900">Maria Santos</h3>
+                                <span id="my-personal-xp-rank-badge" class="badge-gold font-bold text-[10px]">Rank #1</span>
+                            </div>
+                            <p id="my-personal-xp-role-dept" class="text-xs text-slate-500 font-medium">Front Desk Host · Front Office</p>
+                            <span id="my-personal-xp-tier-badge" class="inline-flex items-center mt-1 text-[11px] font-bold text-primary"><i class="fas fa-medal mr-1"></i> Gold Achiever</span>
+                        </div>
+                    </div>
+
+                    <!-- Personal XP Highlights -->
+                    <div class="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:space-x-3">
+                        <div class="p-3 bg-white rounded-xl border border-[#E8DEDC] text-center min-w-[110px] shadow-2xs">
+                            <span class="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">My Total XP</span>
+                            <span id="my-personal-xp-number" class="text-xl font-heading font-black text-amber-600 block mt-0.5">0 XP</span>
+                        </div>
+                        <div class="p-3 bg-white rounded-xl border border-[#E8DEDC] text-center min-w-[110px] shadow-2xs">
+                            <span class="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Badges Earned</span>
+                            <span id="my-personal-badges-number" class="text-xl font-heading font-black text-emerald-600 block mt-0.5">0 <i class="fas fa-trophy text-xs text-gold"></i></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-[#E8DEDC] flex items-center justify-between text-xs text-slate-500">
+                    <span class="flex items-center"><i class="fas fa-lock text-slate-400 mr-1.5 text-[11px]"></i> Private View: You are viewing only your own verified points &amp; recognition history.</span>
+                    <span id="my-personal-xp-standing-text" class="font-semibold text-slate-700"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. DETAILED DETERMINISTIC TRANSACTION AUDIT TABLE -->
+        <div class="card-clean p-4 bg-white border border-[#E8DEDC] space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h4 id="ledger-table-header-title" class="font-heading font-bold text-sm text-slate-900">Deterministic XP Audit Log</h4>
+                    <p id="ledger-table-header-desc" class="text-slate-500 text-xs">Immutable audit trail of points issued from kudos, LMS quiz completions, and certifications</p>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Filter Employee dropdown (Supervisor only) -->
+                    <div id="ledger-employee-filter-container" class="hidden items-center space-x-1.5">
+                        <label for="ledger-employee-select" class="text-[11px] font-bold text-slate-500">Filter:</label>
+                        <select id="ledger-employee-select" onchange="onLedgerEmployeeSelectChange(this.value)" class="px-2.5 py-1.5 bg-[#FAF8F7] border border-[#E8DEDC] rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none transition">
+                            <option value="all">All Employees (Entire Hotel)</option>
+                            <!-- Dynamically populated -->
+                        </select>
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                        <input type="text" id="ledger-search-input" oninput="filterPointLedger(this.value)" placeholder="Search transactions..." class="pl-8 pr-3 py-1.5 bg-[#FAF8F7] border border-[#E8DEDC] rounded-xl text-xs font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-none w-44 sm:w-52 transition">
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto border border-[#E8DEDC] rounded-xl">
+                <table class="w-full text-left text-xs min-w-[650px]">
+                    <thead class="bg-[#FAF8F7] text-slate-500 font-semibold uppercase text-[10px] tracking-wider border-b border-[#E8DEDC]">
+                        <tr>
+                            <th class="px-5 py-3">Transaction ID</th>
+                            <th class="px-5 py-3">Date</th>
+                            <th class="px-5 py-3">Recipient Account</th>
+                            <th class="px-5 py-3">Issued By</th>
+                            <th class="px-5 py-3">Category / Reason</th>
+                            <th class="px-5 py-3">Points Earned</th>
+                            <th class="px-5 py-3">Running Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="points-ledger-tbody" class="divide-y divide-[#E8DEDC]">
+                        <!-- Rendered dynamically by js/kudos.js -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <!-- ======================================================== -->

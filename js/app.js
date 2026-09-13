@@ -185,9 +185,16 @@ function switchPillar(pillarKey) {
     // Resize charts if visible & refresh dynamic data
     setTimeout(() => {
         if (pillarKey === 'dashboard' || pillarKey === 'pillar-dashboard') {
-            if (chartPerfTrendInstance) chartPerfTrendInstance.resize();
-            if (chartSentimentDoughnutInstance) chartSentimentDoughnutInstance.resize();
-            if (chartSystemDeptProgressInstance) chartSystemDeptProgressInstance.resize();
+            const pulsePanel = document.getElementById('sub-dashboard-pulse');
+            const systemPanel = document.getElementById('sub-dashboard-system');
+            if (pulsePanel && pulsePanel.classList.contains('active')) {
+                if (typeof renderPulseChartsOnDemand === 'function') renderPulseChartsOnDemand();
+                if (chartPerfTrendInstance) chartPerfTrendInstance.resize();
+            } else if (systemPanel && systemPanel.classList.contains('active')) {
+                if (typeof renderSystemChartsOnDemand === 'function') renderSystemChartsOnDemand();
+                if (chartSentimentDoughnutInstance) chartSentimentDoughnutInstance.resize();
+                if (chartSystemDeptProgressInstance) chartSystemDeptProgressInstance.resize();
+            }
             if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
             if (typeof loadAndRenderTop5Champions === 'function') loadAndRenderTop5Champions();
         } else if (pillarKey === 'pillar-perf') {
@@ -267,6 +274,7 @@ function switchSubTab(pillarPrefix, subKey) {
 
     if (pillarPrefix === 'dashboard') {
         if (subKey === 'pulse') {
+            if (typeof renderPulseChartsOnDemand === 'function') renderPulseChartsOnDemand();
             if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
         } else if (subKey === 'system') {
             const loadingOverlay = document.getElementById('overview-tab2-loading');
@@ -275,7 +283,7 @@ function switchSubTab(pillarPrefix, subKey) {
                 loadingOverlay.classList.add('flex');
             }
             setTimeout(() => {
-                if (typeof initDashboardCharts === 'function') initDashboardCharts();
+                if (typeof renderSystemChartsOnDemand === 'function') renderSystemChartsOnDemand();
                 if (typeof renderOverviewShiftPulse === 'function') renderOverviewShiftPulse();
                 if (typeof loadAndRenderTop5Champions === 'function') loadAndRenderTop5Champions();
                 if (loadingOverlay) {
@@ -762,6 +770,22 @@ function applyRoleVisibility(userRole) {
     }
 
 
+    // Helper to format possessive employee name (e.g. Maria Santos' or John Marco's)
+    function formatPossessiveEmpName(name) {
+        if (!name || name === 'Associate') return 'Associate\'s';
+        return (name.endsWith('s') || name.endsWith('S')) ? `${name}'` : `${name}'s`;
+    }
+
+    function getCurrentlyViewedCompetencyEmpName() {
+        const dynEmps = window.dynamicCompetencyState?.employees || [];
+        const activeKey = window.activeCompetencyEmpKey || window.selectedEvalEmpId || 'emp-101';
+        let emp = dynEmps.find(e => e.id === activeKey);
+        if (!emp && typeof associatesCompetencyData !== 'undefined' && associatesCompetencyData[activeKey]) {
+            emp = associatesCompetencyData[activeKey];
+        }
+        return emp?.full_name || emp?.name || 'Associate';
+    }
+
     if (isAssociate) {
         if (compProfilesBtn) compProfilesBtn.classList.add('hidden');
         if (compAssessBtn) {
@@ -772,7 +796,6 @@ function applyRoleVisibility(userRole) {
             compDevBtn.classList.remove('hidden');
             compDevBtn.innerHTML = '<i class="fas fa-certificate mr-1.5 text-gold"></i> My Certifications';
         }
-
 
         // Default sub-tab to 360° Assessment for Employee
         const activeCompSub = document.querySelector('.subnav-comp.active')?.getAttribute('data-sub');
@@ -788,14 +811,17 @@ function applyRoleVisibility(userRole) {
             selectEmployeeForCompetencies(empId);
         }
     } else {
+        const viewedName = getCurrentlyViewedCompetencyEmpName();
+        const possessiveName = formatPossessiveEmpName(viewedName);
+
         if (compProfilesBtn) compProfilesBtn.classList.remove('hidden');
         if (compAssessBtn) {
             compAssessBtn.classList.remove('hidden');
-            compAssessBtn.innerHTML = '<i class="fas fa-chart-radar mr-1.5"></i> 360° Assessment &amp; Skills Gap';
+            compAssessBtn.innerHTML = `<i class="fas fa-chart-radar mr-1.5"></i> ${possessiveName} 360° Assessment`;
         }
         if (compDevBtn) {
             compDevBtn.classList.remove('hidden');
-            compDevBtn.innerHTML = '<i class="fas fa-route mr-1.5"></i> IDP, Certifications &amp; Appraisal';
+            compDevBtn.innerHTML = `<i class="fas fa-certificate mr-1.5 text-gold"></i> ${possessiveName} Certifications`;
         }
     }
 
@@ -962,7 +988,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const prefix = pillarPrefixMap[targetPillar];
         if (prefix) {
-            const savedSub = localStorage.getItem(`oxford_active_subtab_${prefix}`);
+            let savedSub = localStorage.getItem(`oxford_active_subtab_${prefix}`);
+            if (prefix === 'dashboard') {
+                const currentRole = String(localStorage.getItem('oxford_session_role') || 'associate').toLowerCase().trim();
+                const isAssoc = (currentRole === 'associate' || currentRole === 'employee' || currentRole === 'staff');
+                savedSub = isAssoc ? 'pulse' : 'system';
+            }
             if (savedSub && typeof switchSubTab === 'function') {
                 switchSubTab(prefix, savedSub);
             }

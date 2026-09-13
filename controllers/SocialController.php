@@ -13,38 +13,90 @@ class SocialController
     /**
      * Complete Social Recognition Hub State
      */
-    public function getSocialOverview(?string $employeeId = null, ?string $sentimentFilterType = null, ?string $sentimentFilterValue = null): array
+    public function getSocialOverview(?string $employeeId = null, ?string $sentimentFilterType = null, ?string $sentimentFilterValue = null, ?string $role = null): array
     {
         $recognitions = $this->model->getRecognitions();
         $sentiments = $this->model->getShiftSentiments($sentimentFilterType, $sentimentFilterValue);
         $roster = $this->model->getRoster();
-        $ledger = $this->model->getLedger($employeeId);
-        $badges = $this->model->getMilestoneBadges($employeeId);
+
+        // Determine if current session or request is for a supervisor
+        $isSupervisor = false;
+        if (!empty($role)) {
+            $r = strtolower(trim($role));
+            $isSupervisor = in_array($r, ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true);
+        } elseif (!empty($_SESSION['role'])) {
+            $r = strtolower(trim($_SESSION['role']));
+            $isSupervisor = in_array($r, ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true);
+        } elseif (!empty($employeeId)) {
+            foreach ($roster as $emp) {
+                if (($emp['id'] ?? '') === $employeeId) {
+                    $r = strtolower(trim($emp['role'] ?? ''));
+                    $isSupervisor = in_array($r, ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true);
+                    break;
+                }
+            }
+        }
+
+        // Fetch leaderboard & standings across associates
+        $leaderboardData = $this->model->getLeaderboardWithStanding($isSupervisor ? null : $employeeId);
+        $allRankings = $leaderboardData['all_rankings'] ?? [];
+        $standing = $leaderboardData['standing'] ?? null;
+
+        // In supervisor view: show all associates' ledger transactions
+        // In employee view: show strictly their own ledger transactions
+        $ledger = $isSupervisor ? $this->model->getLedger(null) : $this->model->getLedger($employeeId);
+        
+        // In supervisor view: badges reflect team/associates progress (null)
+        // In employee view: badges reflect personal verified achievements ($employeeId)
+        $badges = $this->model->getMilestoneBadges($isSupervisor ? null : $employeeId);
 
         // Calculate Gamified Live Metrics from unified ledger
         $totalRecognitions = count($recognitions);
-        $totalXPAwarded = 0;
+        $totalAssociatesXP = 0;
+        $propertyTotalXP = 0;
         try {
             $pdoSc = getSupabaseDb();
             if ($pdoSc) {
+                // 1. Associates Total XP (excluding supervisors/management)
+                $stmtAssoc = $pdoSc->query("
+                    SELECT COALESCE(SUM(xl.points), 0) AS total_xp 
+                    FROM public.xp_ledger xl 
+                    LEFT JOIN public.employees e ON xl.employee_id = e.id 
+                    WHERE LOWER(COALESCE(e.role, '')) NOT IN ('supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director')
+                ");
+                $rAssoc = $stmtAssoc ? $stmtAssoc->fetch(PDO::FETCH_ASSOC) : null;
+                if ($rAssoc && isset($rAssoc['total_xp'])) {
+                    $totalAssociatesXP = (int)$rAssoc['total_xp'];
+                }
+
+                // 2. Property total XP across entire hotel / all rows in xp_ledger
                 $stmtXp = $pdoSc->query("SELECT COALESCE(SUM(points), 0) AS total_xp FROM public.xp_ledger");
                 $rXp = $stmtXp ? $stmtXp->fetch(PDO::FETCH_ASSOC) : null;
                 if ($rXp && isset($rXp['total_xp'])) {
-                    $totalXPAwarded = (int)$rXp['total_xp'];
+                    $propertyTotalXP = (int)$rXp['total_xp'];
                 }
             }
         } catch (Throwable $e) {}
 
-        if ($totalXPAwarded === 0) {
-            $totalXPAwarded = array_reduce($recognitions, function ($sum, $r) {
-                return $sum + (int)($r['points_awarded'] ?? 50);
-            }, 0);
+        // Fallback: calculate directly from all rows in getLedger(null)
+        if ($propertyTotalXP === 0) {
+            $allLedgerRows = $this->model->getLedger(null);
+            foreach ($allLedgerRows as $alr) {
+                $propertyTotalXP += (int)($alr['points'] ?? ($alr['amount'] ?? 0));
+            }
+        }
+        if ($totalAssociatesXP === 0) {
+            $totalAssociatesXP = $propertyTotalXP;
         }
 
-        // Compute unlocked badges count
+        // Compute unlocked badges count (team total and personal)
         $unlockedBadges = count(array_filter($badges, function($b) {
             return !empty($b['isUnlocked']);
         }));
+        $myBadgesCount = ($standing && !$isSupervisor) ? count(array_filter($badges, function($b) {
+            return !empty($b['isUnlocked']);
+        })) : 0;
+        $myTotalXp = !$isSupervisor ? (int)($standing['total_xp'] ?? 0) : 0;
 
         // Hourly / Rush Sentiment Calculations
         $avgScore = 0.0;
@@ -60,20 +112,27 @@ class SocialController
         return [
             'success' => true,
             'data'    => [
+                'is_supervisor_view'  => $isSupervisor,
                 'kpis' => [
                     'totalRecognitions'   => $totalRecognitions,
-                    'totalXPAwarded'      => $totalXPAwarded,
+                    'totalXPAwarded'      => $propertyTotalXP,
+                    'totalAssociatesXP'   => $totalAssociatesXP,
+                    'propertyTotalXP'     => $propertyTotalXP,
+                    'myTotalXPAwarded'    => $myTotalXp,
                     'badgesUnlocked'      => $unlockedBadges,
+                    'myBadgesUnlocked'    => $myBadgesCount,
                     'averageSentiment'    => $avgScore,
                     'performanceSyncPct'  => $totalRecognitions > 0 ? 100 : 0
                 ],
-                'recognitions'    => $recognitions,
-                'sentiments'      => $sentiments,
-                'todaySentiment'  => $todaySentiment,
-                'roster'          => $roster,
-                'ledger'          => $ledger,
-                'badges'          => $badges,
-                'champions'       => $this->model->getTop5XpChampions()
+                'recognitions'        => $recognitions,
+                'sentiments'          => $sentiments,
+                'todaySentiment'      => $todaySentiment,
+                'roster'              => $roster,
+                'ledger'              => $ledger,
+                'badges'              => $badges,
+                'champions'           => $leaderboardData['champions'] ?? [],
+                'all_employees_xp'    => $isSupervisor ? $allRankings : [],
+                'my_standing'         => $isSupervisor ? null : $standing
             ]
         ];
     }
@@ -104,13 +163,23 @@ class SocialController
     }
 
     /**
-     * Get Deterministic Ledger
+     * Get Deterministic Ledger (supervisor sees all or filtered, employee sees theirs only)
      */
-    public function getLedger(?string $employeeId = null): array
+    public function getLedger(?string $employeeId = null, ?string $role = null): array
     {
+        $isSupervisor = false;
+        if (!empty($role)) {
+            $r = strtolower(trim($role));
+            $isSupervisor = in_array($r, ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true);
+        } elseif (!empty($_SESSION['role'])) {
+            $r = strtolower(trim($_SESSION['role']));
+            $isSupervisor = in_array($r, ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true);
+        }
+
+        $targetEmpId = $isSupervisor ? null : $employeeId;
         return [
             'success' => true,
-            'data'    => $this->model->getLedger($employeeId)
+            'data'    => $this->model->getLedger($targetEmpId)
         ];
     }
 

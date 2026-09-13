@@ -176,70 +176,8 @@ function initAllCharts() {
 
     // Chart 6: System Dept Multi-Metric Progress Bar Chart
     const ctxDeptProgress = document.getElementById('chart-system-dept-progress');
-    if (ctxDeptProgress && !chartSystemDeptProgressInstance) {
-        let initLabels = ['Front Office', 'Food & Beverage', 'Kitchen & Culinary', 'Banquet & Events', 'Housekeeping'];
-        let initGoals = [0, 0, 0, 0, 0];
-        let initLms = [0, 0, 0, 0, 0];
-        let initSucc = [0, 0, 0, 0, 0];
-
-        if (Array.isArray(window.initialDeptMatrixData) && window.initialDeptMatrixData.length > 0) {
-            initLabels = window.initialDeptMatrixData.map(r => r.department || '');
-            initGoals = window.initialDeptMatrixData.map(r => parseFloat(r.goals_approved_pct || 0));
-            initLms = window.initialDeptMatrixData.map(r => parseFloat(r.lms_rate_pct || 0));
-            initSucc = window.initialDeptMatrixData.map(r => parseFloat(r.succession_ready_pct || 0));
-        }
-
-        chartSystemDeptProgressInstance = new Chart(ctxDeptProgress, {
-            type: 'bar',
-            data: {
-                labels: initLabels,
-                datasets: [
-                    {
-                        label: 'Goals Approved (%)',
-                        data: initGoals,
-                        backgroundColor: '#7A9A7E',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'LMS Completion (%)',
-                        data: initLms,
-                        backgroundColor: '#9E1B20',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Succession Ready (%)',
-                        data: initSucc,
-                        backgroundColor: '#6B8FA3',
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { boxWidth: 10, font: { size: 10, family: 'Inter' } }
-                    }
-                },
-                scales: {
-                    y: {
-                        min: 0,
-                        max: 100,
-                        grid: { color: '#F1E9E7' },
-                        ticks: {
-                            font: { size: 10, family: 'Inter' },
-                            callback: function(val) { return val + '%'; }
-                        }
-                    },
-                    x: {
-                        grid: { display: false },
-                        ticks: { font: { size: 10, family: 'Inter' } }
-                    }
-                }
-            }
-        });
+    if (ctxDeptProgress) {
+        getOrCreateDeptProgressChart();
     }
 
     // Populate XP Trajectory chart from xp_ledger
@@ -574,6 +512,81 @@ window.updateShiftClimatePulseFromSupabase = updateShiftClimatePulseFromSupabase
  */
 window._cachedDeptMatrix = window._cachedDeptMatrix || null;
 
+function getOrCreateDeptProgressChart(labels, goalsData, lmsData, succData) {
+    const canvas = document.getElementById('chart-system-dept-progress');
+    if (!canvas || typeof Chart === 'undefined') return null;
+
+    let chartInst = window.chartSystemDeptProgressInstance || chartSystemDeptProgressInstance;
+    if (!chartInst && typeof Chart.getChart === 'function') {
+        chartInst = Chart.getChart(canvas);
+    }
+
+    if (!chartInst) {
+        let initLabels = labels || ['Front Office', 'Food & Beverage', 'Kitchen & Culinary', 'Banquet & Events', 'Housekeeping'];
+        let initGoals = goalsData || [0, 0, 0, 0, 0];
+        let initLms = lmsData || [0, 0, 0, 0, 0];
+        let initSucc = succData || [0, 0, 0, 0, 0];
+
+        if (!labels && Array.isArray(window.initialDeptMatrixData) && window.initialDeptMatrixData.length > 0) {
+            initLabels = window.initialDeptMatrixData.map(r => r.department || '');
+            initGoals = window.initialDeptMatrixData.map(r => parseFloat(r.goals_approved_pct || 0));
+            initLms = window.initialDeptMatrixData.map(r => parseFloat(r.lms_rate_pct || 0));
+            initSucc = window.initialDeptMatrixData.map(r => parseFloat(r.succession_ready_pct || 0));
+        }
+
+        try {
+            chartInst = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: initLabels,
+                    datasets: [
+                        { label: 'Goals Approved (%)', data: initGoals, backgroundColor: '#7A9A7E', borderRadius: 4 },
+                        { label: 'LMS Completion (%)', data: initLms, backgroundColor: '#9E1B20', borderRadius: 4 },
+                        { label: 'Succession Ready (%)', data: initSucc, backgroundColor: '#6B8FA3', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10, family: 'Inter' } } }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: '#F1E9E7' },
+                            ticks: { font: { size: 10, family: 'Inter' }, callback: function(val) { return val + '%'; } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10, family: 'Inter' } }
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('[Department Execution Matrix Chart] Error creating chart:', e);
+            if (typeof Chart.getChart === 'function') {
+                chartInst = Chart.getChart(canvas);
+            }
+        }
+    } else if (labels && goalsData && lmsData && succData) {
+        chartInst.data.labels = labels;
+        chartInst.data.datasets[0].data = goalsData;
+        chartInst.data.datasets[1].data = lmsData;
+        chartInst.data.datasets[2].data = succData;
+        chartInst.update();
+    }
+
+    if (chartInst) {
+        window.chartSystemDeptProgressInstance = chartInst;
+        chartSystemDeptProgressInstance = chartInst;
+    }
+    return chartInst;
+}
+window.getOrCreateDeptProgressChart = getOrCreateDeptProgressChart;
+
 function renderDepartmentExecutionMatrix(matrixData) {
     if (!Array.isArray(matrixData) || matrixData.length === 0) return;
 
@@ -619,13 +632,14 @@ function renderDepartmentExecutionMatrix(matrixData) {
         tbody.innerHTML = tableHtml;
     }
 
-    // Update Chart
-    if (chartSystemDeptProgressInstance) {
-        chartSystemDeptProgressInstance.data.labels = labels;
-        chartSystemDeptProgressInstance.data.datasets[0].data = goalsData;
-        chartSystemDeptProgressInstance.data.datasets[1].data = lmsData;
-        chartSystemDeptProgressInstance.data.datasets[2].data = succData;
-        chartSystemDeptProgressInstance.update();
+    // Update or create Chart
+    getOrCreateDeptProgressChart(labels, goalsData, lmsData, succData);
+
+    // Hide loading overlay safely
+    const overlay = document.getElementById('dept-matrix-loading-overlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
     }
 }
 
@@ -723,7 +737,10 @@ async function fetchAndRenderDepartmentExecutionMatrix(forceRefresh = false) {
         }
     } finally {
         _deptMatrixFetchInProgress = false;
-        if (overlay) overlay.classList.add('hidden');
+        if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+        }
     }
 }
 
@@ -846,10 +863,35 @@ function updateOverviewSystemKpis(kpis) {
         }
     }
 
-    // 2. Active Staff Count
+    // 2. Active Staff Count & Total Property XP (from unified xp_ledger)
     if (typeof kpis.staff_count !== 'undefined') {
         const staffEl = document.getElementById('sys-kpi-property-xp-staff');
         if (staffEl) staffEl.textContent = `${kpis.staff_count} Staff`;
+    }
+
+    if (typeof kpis.property_xp !== 'undefined' && Number(kpis.property_xp) >= 0) {
+        const propXp = Number(kpis.property_xp);
+        const sysXpVal = document.getElementById('sys-kpi-property-xp-val');
+        if (sysXpVal) {
+            sysXpVal.innerHTML = `${propXp.toLocaleString()} <span class="text-xs font-normal text-slate-400">XP</span>`;
+        }
+        const sysBar = document.getElementById('sys-kpi-property-xp-bar');
+        if (sysBar) {
+            const pct = Math.min(100, Math.max(8, Math.round((propXp / 3000) * 100)));
+            sysBar.style.width = `${pct}%`;
+        }
+        const sysGrade = document.getElementById('sys-kpi-property-xp-grade');
+        if (sysGrade) {
+            sysGrade.textContent = propXp >= 10000 ? 'Grade A+' : (propXp >= 5000 ? 'Grade A' : (propXp >= 2000 ? 'Grade B+' : (propXp > 0 ? 'Grade B' : 'Grade C')));
+        }
+    }
+    if (typeof kpis.kudos_sent !== 'undefined') {
+        const sysKudos = document.getElementById('sys-kpi-property-xp-kudos');
+        if (sysKudos) sysKudos.textContent = `${Number(kpis.kudos_sent).toLocaleString()} Kudos Sent`;
+    }
+    if (typeof kpis.badges_count !== 'undefined') {
+        const sysBadges = document.getElementById('sys-kpi-property-xp-badges');
+        if (sysBadges) sysBadges.textContent = `${Number(kpis.badges_count).toLocaleString()} Badges`;
     }
 
     // 3. LMS Course Completion
@@ -937,6 +979,7 @@ function updateOverviewSystemKpis(kpis) {
 window.renderDepartmentExecutionMatrix = renderDepartmentExecutionMatrix;
 window.fetchAndRenderDepartmentExecutionMatrix = fetchAndRenderDepartmentExecutionMatrix;
 window.updateOverviewSystemKpis = updateOverviewSystemKpis;
+window.initDashboardCharts = initAllCharts;
 
 window.addEventListener('DOMContentLoaded', () => {
     const deferInit = window.requestIdleCallback 
@@ -944,9 +987,17 @@ window.addEventListener('DOMContentLoaded', () => {
         : (fn) => setTimeout(fn, 50);
 
     deferInit(() => {
-        initAllCharts();
-        if (typeof fetchAndRenderDepartmentExecutionMatrix === 'function') {
-            fetchAndRenderDepartmentExecutionMatrix();
+        const pulsePanel = document.getElementById('sub-dashboard-pulse');
+        const systemPanel = document.getElementById('sub-dashboard-system');
+
+        if (pulsePanel && pulsePanel.classList.contains('active')) {
+            if (typeof window.renderPulseChartsOnDemand === 'function') {
+                window.renderPulseChartsOnDemand();
+            }
+        } else if (systemPanel && systemPanel.classList.contains('active')) {
+            if (typeof window.renderSystemChartsOnDemand === 'function') {
+                window.renderSystemChartsOnDemand();
+            }
         }
     });
 });

@@ -42,22 +42,29 @@ class SocialModel extends BaseModel
         }
 
         if (empty($employees)) {
-            return $this->getBaselineRoster();
+            return [];
         }
 
         $roster = [];
         foreach ($employees as $e) {
             $dId = $e['department_id'] ?? '';
             $deptName = $deptMap[$dId] ?? ($e['department'] ?? 'Front Office');
+            $rawRole = $e['role'] ?? 'Employee';
+            $title = $e['title'] ?? ($e['position'] ?? 'Staff Member');
+            $isSupervisor = in_array(strtolower(trim($rawRole)), ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'], true)
+                         || in_array(strtolower(trim($title)), ['supervisor', 'manager', 'director'], true);
 
             $roster[] = [
-                'id'         => $e['id'] ?? ('emp-' . uniqid()),
-                'name'       => $e['full_name'] ?? ($e['name'] ?? 'Hospitality Associate'),
-                'role'       => $e['position'] ?? ($e['role'] ?? 'Staff Member'),
-                'dept'       => $deptName,
-                'department' => $deptName,
-                'avatar'     => !empty($e['avatar_url']) ? $e['avatar_url'] : ($e['avatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'),
-                'rating'     => isset($e['performance_rating']) ? number_format((float)$e['performance_rating'], 2) : '4.75'
+                'id'            => $e['id'] ?? ('emp-' . uniqid()),
+                'name'          => $e['full_name'] ?? ($e['name'] ?? 'Hospitality Associate'),
+                'role'          => $title,
+                'title'         => $title,
+                'raw_role'      => $rawRole,
+                'is_supervisor' => $isSupervisor,
+                'dept'          => $deptName,
+                'department'    => $deptName,
+                'avatar'        => !empty($e['avatar_url']) ? $e['avatar_url'] : ($e['avatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'),
+                'rating'        => isset($e['performance_rating']) ? number_format((float)$e['performance_rating'], 2) : '4.75'
             ];
         }
 
@@ -167,7 +174,23 @@ class SocialModel extends BaseModel
             'description'   => "Recognition ({$cleanData['category_label']}) from {$cleanData['sender_name']}",
             'created_at'    => date('c')
         ];
-        supabaseRequest('xp_ledger', 'POST', $ledgerData, true);
+        $inserted = false;
+        try {
+            $pdoLedger = getSupabaseDb();
+            if ($pdoLedger) {
+                $stmtL = $pdoLedger->prepare("INSERT INTO public.xp_ledger (employee_id, source_type, points, balance_after, description, created_at) VALUES (:emp_id, :source_type, :points, :balance_after, :description, NOW())");
+                $inserted = $stmtL->execute([
+                    ':emp_id'        => $recipientId,
+                    ':source_type'   => $ledgerData['source_type'],
+                    ':points'        => $xpPoints,
+                    ':balance_after' => $newBalance,
+                    ':description'   => $ledgerData['description']
+                ]);
+            }
+        } catch (Throwable $e) {}
+        if (!$inserted) {
+            supabaseRequest('xp_ledger', 'POST', $ledgerData, true);
+        }
 
         return $ok;
     }
@@ -624,11 +647,14 @@ class SocialModel extends BaseModel
         });
 
         $runningBalance = 0;
+        $empBalances = [];
         $mapped = [];
         foreach ($ledgerRows as $lr) {
             $eId = $lr['employee_id'] ?? '';
             $pts = (int)($lr['points'] ?? 0);
             $runningBalance += $pts;
+            $empBalances[$eId] = ($empBalances[$eId] ?? 0) + $pts;
+            $currentEmpBal = !empty($employeeId) ? $runningBalance : $empBalances[$eId];
             $rawDate = $lr['created_at'] ?? '';
             $srcType = $lr['source_type'] ?? 'peer_kudos';
 
@@ -639,6 +665,7 @@ class SocialModel extends BaseModel
                 'raw_date'            => $rawDate,
                 'created_at'          => $rawDate,
                 'recipient'           => $empMap[$eId] ?? 'My Account',
+                'recipient_name'      => $empMap[$eId] ?? 'Associate',
                 'sender'              => 'Oxford Operations',
                 'rule'                => strtoupper(str_replace('_', ' ', $srcType)),
                 'source_type'         => $srcType,
@@ -646,8 +673,8 @@ class SocialModel extends BaseModel
                 'amount'              => $pts,
                 'points'              => $pts,
                 'xpChange'            => ($pts >= 0 ? '+' : '') . $pts . ' XP',
-                'balance'             => number_format($runningBalance) . ' XP',
-                'balance_num'         => $runningBalance,
+                'balance'             => number_format($currentEmpBal) . ' XP',
+                'balance_num'         => $currentEmpBal,
                 'performance_eval_id' => $lr['performance_eval_id'] ?? null
             ];
         }
@@ -668,7 +695,13 @@ class SocialModel extends BaseModel
                     $stmt = $pdo->prepare("SELECT * FROM public.xp_ledger WHERE employee_id = :emp_id ORDER BY created_at DESC");
                     $stmt->execute([':emp_id' => $employeeId]);
                 } else {
-                    $stmt = $pdo->query("SELECT * FROM public.xp_ledger ORDER BY created_at DESC");
+                    $stmt = $pdo->query("
+                        SELECT xl.* 
+                        FROM public.xp_ledger xl 
+                        LEFT JOIN public.employees e ON xl.employee_id = e.id 
+                        WHERE LOWER(COALESCE(e.role, '')) NOT IN ('supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director')
+                        ORDER BY xl.created_at DESC
+                    ");
                 }
                 $ledgerRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
@@ -694,23 +727,6 @@ class SocialModel extends BaseModel
             $desc = strtolower($lr['description'] ?? '');
             $src = strtolower($lr['source_type'] ?? '');
             if (strpos($desc, 'safety') !== false || strpos($desc, 'haccp') !== false || strpos($src, 'training') !== false) {
-                $userSafetyXp += $pts;
-            }
-            if (strpos($src, 'peer') !== false || strpos($desc, 'peer') !== false) {
-                $userPeerXp += $pts;
-            }
-            if (strpos($desc, 'crisis') !== false || strpos($desc, 'rush') !== false || strpos($desc, 'occupancy') !== false) {
-                $userCrisisXp += $pts;
-            }
-        }
-
-        foreach ($ledgerRows as $lr) {
-            $pts = (int)($lr['points'] ?? 0);
-            $desc = strtolower($lr['description'] ?? '');
-            $src = strtolower($lr['source_type'] ?? '');
-
-            $userTotalXp += $pts;
-            if (strpos($desc, 'haccp') !== false || strpos($desc, 'safety') !== false || strpos($src, 'training') !== false) {
                 $userSafetyXp += $pts;
             }
             if (strpos($src, 'peer') !== false || strpos($desc, 'peer') !== false || strpos($desc, 'collaboration') !== false) {
@@ -839,13 +855,16 @@ class SocialModel extends BaseModel
         foreach ($roster as $emp) {
             $eId = (string)($emp['id'] ?? '');
             $empTotals[$eId] = [
-                'employee_id' => $eId,
-                'name'        => $emp['name'] ?? 'Associate',
-                'role'        => $emp['role'] ?? ($emp['position'] ?? 'Staff'),
-                'department'  => $emp['department'] ?? ($emp['dept'] ?? 'Front Office'),
-                'avatar'      => $emp['avatar'] ?? '',
-                'total_xp'    => 0,
-                'trophies'    => 0
+                'employee_id'   => $eId,
+                'name'          => $emp['name'] ?? 'Associate',
+                'role'          => $emp['role'] ?? ($emp['position'] ?? 'Staff'),
+                'title'         => $emp['title'] ?? 'Staff Member',
+                'raw_role'      => $emp['raw_role'] ?? 'Employee',
+                'is_supervisor' => !empty($emp['is_supervisor']),
+                'department'    => $emp['department'] ?? ($emp['dept'] ?? 'Front Office'),
+                'avatar'        => $emp['avatar'] ?? '',
+                'total_xp'      => 0,
+                'trophies'      => 0
             ];
         }
 
@@ -874,8 +893,10 @@ class SocialModel extends BaseModel
             }
         }
 
-        // 4. Sort all employees by XP descending, then alphabetically by name
+        // 4. Include all employees across the hotel for the staff directory and gamified rankings
         $allRanked = array_values($empTotals);
+
+        // Sort associates by XP descending, then alphabetically by name
         usort($allRanked, function($a, $b) {
             if ($b['total_xp'] !== $a['total_xp']) {
                 return $b['total_xp'] - $a['total_xp'];
@@ -972,7 +993,6 @@ class SocialModel extends BaseModel
                 }
             }
         }
-
         if (!$targetStanding && !empty($allRanked)) {
             $targetStanding = $allRanked[0];
         }
@@ -1125,17 +1145,23 @@ class SocialModel extends BaseModel
             'champions'    => $podium,
             'standing'     => $standingPayload,
             'standing_map' => $standingMap,
-            'all_rankings' => array_map(function($e) {
+            'all_rankings' => array_map(function($e) use ($standingMap) {
+                $id = (string)$e['employee_id'];
+                $s = $standingMap[$id] ?? [];
                 return [
                     'employee_id'   => $e['employee_id'],
                     'name'          => $e['name'],
                     'role'          => $e['role'],
                     'department'    => $e['department'],
-                    'total_xp'      => $e['total_xp'],
-                    'trophies'      => $e['trophies'],
+                    'avatar'        => !empty($e['avatar']) ? $e['avatar'] : ($s['avatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'),
+                    'total_xp'      => (int)($e['total_xp'] ?? 0),
+                    'trophies'      => (int)($e['trophies'] ?? 0),
                     'rank'          => $e['rank'],
                     'place_number'  => $e['place_number'] ?? $e['rank'],
-                    'place_display' => ($e['place_number'] ?? $e['rank']) . 'th place'
+                    'place_display' => $s['place_display'] ?? (($e['place_number'] ?? $e['rank']) . 'th place'),
+                    'tier'          => $s['tier'] ?? 'Novice Associate',
+                    'rank_display'  => $s['rank_display'] ?? ($e['rank'] ? ('#' . $e['rank']) : 'Unranked'),
+                    'is_ranked'     => !empty($e['is_ranked'])
                 ];
             }, $allRanked)
         ];

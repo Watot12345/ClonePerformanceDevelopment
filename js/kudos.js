@@ -35,8 +35,22 @@ function getActiveSessionUser() {
     if (!sessionUser && window.currentUser) {
         sessionUser = window.currentUser;
     }
-    const currentRole = window.activePersonaRole || sessionUser?.role || (typeof activePersonaKey !== 'undefined' && activePersonaKey === 'supervisor' ? 'Supervisor' : 'Employee');
-    const isSupervisor = (currentRole === 'Supervisor' || currentRole === 'supervisor' || currentRole === 'Manager');
+    const roleFromStorage = (localStorage.getItem('oxford_session_role') || '').toLowerCase().trim();
+    const currentRole = String(window.activePersonaRole || sessionUser?.role || roleFromStorage || (typeof activePersonaKey !== 'undefined' && activePersonaKey === 'supervisor' ? 'Supervisor' : 'Employee')).toLowerCase().trim();
+    const isSupervisor = (
+        currentRole === 'supervisor' ||
+        currentRole === 'manager' ||
+        currentRole === 'hradmin' ||
+        currentRole === 'generalmanager' ||
+        currentRole === 'depthead' ||
+        currentRole === 'director' ||
+        roleFromStorage === 'supervisor' ||
+        roleFromStorage === 'manager' ||
+        roleFromStorage === 'hradmin' ||
+        roleFromStorage === 'generalmanager' ||
+        roleFromStorage === 'depthead' ||
+        roleFromStorage === 'director'
+    );
 
     const rawName = sessionUser?.full_name || sessionUser?.name || '';
     const cleanName = (rawName && !rawName.toLowerCase().includes('elena')) 
@@ -57,6 +71,7 @@ function getActiveSessionUser() {
         name: cleanName,
         role: cleanRole,
         type: isSupervisor ? 'Supervisor' : 'Peer',
+        isSupervisor: isSupervisor,
         avatar: sessionUser?.avatar_url || sessionUser?.avatar || (isSupervisor
             ? 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop&q=80'
             : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80')
@@ -75,6 +90,12 @@ let socialFeedPostsState = [];
 let pointsLedgerState = [];
 let milestoneBadgesState = [];
 let shiftSentimentsState = [];
+let allEmployeesXpState = [];
+let isSupervisorViewState = false;
+let myStandingState = null;
+let selectedLedgerEmployeeFilter = 'all';
+let supervisorXpDeptFilter = 'all';
+let supervisorXpSearchQuery = '';
 
 let socialActiveDeptFilter = 'all';
 let socialFeedSearchQuery = '';
@@ -93,17 +114,54 @@ async function initSocialRecognition() {
     const activeUser = getActiveSessionUser();
     const currentUserId = activeUser.id;
     const currentUserName = activeUser.name;
+    const isSupervisor = activeUser.isSupervisor;
+    isSupervisorViewState = isSupervisor;
+
+    const subnavLedgerLabel = document.getElementById('subnav-social-ledger-label');
+    if (subnavLedgerLabel) {
+        subnavLedgerLabel.textContent = isSupervisor ? 'Staff XP & Ledger' : 'Points & XP Ledger';
+    }
 
     const accountLabel = document.getElementById('my-ledger-account-label');
     if (accountLabel) {
-        accountLabel.innerHTML = `<i class="fas fa-user-shield mr-1"></i> ${currentUserName} · Personal Ledger`;
+        if (isSupervisor) {
+            accountLabel.className = 'badge-primary font-bold';
+            accountLabel.innerHTML = `<i class="fas fa-users-gear mr-1"></i> Supervisor View · All Employees XP`;
+        } else {
+            accountLabel.className = 'badge-primary font-bold';
+            accountLabel.innerHTML = `<i class="fas fa-user-shield mr-1"></i> ${currentUserName} · Personal Ledger`;
+        }
     }
 
-    // 0ms instant pre-hydration from memory or localStorage/sessionStorage cache
+    const ledgerHeaderTitle = document.getElementById('social-ledger-header-title');
+    const ledgerHeaderDesc = document.getElementById('social-ledger-header-desc');
+    if (ledgerHeaderTitle) {
+        ledgerHeaderTitle.textContent = isSupervisor ? 'Staff Points & XP Ledger' : 'My Personal Points & XP Ledger';
+    }
+    if (ledgerHeaderDesc) {
+        ledgerHeaderDesc.textContent = isSupervisor 
+            ? 'Property-wide employee XP directory and immutable audit ledger across LMS quizzes, training certs, and kudos'
+            : 'Private account audit ledger recording your verified points earned across LMS quizzes, training certs, and kudos';
+    }
+
+    const ledgerTableTitle = document.getElementById('ledger-table-header-title');
+    const ledgerTableDesc = document.getElementById('ledger-table-header-desc');
+    if (ledgerTableTitle) {
+        ledgerTableTitle.textContent = isSupervisor ? 'Property XP Audit Log' : 'My Personal XP Transactions';
+    }
+    if (ledgerTableDesc) {
+        ledgerTableDesc.textContent = isSupervisor 
+            ? 'Immutable audit trail of points issued from kudos, LMS quiz completions, and certifications'
+            : 'Verified audit trail of points credited to your account';
+    }
+
+    // 0ms instant pre-hydration from memory or localStorage/sessionStorage cache (only for associate self-view)
     try {
-        const cachedXp = localStorage.getItem(`oxford_cached_total_xp_${currentUserId}`);
-        if (cachedXp !== null) {
-            syncOverviewGamifiedXP(parseInt(cachedXp, 10) || 0);
+        if (!isSupervisor) {
+            const cachedXp = localStorage.getItem(`oxford_cached_total_xp_${currentUserId}`);
+            if (cachedXp !== null) {
+                syncOverviewGamifiedXP(parseInt(cachedXp, 10) || 0);
+            }
         }
         const cachedLedger = sessionStorage.getItem(`xp_ledger_cache_${currentUserId}`);
         if (cachedLedger) {
@@ -116,7 +174,7 @@ async function initSocialRecognition() {
     } catch(e) {}
 
     try {
-        let url = `api/social.php?action=get_overview&employeeId=${encodeURIComponent(currentUserId)}`;
+        let url = `api/social.php?action=get_overview&employeeId=${encodeURIComponent(currentUserId)}&role=${encodeURIComponent(isSupervisor ? 'supervisor' : 'associate')}`;
         if (activeSentimentFilterType) {
             url += `&filterType=${encodeURIComponent(activeSentimentFilterType)}`;
             if (activeSentimentFilterValue) {
@@ -145,6 +203,12 @@ async function initSocialRecognition() {
             } else {
                 pointsLedgerState = [];
             }
+            if (Array.isArray(d.all_employees_xp)) {
+                allEmployeesXpState = d.all_employees_xp;
+            }
+            if (d.my_standing) {
+                myStandingState = d.my_standing;
+            }
             if (Array.isArray(d.badges)) {
                 milestoneBadgesState = d.badges;
             }
@@ -152,7 +216,7 @@ async function initSocialRecognition() {
                 shiftSentimentsState = d.sentiments;
             }
             if (d.kpis) {
-                updateKPIs(d.kpis);
+                updateKPIs(d.kpis, isSupervisor);
             }
         }
     } catch (e) {
@@ -160,6 +224,7 @@ async function initSocialRecognition() {
     }
 
     renderSocialFeed();
+    renderRoleScopedXpViews(isSupervisor);
     renderPointLedger();
     renderMilestoneBadges();
     renderQualitativePerformanceFeed();
@@ -171,19 +236,26 @@ async function initSocialRecognition() {
         updateShiftClimatePulseFromSupabase(shiftSentimentsState);
     }
 
-    // Dynamically synchronize live XP with Overview Gamified XP card & Leaderboards
-    let currentTotalXp = 0;
-    if (pointsLedgerState && pointsLedgerState.length > 0) {
-        const rawBal = pointsLedgerState[0].balance_num !== undefined ? pointsLedgerState[0].balance_num : (pointsLedgerState[0].balance || '');
-        const parsed = typeof rawBal === 'number' ? rawBal : parseInt(String(rawBal).replace(/[^0-9]/g, ''), 10);
-        currentTotalXp = !isNaN(parsed) ? parsed : pointsLedgerState.reduce((sum, t) => sum + (parseInt(String(t.points || t.amount || t.xpChange).replace(/[^0-9]/g, ''), 10) || 0), 0);
-    }
-    try {
-        localStorage.setItem(`oxford_cached_total_xp_${currentUserId}`, currentTotalXp);
-    } catch (e) {}
-    syncOverviewGamifiedXP(currentTotalXp);
-    if (typeof updateXpTrajectoryFromLedger === 'function') {
-        updateXpTrajectoryFromLedger(currentUserId);
+    // Dynamically synchronize live XP with Overview Gamified XP card & Leaderboards (associates only)
+    if (!isSupervisor) {
+        let currentTotalXp = 0;
+        if (myStandingState && myStandingState.total_xp !== undefined) {
+            currentTotalXp = Number(myStandingState.total_xp);
+        } else if (pointsLedgerState && pointsLedgerState.length > 0) {
+            const myRows = pointsLedgerState.filter(r => !r.employee_id || r.employee_id === currentUserId);
+            if (myRows.length > 0) {
+                const rawBal = myRows[0].balance_num !== undefined ? myRows[0].balance_num : (myRows[0].balance || '');
+                const parsed = typeof rawBal === 'number' ? rawBal : parseInt(String(rawBal).replace(/[^0-9]/g, ''), 10);
+                currentTotalXp = !isNaN(parsed) ? parsed : myRows.reduce((sum, t) => sum + (parseInt(String(t.points || t.amount || t.xpChange).replace(/[^0-9]/g, ''), 10) || 0), 0);
+            }
+        }
+        try {
+            localStorage.setItem(`oxford_cached_total_xp_${currentUserId}`, currentTotalXp);
+        } catch (e) {}
+        syncOverviewGamifiedXP(currentTotalXp);
+        if (typeof updateXpTrajectoryFromLedger === 'function') {
+            updateXpTrajectoryFromLedger(currentUserId);
+        }
     }
 }
 
@@ -238,28 +310,59 @@ function formatRelativeTime(date) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function updateKPIs(kpis) {
+function updateKPIs(kpis, isSupervisor = false) {
     const elRec = document.getElementById('stat-social-count');
+    const elXpTitle = document.getElementById('stat-social-xp-title');
     const elXP = document.getElementById('stat-social-xp');
+    const elXpSub = document.getElementById('stat-social-xp-sub');
+    const elBadgesTitle = document.getElementById('stat-social-badges-title');
     const elBadges = document.getElementById('stat-social-badges');
+    const elBadgesSub = document.getElementById('stat-social-badges-sub');
     const elSync = document.getElementById('stat-social-sync');
     const elAvg = document.getElementById('sentiment-avg-rating');
 
     if (elRec) elRec.textContent = kpis.totalRecognitions !== undefined ? kpis.totalRecognitions : socialFeedPostsState.length;
-    if (elXP) elXP.textContent = (kpis.totalXPAwarded !== undefined ? kpis.totalXPAwarded : 0).toLocaleString();
-    if (elBadges) elBadges.textContent = kpis.badgesUnlocked !== undefined ? kpis.badgesUnlocked : 0;
+    
+    if (elXP) {
+        if (isSupervisor) {
+            if (elXpTitle) elXpTitle.textContent = "Associates' Total XP";
+            const staffXp = kpis.totalAssociatesXP !== undefined ? kpis.totalAssociatesXP : (kpis.totalXPAwarded || 0);
+            elXP.textContent = Number(staffXp).toLocaleString();
+            if (elXpSub) elXpSub.textContent = 'Staff Accumulated XP';
+        } else {
+            if (elXpTitle) elXpTitle.textContent = "My Personal XP";
+            const myXp = kpis.myTotalXPAwarded !== undefined ? kpis.myTotalXPAwarded : (myStandingState?.total_xp || 0);
+            elXP.textContent = Number(myXp).toLocaleString();
+            if (elXpSub) elXpSub.textContent = 'My Account Ledger';
+        }
+    }
+    if (elBadges) {
+        if (isSupervisor) {
+            if (elBadgesTitle) elBadgesTitle.textContent = "Associates' Badges";
+            elBadges.textContent = kpis.badgesUnlocked !== undefined ? kpis.badgesUnlocked : 0;
+            if (elBadgesSub) elBadgesSub.textContent = 'Team Unlocked';
+        } else {
+            if (elBadgesTitle) elBadgesTitle.textContent = "My Milestone Badges";
+            const myBadges = kpis.myBadgesUnlocked !== undefined ? kpis.myBadgesUnlocked : 0;
+            elBadges.textContent = myBadges;
+            if (elBadgesSub) elBadgesSub.textContent = 'Personal Unlocks';
+        }
+    }
     if (elSync) elSync.textContent = (kpis.performanceSyncPct !== undefined ? kpis.performanceSyncPct : 0) + '%';
     if (elAvg && kpis.averageSentiment) elAvg.textContent = `${kpis.averageSentiment} / 5.0`;
 
     // Realtime sync with Overview Hub Tab 2 Total Property XP card
+    // ALWAYS display the grand total across all rows in xp_ledger, never query/scope to supervisor himself
     const sysXpVal = document.getElementById('sys-kpi-property-xp-val');
     const sysKudos = document.getElementById('sys-kpi-property-xp-kudos');
     const sysBadges = document.getElementById('sys-kpi-property-xp-badges');
     const sysBar = document.getElementById('sys-kpi-property-xp-bar');
     const sysGrade = document.getElementById('sys-kpi-property-xp-grade');
 
-    if (sysXpVal && kpis.totalXPAwarded !== undefined) {
-        sysXpVal.innerHTML = `${kpis.totalXPAwarded.toLocaleString()} <span class="text-xs font-normal text-slate-400">XP</span>`;
+    const propertyXp = Number(kpis.propertyTotalXP !== undefined ? kpis.propertyTotalXP : (kpis.totalXPAwarded !== undefined ? kpis.totalXPAwarded : 0));
+
+    if (sysXpVal) {
+        sysXpVal.innerHTML = `${propertyXp.toLocaleString()} <span class="text-xs font-normal text-slate-400">XP</span>`;
     }
     if (sysKudos && kpis.totalRecognitions !== undefined) {
         sysKudos.textContent = `${kpis.totalRecognitions.toLocaleString()} Kudos Sent`;
@@ -267,12 +370,12 @@ function updateKPIs(kpis) {
     if (sysBadges && kpis.badgesUnlocked !== undefined) {
         sysBadges.textContent = `${kpis.badgesUnlocked.toLocaleString()} Badges`;
     }
-    if (sysBar && kpis.totalXPAwarded !== undefined) {
-        const pct = Math.min(100, Math.max(8, Math.round((kpis.totalXPAwarded / 3000) * 100)));
+    if (sysBar) {
+        const pct = Math.min(100, Math.max(8, Math.round((propertyXp / 3000) * 100)));
         sysBar.style.width = `${pct}%`;
     }
-    if (sysGrade && kpis.totalXPAwarded !== undefined) {
-        const xp = kpis.totalXPAwarded;
+    if (sysGrade) {
+        const xp = propertyXp;
         sysGrade.textContent = xp >= 10000 ? 'Grade A+' : (xp >= 5000 ? 'Grade A' : (xp >= 2000 ? 'Grade B+' : (xp > 0 ? 'Grade B' : 'Grade C')));
     }
 }
@@ -1078,14 +1181,270 @@ function filterPointLedger(query) {
     renderPointLedger(q);
 }
 
+function renderRoleScopedXpViews(isSupervisor) {
+    const supContainer = document.getElementById('supervisor-employees-xp-container');
+    const empContainer = document.getElementById('employee-personal-xp-container');
+    const filterContainer = document.getElementById('ledger-employee-filter-container');
+
+    if (isSupervisor) {
+        if (supContainer) supContainer.classList.remove('hidden');
+        if (empContainer) empContainer.classList.add('hidden');
+        if (filterContainer) {
+            filterContainer.classList.remove('hidden');
+            filterContainer.classList.add('flex');
+        }
+
+        populateLedgerEmployeeDropdown();
+        renderSupervisorEmployeesXpTable();
+    } else {
+        if (supContainer) supContainer.classList.add('hidden');
+        if (empContainer) empContainer.classList.remove('hidden');
+        if (filterContainer) {
+            filterContainer.classList.add('hidden');
+            filterContainer.classList.remove('flex');
+        }
+
+        renderEmployeePersonalXpCard(myStandingState);
+    }
+}
+window.renderRoleScopedXpViews = renderRoleScopedXpViews;
+
+function populateLedgerEmployeeDropdown() {
+    const select = document.getElementById('ledger-employee-select');
+    if (!select) return;
+
+    let roster = (allEmployeesXpState && allEmployeesXpState.length > 0) ? allEmployeesXpState : kudosStaffRosterState;
+    const currentVal = selectedLedgerEmployeeFilter || 'all';
+
+    let html = `<option value="all" ${currentVal === 'all' ? 'selected' : ''}>All Employees (Entire Hotel)</option>`;
+    roster.forEach(emp => {
+        const id = emp.employee_id || emp.id;
+        const name = emp.name;
+        const dept = emp.department || emp.dept || '';
+        const isSel = currentVal === id ? 'selected' : '';
+        html += `<option value="${id}" ${isSel}>${name} (${dept})</option>`;
+    });
+    select.innerHTML = html;
+}
+
+function onLedgerEmployeeSelectChange(val) {
+    selectedLedgerEmployeeFilter = val || 'all';
+    renderPointLedger();
+}
+window.onLedgerEmployeeSelectChange = onLedgerEmployeeSelectChange;
+
+function filterLedgerBySpecificEmployee(empId) {
+    selectedLedgerEmployeeFilter = empId;
+    const select = document.getElementById('ledger-employee-select');
+    if (select) select.value = empId;
+    renderPointLedger();
+
+    const ledgerSec = document.getElementById('points-ledger-tbody');
+    if (ledgerSec) {
+        ledgerSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    const emp = allEmployeesXpState.find(e => e.employee_id === empId);
+    if (emp && typeof showToast === 'function') {
+        showToast(`Filtered ledger to: ${emp.name}`, 'info');
+    }
+}
+window.filterLedgerBySpecificEmployee = filterLedgerBySpecificEmployee;
+
+function filterSupervisorEmployeesXp(query) {
+    supervisorXpSearchQuery = (query || '').toLowerCase().trim();
+    renderSupervisorEmployeesXpTable();
+}
+window.filterSupervisorEmployeesXp = filterSupervisorEmployeesXp;
+
+function setSupervisorXpDeptFilter(dept) {
+    supervisorXpDeptFilter = (dept || 'all').toLowerCase().trim();
+    document.querySelectorAll('.supervisor-xp-chip').forEach(btn => {
+        const d = (btn.dataset.xpDept || '').toLowerCase().trim();
+        if (d === supervisorXpDeptFilter) {
+            btn.className = 'supervisor-xp-chip px-3 py-1 rounded-full font-bold bg-primary text-white text-[11px] whitespace-nowrap shadow-2xs transition';
+        } else {
+            btn.className = 'supervisor-xp-chip px-3 py-1 rounded-full font-semibold bg-[#FAF8F7] text-slate-600 border border-[#E8DEDC] hover:bg-slate-100 text-[11px] whitespace-nowrap transition';
+        }
+    });
+    renderSupervisorEmployeesXpTable();
+}
+window.setSupervisorXpDeptFilter = setSupervisorXpDeptFilter;
+
+function renderSupervisorEmployeesXpTable() {
+    const tbody = document.getElementById('supervisor-employees-xp-tbody');
+    const badgeCountEl = document.getElementById('supervisor-staff-count-badge');
+    if (!tbody) return;
+
+    let list = allEmployeesXpState.slice();
+
+    if (list.length === 0 && kudosStaffRosterState.length > 0) {
+        list = kudosStaffRosterState.map(r => ({
+            employee_id: r.id,
+            name: r.name,
+            role: r.role,
+            department: r.dept || r.department,
+            avatar: r.avatar,
+            total_xp: 0,
+            trophies: 0,
+            rank: null,
+            tier: 'Novice Associate',
+            rank_display: 'Unranked'
+        }));
+    }
+
+    if (badgeCountEl) {
+        badgeCountEl.innerHTML = `<i class="fas fa-id-badge mr-1"></i> ${list.length} Employees`;
+    }
+
+    if (supervisorXpDeptFilter !== 'all') {
+        list = list.filter(e => (e.department || '').toLowerCase().includes(supervisorXpDeptFilter));
+    }
+    if (supervisorXpSearchQuery) {
+        list = list.filter(e =>
+            (e.name || '').toLowerCase().includes(supervisorXpSearchQuery) ||
+            (e.role || '').toLowerCase().includes(supervisorXpSearchQuery) ||
+            (e.department || '').toLowerCase().includes(supervisorXpSearchQuery) ||
+            (e.employee_id || '').toLowerCase().includes(supervisorXpSearchQuery)
+        );
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 text-xs">
+            <i class="fas fa-users-slash text-2xl text-slate-300 mb-2 block"></i>
+            No employees found matching the search criteria.
+        </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = list.map((emp, index) => {
+        const isFirst = emp.rank === 1 || (emp.total_xp > 0 && index === 0);
+        const rankBadgeHtml = emp.rank
+            ? `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-xs ${isFirst ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs' : 'bg-slate-100 text-slate-700 border border-slate-200'}">#${emp.rank}</span>`
+            : `<span class="text-slate-400 text-[10px] font-semibold">Unranked</span>`;
+
+        const xpBadgeClass = emp.total_xp > 0 
+            ? 'bg-amber-50 text-amber-900 border-amber-200' 
+            : 'bg-slate-50 text-slate-600 border-slate-200';
+
+        const tierClass = emp.total_xp >= 1000 
+            ? 'badge-gold' 
+            : (emp.total_xp >= 200 ? 'badge-primary' : 'badge-dusty');
+
+        return `
+            <tr class="hover:bg-brand-canvas/80 transition text-xs">
+                <td class="px-4 py-3 font-mono font-bold">
+                    ${rankBadgeHtml}
+                </td>
+                <td class="px-4 py-3">
+                    <div class="flex items-center space-x-2.5">
+                        <img src="${emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}" alt="" class="w-8 h-8 rounded-xl object-cover border border-[#E8DEDC] shrink-0">
+                        <div>
+                            <span class="font-heading font-bold text-slate-900 block leading-tight">${emp.name}</span>
+                            <span class="text-[10px] text-slate-400 font-mono">${emp.employee_id}</span>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-3">
+                    <span class="font-semibold text-slate-800 block leading-tight">${emp.role}</span>
+                    <span class="text-[10px] text-slate-400 font-medium">${emp.department}</span>
+                </td>
+                <td class="px-4 py-3">
+                    <span class="${tierClass} font-bold text-[10px] whitespace-nowrap">${emp.tier || 'Novice Associate'}</span>
+                </td>
+                <td class="px-4 py-3 font-semibold text-slate-700">
+                    <span class="inline-flex items-center text-[11px]"><i class="fas fa-trophy text-amber-500 mr-1"></i> ${emp.trophies || 0} Badges</span>
+                </td>
+                <td class="px-4 py-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full font-bold text-xs border shadow-2xs ${xpBadgeClass}">
+                        <i class="fas fa-bolt text-amber-500 mr-1.5"></i> ${(emp.total_xp || 0).toLocaleString()} XP
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center space-x-1.5">
+                        <button onclick="filterLedgerBySpecificEmployee('${emp.employee_id}')" class="btn-secondary px-2.5 py-1 text-[11px] font-bold shadow-2xs" title="Filter ledger transactions for ${emp.name}">
+                            <i class="fas fa-receipt mr-1 text-primary"></i> Ledger
+                        </button>
+                        <button onclick="openRecognitionModalForEmployee('${emp.employee_id}')" class="btn-primary px-2.5 py-1 text-[11px] font-bold shadow-2xs" title="Award Kudos / Points">
+                            <i class="fas fa-hand-holding-heart mr-1"></i> Kudos
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+window.renderSupervisorEmployeesXpTable = renderSupervisorEmployeesXpTable;
+
+function renderEmployeePersonalXpCard(standing) {
+    const activeUser = getActiveSessionUser();
+    const nameEl = document.getElementById('my-personal-xp-name');
+    const avatarEl = document.getElementById('my-personal-xp-avatar');
+    const roleDeptEl = document.getElementById('my-personal-xp-role-dept');
+    const rankBadgeEl = document.getElementById('my-personal-xp-rank-badge');
+    const tierBadgeEl = document.getElementById('my-personal-xp-tier-badge');
+    const xpNumberEl = document.getElementById('my-personal-xp-number');
+    const badgesNumberEl = document.getElementById('my-personal-badges-number');
+    const standingTextEl = document.getElementById('my-personal-xp-standing-text');
+
+    const totalXp = Number(standing?.total_xp || 0);
+    const trophies = Number(standing?.trophies || 0);
+    const name = standing?.name || activeUser.name || 'Maria Santos';
+    const avatar = standing?.avatar || activeUser.avatar;
+    const role = standing?.role || activeUser.role || 'Front Desk Host';
+    const dept = standing?.department || 'Front Office';
+    const tier = standing?.tier || 'Novice Associate';
+    const rankDisplay = standing?.rank_display && standing.rank_display !== 'Not in ranking' ? standing.rank_display : (totalXp > 0 ? 'Rank #1' : 'Unranked');
+
+    if (nameEl) nameEl.textContent = name;
+    if (avatarEl && avatar) avatarEl.src = avatar;
+    if (roleDeptEl) roleDeptEl.textContent = `${role} · ${dept}`;
+    if (rankBadgeEl) {
+        rankBadgeEl.textContent = rankDisplay;
+        rankBadgeEl.className = totalXp > 0 ? 'badge-gold font-bold text-[10px]' : 'badge-dusty font-bold text-[10px]';
+    }
+    if (tierBadgeEl) tierBadgeEl.innerHTML = `<i class="fas fa-medal mr-1"></i> ${tier}`;
+    if (xpNumberEl) xpNumberEl.textContent = `${totalXp.toLocaleString()} XP`;
+    if (badgesNumberEl) badgesNumberEl.innerHTML = `${trophies} <i class="fas fa-trophy text-xs text-gold"></i>`;
+    if (standingTextEl) {
+        standingTextEl.textContent = standing?.place_display ? `Currently in ${standing.place_display}` : 'Private Verified Account';
+    }
+}
+window.renderEmployeePersonalXpCard = renderEmployeePersonalXpCard;
+
+function openRecognitionModalForEmployee(empId) {
+    if (typeof openModal === 'function') openModal('modal-recognition');
+    if (typeof initKudosRosterModal === 'function') initKudosRosterModal();
+    if (empId) {
+        selectedKudosRecipients.add(empId);
+        if (typeof renderKudosRoster === 'function') renderKudosRoster();
+        if (typeof updateKudosXPPreview === 'function') updateKudosXPPreview();
+    }
+}
+window.openRecognitionModalForEmployee = openRecognitionModalForEmployee;
+
 function renderPointLedger(filterQuery = '') {
     const tbody = document.getElementById('points-ledger-tbody');
     if (!tbody) return;
 
+    const activeUser = getActiveSessionUser();
+    const currentUserId = activeUser.id;
+
     let rows = pointsLedgerState;
+
+    // In employee view, strictly show theirs only!
+    if (!isSupervisorViewState) {
+        rows = rows.filter(r => {
+            return r.employee_id === currentUserId;
+        });
+    } else if (selectedLedgerEmployeeFilter && selectedLedgerEmployeeFilter !== 'all') {
+        // In supervisor view, if specific employee selected
+        rows = rows.filter(r => r.employee_id === selectedLedgerEmployeeFilter);
+    }
+
     if (filterQuery) {
         rows = rows.filter(r =>
             (r.recipient || '').toLowerCase().includes(filterQuery) ||
+            (r.recipient_name || '').toLowerCase().includes(filterQuery) ||
             (r.sender || '').toLowerCase().includes(filterQuery) ||
             (r.category || '').toLowerCase().includes(filterQuery) ||
             (r.id || '').toLowerCase().includes(filterQuery)
@@ -1095,7 +1454,7 @@ function renderPointLedger(filterQuery = '') {
     if (rows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-8 text-center text-slate-400 text-xs">
             <i class="fas fa-receipt text-2xl text-slate-300 mb-2 block"></i>
-            No personal XP ledger transactions recorded yet for your account.
+            ${isSupervisorViewState ? 'No transactions found matching the selected filter.' : 'No personal XP ledger transactions recorded yet for your account.'}
         </td></tr>`;
         return;
     }
@@ -1104,7 +1463,7 @@ function renderPointLedger(filterQuery = '') {
         <tr class="hover:bg-brand-canvas/80 transition text-xs">
             <td class="px-5 py-3 font-mono font-bold text-slate-700">${txn.id || 'TXN-8800'}</td>
             <td class="px-5 py-3 text-slate-600">${txn.date || 'Aug 24, 2026'}</td>
-            <td class="px-5 py-3 font-bold text-slate-900">${txn.recipient || 'My Account'}</td>
+            <td class="px-5 py-3 font-bold text-slate-900">${txn.recipient || txn.recipient_name || 'Associate'}</td>
             <td class="px-5 py-3 text-slate-600">${txn.sender || 'System / Supervisor'}</td>
             <td class="px-5 py-3 font-semibold text-slate-700">${txn.category || 'Hospitality'}</td>
             <td class="px-5 py-3 font-bold text-emerald-700">${txn.xpChange || '+50 XP'}</td>

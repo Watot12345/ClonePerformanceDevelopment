@@ -761,6 +761,7 @@ function renderEmployeeSelectOptions() {
             return `<option value="${emp.id}" ${emp.id === activeCompetencyEmpKey ? 'selected' : ''}>${emp.full_name} (${emp.title} · ${emp.department} · ${emp.overall_formatted})</option>`;
         }).join('');
     }
+    updateCompetencyTabTitles();
 }
 
 // 3.2 View Mode Switcher: Single Deep-Dive vs Team Deck vs Multi-Compare
@@ -1132,11 +1133,28 @@ function selectCompetencyAssociate(empKey) {
 
     activeCompetencyEmpKey = emp.id || empKey;
 
-    // 1. Reveal 360° Assessment and IDP tabs in subnav
+    const empDisplayName = emp.full_name || emp.name || 'Associate';
+    const possessiveName = (empDisplayName.endsWith('s') || empDisplayName.endsWith('S')) ? `${empDisplayName}'` : `${empDisplayName}'s`;
+
+    // 1. Reveal and dynamically update 360° Assessment and Certifications tabs in subnav
     const btnAssessment = document.getElementById('subtab-btn-comp-assessment');
     const btnDevelopment = document.getElementById('subtab-btn-comp-development');
-    if (btnAssessment) btnAssessment.classList.remove('hidden');
-    if (btnDevelopment) btnDevelopment.classList.remove('hidden');
+    if (btnAssessment) {
+        btnAssessment.classList.remove('hidden');
+        if (isAssociate) {
+            btnAssessment.innerHTML = '<i class="fas fa-chart-radar mr-1.5"></i> My 360° Assessment';
+        } else {
+            btnAssessment.innerHTML = `<i class="fas fa-chart-radar mr-1.5"></i> ${possessiveName} 360° Assessment`;
+        }
+    }
+    if (btnDevelopment) {
+        btnDevelopment.classList.remove('hidden');
+        if (isAssociate) {
+            btnDevelopment.innerHTML = '<i class="fas fa-certificate mr-1.5 text-gold"></i> My Certifications';
+        } else {
+            btnDevelopment.innerHTML = `<i class="fas fa-certificate mr-1.5 text-gold"></i> ${possessiveName} Certifications`;
+        }
+    }
 
     // 2. Switch to 360° Assessment & Skills Gap subtab
     if (typeof switchSubTab === 'function') {
@@ -1157,6 +1175,48 @@ function selectCompetencyAssociate(empKey) {
     renderPerformanceIntegrationSummary();
     showToast(`Viewing 360° Assessment & Skills Gap for ${emp.full_name || emp.name}`, 'info');
 }
+
+// Switch employee from dropdown
+function switchEmployeeView(empKey) {
+    selectCompetencyAssociate(empKey);
+}
+window.switchEmployeeView = switchEmployeeView;
+
+// Dynamically refresh competency subnav tab titles based on active persona & active associate
+function updateCompetencyTabTitles(empName) {
+    const btnAssessment = document.getElementById('subtab-btn-comp-assessment');
+    const btnDevelopment = document.getElementById('subtab-btn-comp-development');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || '').toLowerCase().trim();
+    const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
+
+    if (!empName) {
+        const dynEmps = window.dynamicCompetencyState?.employees || [];
+        const activeKey = activeCompetencyEmpKey || window.activeCompetencyEmpKey || window.selectedEvalEmpId || 'emp-101';
+        let emp = dynEmps.find(e => e.id === activeKey);
+        if (!emp && typeof associatesCompetencyData !== 'undefined' && associatesCompetencyData[activeKey]) {
+            emp = associatesCompetencyData[activeKey];
+        }
+        empName = emp?.full_name || emp?.name || 'Associate';
+    }
+
+    const possessiveName = (empName.endsWith('s') || empName.endsWith('S')) ? `${empName}'` : `${empName}'s`;
+
+    if (btnAssessment) {
+        if (isAssociate) {
+            btnAssessment.innerHTML = '<i class="fas fa-chart-radar mr-1.5"></i> My 360° Assessment';
+        } else {
+            btnAssessment.innerHTML = `<i class="fas fa-chart-radar mr-1.5"></i> ${possessiveName} 360° Assessment`;
+        }
+    }
+    if (btnDevelopment) {
+        if (isAssociate) {
+            btnDevelopment.innerHTML = '<i class="fas fa-certificate mr-1.5 text-gold"></i> My Certifications';
+        } else {
+            btnDevelopment.innerHTML = `<i class="fas fa-certificate mr-1.5 text-gold"></i> ${possessiveName} Certifications`;
+        }
+    }
+}
+window.updateCompetencyTabTitles = updateCompetencyTabTitles;
 
 // 3.12 Render Selected Employee Radar Profile View (100% Dynamic from Supabase Database)
 async function renderSelectedEmployeeRadarView() {
@@ -2295,6 +2355,59 @@ async function loadDepartmentDropdowns(forceRefresh = false) {
     }
 }
 
+// 4.1b Loading Skeleton for Competency Matrix Table
+function showCompetencyMatrixLoadingSkeleton() {
+    const tbody = document.getElementById('comp-matrix-tbody');
+    const theadTr = document.getElementById('comp-matrix-thead-tr');
+    const matchCountBadge = document.getElementById('matrix-match-count');
+
+    if (matchCountBadge) {
+        matchCountBadge.className = 'badge-sage animate-pulse inline-flex items-center space-x-1.5 px-3 py-1';
+        matchCountBadge.innerHTML = `<i class="fas fa-circle-notch fa-spin text-primary text-[10px] mr-1"></i><span>Syncing Registry...</span>`;
+    }
+
+    if (theadTr && !theadTr.children.length) {
+        theadTr.innerHTML = `
+            <th class="px-4 py-3.5 sticky left-0 bg-brand-canvas z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] border-r border-brand-border min-w-65 text-slate-800 font-bold">
+                Associate &amp; Role
+            </th>
+            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+            <th class="px-4 py-3.5 text-center min-w-30 text-slate-800 font-bold border-r border-brand-border/50">Overall Proficiency</th>
+            <th class="px-4 py-3.5 text-right min-w-27.5 text-slate-800 font-bold pr-5 sticky right-0 bg-brand-canvas z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.06)] border-l border-brand-border">Actions</th>
+        `;
+    }
+
+    if (tbody) {
+        let skeletonHtml = '';
+        for (let i = 0; i < 5; i++) {
+            skeletonHtml += `
+                <tr class="animate-pulse bg-white border-b border-brand-border/40">
+                    <td class="px-4 py-3.5 sticky left-0 bg-white z-10 border-r border-brand-border/60 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.04)]">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded-full bg-slate-200 shrink-0"></div>
+                            <div class="space-y-1.5 flex-1 min-w-0">
+                                <div class="h-3.5 w-28 bg-slate-200 rounded"></div>
+                                <div class="h-2.5 w-20 bg-slate-100 rounded"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                    <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                    <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                    <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                    <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-14 bg-slate-200 rounded-full mx-auto"></div></td>
+                    <td class="px-4 py-3.5 text-right sticky right-0 bg-white z-10 border-l border-brand-border/60 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.04)]"><div class="h-6 w-16 bg-slate-100 rounded-lg ml-auto"></div></td>
+                </tr>
+            `;
+        }
+        tbody.innerHTML = skeletonHtml;
+    }
+}
+window.showCompetencyMatrixLoadingSkeleton = showCompetencyMatrixLoadingSkeleton;
+
 // 4.2 Fetch Dynamic Competencies & Employee Matrix with 0ms Cache Support
 async function fetchDynamicCompetencyMatrix(deptFilter, minScore, forceRefresh = false) {
     const targetDept = deptFilter !== undefined ? deptFilter : (document.getElementById('matrix-filter-dept')?.value || window.dynamicCompetencyState.activeDept || 'all');
@@ -2330,6 +2443,10 @@ async function fetchDynamicCompetencyMatrix(deptFilter, minScore, forceRefresh =
                 }
             } catch (e) {}
         }
+    }
+
+    if (!hasRenderedFromCache) {
+        showCompetencyMatrixLoadingSkeleton();
     }
 
     try {
@@ -2742,6 +2859,477 @@ async function handleAddCompetencySubmit(e) {
             submitBtn.disabled = false;
             submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
             submitBtn.innerHTML = originalBtnHtml;
+        }
+    }
+}
+
+// ----------------------------------------------------
+// 4.8B Competency Catalog Management & Deletion System
+// ----------------------------------------------------
+window._manageCompetenciesList = [];
+window._manageCompSelectedIds = new Set();
+window._manageCompDeptMap = {};
+
+function escapeHtmlComp(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+async function openManageCompetenciesModal() {
+    openModal('modal-manage-competencies');
+    window._manageCompSelectedIds.clear();
+    updateCompetencyBulkBar();
+    
+    const searchInput = document.getElementById('manage-comp-search');
+    if (searchInput) searchInput.value = '';
+    const scopeFilter = document.getElementById('manage-comp-scope-filter');
+    if (scopeFilter) scopeFilter.value = 'all';
+    const catFilter = document.getElementById('manage-comp-category-filter');
+    if (catFilter) catFilter.value = 'all';
+
+    await loadManageCompetenciesList();
+}
+
+async function loadManageCompetenciesList() {
+    const tbody = document.getElementById('manage-comp-tbody');
+    const emptyEl = document.getElementById('manage-comp-empty');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="p-8 text-center text-slate-400">
+                    <div class="flex items-center justify-center space-x-2">
+                        <i class="fas fa-spinner fa-spin text-primary text-base"></i>
+                        <span class="font-medium">Loading competencies catalog...</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    try {
+        // Fetch fresh list of competencies and departments
+        const [compRes, deptRes] = await Promise.all([
+            fetch('api/competencies.php?action=get_competencies', { cache: 'no-store' }),
+            fetch('api/competencies.php?action=get_departments', { cache: 'no-store' })
+        ]);
+
+        const compJson = await compRes.json();
+        const deptJson = await deptRes.json();
+
+        // Build department map
+        window._manageCompDeptMap = {};
+        if (deptJson.success && Array.isArray(deptJson.data)) {
+            deptJson.data.forEach(d => {
+                if (d.id) window._manageCompDeptMap[d.id] = d.name;
+            });
+        }
+
+        if (compJson.success && Array.isArray(compJson.data)) {
+            window._manageCompetenciesList = compJson.data;
+        } else {
+            window._manageCompetenciesList = [];
+        }
+
+        renderManageCompetenciesTable();
+    } catch (err) {
+        console.error('Error loading competencies catalog:', err);
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="p-8 text-center text-rose-500">
+                        <i class="fas fa-exclamation-triangle mr-1.5"></i>
+                        <span>Failed to load competency list. Please try again.</span>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+function getFilteredManageCompetencies() {
+    const search = (document.getElementById('manage-comp-search')?.value || '').toLowerCase().trim();
+    const scope = document.getElementById('manage-comp-scope-filter')?.value || 'all';
+    const category = document.getElementById('manage-comp-category-filter')?.value || 'all';
+
+    return window._manageCompetenciesList.filter(comp => {
+        const name = (comp.name || '').toLowerCase();
+        const key = (comp.key || '').toLowerCase();
+        const desc = (comp.description || '').toLowerCase();
+        const cat = comp.category || '';
+        const compScope = comp.scope || 'General';
+
+        if (search && !name.includes(search) && !key.includes(search) && !desc.includes(search) && !cat.toLowerCase().includes(search)) {
+            return false;
+        }
+
+        if (scope !== 'all' && compScope !== scope) {
+            return false;
+        }
+
+        if (category !== 'all' && cat !== category) {
+            return false;
+        }
+
+        return true;
+    });
+}
+
+function filterManageCompetenciesList() {
+    renderManageCompetenciesTable();
+}
+
+function renderManageCompetenciesTable() {
+    const tbody = document.getElementById('manage-comp-tbody');
+    const emptyEl = document.getElementById('manage-comp-empty');
+    const summaryText = document.getElementById('manage-comp-summary-text');
+    const totalBadge = document.getElementById('manage-comp-total-badge');
+    const selectAllCb = document.getElementById('manage-comp-select-all');
+
+    if (!tbody) return;
+
+    const filtered = getFilteredManageCompetencies();
+    const totalCount = window._manageCompetenciesList.length;
+
+    if (totalBadge) {
+        totalBadge.textContent = `${totalCount} items`;
+    }
+
+    if (summaryText) {
+        summaryText.textContent = filtered.length === totalCount
+            ? `Showing all ${totalCount} competencies`
+            : `Showing ${filtered.length} of ${totalCount} competencies`;
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (selectAllCb) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
+        }
+        updateCompetencyBulkBar();
+        return;
+    }
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    // Category colors
+    const catColors = {
+        'Core Hospitality': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'Technical Systems': 'bg-blue-50 text-blue-700 border-blue-200',
+        'Compliance & Safety': 'bg-rose-50 text-rose-700 border-rose-200',
+        'Guest Relations': 'bg-amber-50 text-amber-800 border-amber-200',
+        'Operational Mastery': 'bg-purple-50 text-purple-700 border-purple-200',
+        'Culinary Operations': 'bg-orange-50 text-orange-700 border-orange-200',
+        'Leadership & Strategy': 'bg-indigo-50 text-indigo-700 border-indigo-200'
+    };
+
+    let html = '';
+    let visibleSelectedCount = 0;
+
+    filtered.forEach(comp => {
+        const isSelected = window._manageCompSelectedIds.has(comp.id);
+        if (isSelected) visibleSelectedCount++;
+
+        const isSpecific = (comp.scope || 'General') === 'Specific';
+        const deptName = isSpecific && comp.department_id ? (window._manageCompDeptMap[comp.department_id] || 'Specific Dept') : 'General';
+        const catBadgeClass = catColors[comp.category] || 'bg-slate-100 text-slate-700 border-slate-200';
+        const benchmarkVal = comp.benchmark_score ? Number(comp.benchmark_score).toFixed(1) : '4.5';
+        const maxVal = comp.max_score ? Number(comp.max_score).toFixed(1) : '5.0';
+
+        html += `
+            <tr class="hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-amber-50/40' : ''}" id="manage-comp-row-${comp.id}">
+                <td class="w-10 px-4 py-3 text-center">
+                    <input type="checkbox" data-comp-id="${comp.id}" ${isSelected ? 'checked' : ''} onchange="handleCompRowSelect('${comp.id}', this.checked)" class="comp-row-checkbox rounded text-primary focus:ring-primary w-3.5 h-3.5 cursor-pointer">
+                </td>
+                <td class="px-4 py-3">
+                    <div class="font-bold text-slate-800 text-xs">${escapeHtmlComp(comp.name)}</div>
+                    <div class="text-[10px] text-slate-400 font-mono flex items-center space-x-2 mt-0.5">
+                        <span>KEY: <span class="text-slate-600 font-semibold">${escapeHtmlComp(comp.key || 'AUTO_KEY')}</span></span>
+                    </div>
+                    ${comp.description ? `<div class="text-[10px] text-slate-500 line-clamp-1 italic mt-0.5 max-w-sm">${escapeHtmlComp(comp.description)}</div>` : ''}
+                </td>
+                <td class="px-4 py-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${catBadgeClass}">
+                        ${escapeHtmlComp(comp.category || 'General')}
+                    </span>
+                </td>
+                <td class="px-4 py-3">
+                    ${!isSpecific 
+                        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                             <i class="fas fa-globe mr-1 text-[9px]"></i> General (All Depts)
+                           </span>`
+                        : `<div class="space-y-0.5">
+                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                               <i class="fas fa-building mr-1 text-[9px]"></i> ${escapeHtmlComp(deptName)}
+                             </span>
+                             ${comp.position ? `<div class="text-[10px] text-slate-500 font-medium">Role: ${escapeHtmlComp(comp.position)}</div>` : ''}
+                           </div>`
+                    }
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <span class="font-bold text-slate-800">${benchmarkVal}</span>
+                    <span class="text-slate-400 text-[10px]"> / ${maxVal}</span>
+                </td>
+                <td class="px-4 py-3 text-right pr-6">
+                    <button type="button" onclick="handleDeleteSingleCompetency('${comp.id}', '${escapeHtmlComp(comp.name).replace(/'/g, "\\'")}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center justify-center transition" title="Delete Competency">
+                        <i class="fas fa-trash-alt text-xs"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+
+    // Update select-all checkbox
+    if (selectAllCb) {
+        if (visibleSelectedCount === 0) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
+        } else if (visibleSelectedCount === filtered.length) {
+            selectAllCb.checked = true;
+            selectAllCb.indeterminate = false;
+        } else {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = true;
+        }
+    }
+
+    updateCompetencyBulkBar();
+}
+
+function handleCompRowSelect(id, checked) {
+    if (checked) {
+        window._manageCompSelectedIds.add(id);
+    } else {
+        window._manageCompSelectedIds.delete(id);
+    }
+
+    const row = document.getElementById(`manage-comp-row-${id}`);
+    if (row) {
+        if (checked) {
+            row.classList.add('bg-amber-50/40');
+        } else {
+            row.classList.remove('bg-amber-50/40');
+        }
+    }
+
+    // Update select-all indeterminate / checked state
+    const filtered = getFilteredManageCompetencies();
+    let visibleCount = 0;
+    filtered.forEach(c => {
+        if (window._manageCompSelectedIds.has(c.id)) visibleCount++;
+    });
+
+    const selectAllCb = document.getElementById('manage-comp-select-all');
+    if (selectAllCb) {
+        if (visibleCount === 0) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
+        } else if (visibleCount === filtered.length) {
+            selectAllCb.checked = true;
+            selectAllCb.indeterminate = false;
+        } else {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = true;
+        }
+    }
+
+    updateCompetencyBulkBar();
+}
+
+function toggleSelectAllCompetencies(checked) {
+    const filtered = getFilteredManageCompetencies();
+    filtered.forEach(comp => {
+        if (checked) {
+            window._manageCompSelectedIds.add(comp.id);
+        } else {
+            window._manageCompSelectedIds.delete(comp.id);
+        }
+    });
+
+    // Update all row checkboxes in DOM
+    const checkboxes = document.querySelectorAll('#manage-comp-tbody .comp-row-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = checked;
+        const row = cb.closest('tr');
+        if (row) {
+            if (checked) row.classList.add('bg-amber-50/40');
+            else row.classList.remove('bg-amber-50/40');
+        }
+    });
+
+    updateCompetencyBulkBar();
+}
+
+function clearAllCompetencySelections() {
+    window._manageCompSelectedIds.clear();
+    const checkboxes = document.querySelectorAll('#manage-comp-tbody .comp-row-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = false;
+        const row = cb.closest('tr');
+        if (row) row.classList.remove('bg-amber-50/40');
+    });
+    const selectAllCb = document.getElementById('manage-comp-select-all');
+    if (selectAllCb) {
+        selectAllCb.checked = false;
+        selectAllCb.indeterminate = false;
+    }
+    updateCompetencyBulkBar();
+}
+
+function updateCompetencyBulkBar() {
+    const bulkBar = document.getElementById('manage-comp-bulk-bar');
+    const selectedCountEl = document.getElementById('manage-comp-selected-count');
+    const btnCountEl = document.getElementById('manage-comp-bulk-count-btn');
+    const count = window._manageCompSelectedIds.size;
+
+    if (!bulkBar) return;
+
+    if (count > 0) {
+        bulkBar.classList.remove('hidden');
+        if (selectedCountEl) selectedCountEl.textContent = count;
+        if (btnCountEl) btnCountEl.textContent = count;
+    } else {
+        bulkBar.classList.add('hidden');
+        if (selectedCountEl) selectedCountEl.textContent = '0';
+        if (btnCountEl) btnCountEl.textContent = '0';
+    }
+}
+
+// Single Competency Deletion with confirmation
+async function handleDeleteSingleCompetency(id, name) {
+    const executeDelete = async () => {
+        let toastId = null;
+        try {
+            toastId = showToast(`Deleting "${name}"...`, 'loading');
+            const res = await fetch('api/competencies.php?action=delete_competency', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            });
+            const json = await res.json();
+            if (toastId) dismissToast(toastId);
+
+            if (json.success) {
+                showToast(`Competency "${name}" has been deleted.`, 'success');
+                window._manageCompSelectedIds.delete(id);
+                window._manageCompetenciesList = window._manageCompetenciesList.filter(c => c.id !== id);
+                renderManageCompetenciesTable();
+
+                // Refresh matrix and components in background
+                if (typeof fetchDynamicCompetencyMatrix === 'function') {
+                    fetchDynamicCompetencyMatrix(window.dynamicCompetencyState?.activeDept, undefined, true);
+                }
+                if (typeof activeCompetencyEmpKey !== 'undefined' && activeCompetencyEmpKey) {
+                    if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
+                    if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
+                }
+            } else {
+                showToast(json.message || 'Failed to delete competency.', 'error');
+            }
+        } catch (err) {
+            if (toastId) dismissToast(toastId);
+            console.error('Error deleting competency:', err);
+            showToast('Network error while deleting competency.', 'error');
+        }
+    };
+
+    if (typeof showConfirmationModal === 'function') {
+        showConfirmationModal({
+            title: 'Delete Competency',
+            message: `Are you sure you want to delete "${name}"? All associated employee assessments for this competency will also be cleaned up. This cannot be undone.`,
+            confirmBtnText: '<i class="fas fa-trash-alt mr-1"></i> Delete Permanently',
+            confirmBtnClass: 'bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 text-xs rounded-xl shadow-xs transition',
+            iconClass: 'fas fa-trash-alt text-rose-600',
+            iconContainerClass: 'bg-rose-100 text-rose-600',
+            onConfirm: executeDelete
+        });
+    } else {
+        if (confirm(`Are you sure you want to delete "${name}"? Associated employee assessment records will be removed.`)) {
+            await executeDelete();
+        }
+    }
+}
+
+// Bulk Delete Competencies with confirmation
+async function handleBulkDeleteCompetencies() {
+    const ids = Array.from(window._manageCompSelectedIds);
+    if (ids.length === 0) {
+        showToast('No competencies selected for deletion.', 'warning');
+        return;
+    }
+
+    const count = ids.length;
+    const executeBulkDelete = async () => {
+        const deleteBtn = document.getElementById('btn-manage-comp-bulk-delete');
+        const origHtml = deleteBtn ? deleteBtn.innerHTML : '';
+        if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Deleting...';
+        }
+
+        let toastId = null;
+        try {
+            toastId = showToast(`Deleting ${count} competencies...`, 'loading');
+            const res = await fetch('api/competencies.php?action=bulk_delete_competencies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            const json = await res.json();
+            if (toastId) dismissToast(toastId);
+
+            if (json.success) {
+                showToast(json.message || `Successfully deleted ${count} competencies.`, 'success');
+                const idSet = new Set(ids);
+                window._manageCompetenciesList = window._manageCompetenciesList.filter(c => !idSet.has(c.id));
+                window._manageCompSelectedIds.clear();
+                renderManageCompetenciesTable();
+
+                // Refresh matrix and components in background
+                if (typeof fetchDynamicCompetencyMatrix === 'function') {
+                    fetchDynamicCompetencyMatrix(window.dynamicCompetencyState?.activeDept, undefined, true);
+                }
+                if (typeof activeCompetencyEmpKey !== 'undefined' && activeCompetencyEmpKey) {
+                    if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
+                    if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
+                }
+            } else {
+                showToast(json.message || 'Failed to bulk-delete competencies.', 'error');
+            }
+        } catch (err) {
+            if (toastId) dismissToast(toastId);
+            console.error('Error in bulk deleting competencies:', err);
+            showToast('Network error while bulk deleting competencies.', 'error');
+        } finally {
+            if (deleteBtn) {
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = origHtml;
+            }
+        }
+    };
+
+    if (typeof showConfirmationModal === 'function') {
+        showConfirmationModal({
+            title: `Delete ${count} Competencies`,
+            message: `Are you sure you want to permanently delete the ${count} selected competencies? All associated assessment records for these competencies will also be cleaned up. This action cannot be undone.`,
+            confirmBtnText: `<i class="fas fa-trash-alt mr-1"></i> Delete ${count} Items`,
+            confirmBtnClass: 'bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 text-xs rounded-xl shadow-xs transition',
+            iconClass: 'fas fa-trash-alt text-rose-600',
+            iconContainerClass: 'bg-rose-100 text-rose-600',
+            onConfirm: executeBulkDelete
+        });
+    } else {
+        if (confirm(`Are you sure you want to permanently delete the ${count} selected competencies?`)) {
+            await executeBulkDelete();
         }
     }
 }
@@ -3242,32 +3830,12 @@ function exportCompetencyReportCSV() {
     showToast('Exported Oxford Suites Dynamic Competency Matrix to CSV!', 'success');
 }
 
-window.employeeCompetencyProfiles = {
-    'emp-101': [
-        { name: 'Front Desk Standards & Guest Relations', score: 4.20, target: 4.00, status: 'Proficient', dept: 'Front Office' },
-        { name: 'Opera Cloud PMS & Reservations', score: 2.80, target: 4.00, status: 'Needs Improvement', dept: 'Front Office' },
-        { name: 'VIP Check-In & Service Protocol', score: 4.50, target: 4.00, status: 'Mastered', dept: 'Front Office' },
-        { name: 'Guest De-escalation & Crisis Response', score: 3.50, target: 4.00, status: 'On Track', dept: 'Front Office' }
-    ],
-    'emp-102': [
-        { name: 'HACCP Food Safety & Sanitation', score: 4.60, target: 4.50, status: 'Mastered', dept: 'Culinary' },
-        { name: 'Grand Sommelier Wine Pairing', score: 2.40, target: 4.00, status: 'Needs Improvement', dept: 'F&B Service' },
-        { name: 'Banquet Operations & Logistics', score: 2.80, target: 4.00, status: 'Needs Improvement', dept: 'F&B Service' },
-        { name: 'Fine Dining Table Service', score: 4.10, target: 4.00, status: 'Proficient', dept: 'F&B Service' }
-    ],
-    'emp-103': [
-        { name: 'Executive Suite Turn-Down', score: 4.80, target: 4.50, status: 'Mastered', dept: 'Housekeeping' },
-        { name: 'Linen Inventory Management', score: 4.20, target: 4.00, status: 'Proficient', dept: 'Housekeeping' },
-        { name: 'Deep Cleaning Protocols', score: 4.00, target: 4.00, status: 'Proficient', dept: 'Housekeeping' }
-    ]
-};
-
+// Empty fallback - strictly query database data
+window.employeeCompetencyProfiles = {};
 window._cachedEmpCompetencies = window._cachedEmpCompetencies || {};
 
 function getFallbackCompetencyProfile(cleanId) {
-    if (cleanId.includes('102') || cleanId.includes('antonio')) return window.employeeCompetencyProfiles['emp-102'] || [];
-    if (cleanId.includes('103') || cleanId.includes('john')) return window.employeeCompetencyProfiles['emp-103'] || [];
-    return window.employeeCompetencyProfiles['emp-101'] || [];
+    return [];
 }
 
 function renderCompetencyCardsHTML(list) {
@@ -3276,28 +3844,40 @@ function renderCompetencyCardsHTML(list) {
     }
 
     return list.map(comp => {
-        const pct = Math.min(100, Math.round((comp.score / 5.0) * 100));
-        const isBelow = comp.score < comp.target;
+        const hasScore = comp.score !== null && comp.score !== undefined && !isNaN(comp.score);
+        const scoreVal = hasScore ? parseFloat(comp.score) : 0;
+        const targetVal = parseFloat(comp.target || 4.5);
+        const pct = hasScore ? Math.min(100, Math.round((scoreVal / 5.0) * 100)) : 0;
+        const isBelow = hasScore && (scoreVal < targetVal);
+
         let badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-        if (isBelow) badgeClass = 'bg-red-100 text-red-800 border-red-200';
-        else if (comp.score >= 4.5) badgeClass = 'bg-amber-100 text-amber-900 border-amber-200';
+        let statusText = comp.status || 'Proficient';
+
+        if (!hasScore) {
+            badgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
+            statusText = 'Not Rated Yet';
+        } else if (isBelow) {
+            badgeClass = 'bg-red-100 text-red-800 border-red-200';
+        } else if (scoreVal >= 4.5) {
+            badgeClass = 'bg-amber-100 text-amber-900 border-amber-200';
+        }
 
         return `
-            <div class="p-4 rounded-2xl border ${isBelow ? 'border-red-200 bg-red-50/20' : 'border-brand-border bg-brand-canvas'} flex flex-col justify-between space-y-3 transition hover:shadow-2xs">
+            <div class="p-4 rounded-2xl border ${!hasScore ? 'border-dashed border-slate-300 bg-slate-50/50' : (isBelow ? 'border-red-200 bg-red-50/20' : 'border-brand-border bg-brand-canvas')} flex flex-col justify-between space-y-3 transition hover:shadow-2xs">
                 <div class="space-y-1.5">
                     <div class="flex items-center justify-between">
                         <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">${comp.dept || 'Assigned Competency'}</span>
-                        <span class="text-[9px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}">${comp.status}</span>
+                        <span class="text-[9px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}">${statusText}</span>
                     </div>
                     <h4 class="font-heading font-bold text-slate-900 text-xs leading-snug">${comp.name}</h4>
                 </div>
                 <div class="pt-2 border-t border-brand-border space-y-1">
                     <div class="flex items-center justify-between text-xs">
-                        <span class="font-extrabold text-slate-800">${comp.score.toFixed(2)} / 5.0</span>
-                        <span class="text-[11px] text-slate-400">Target: <strong class="text-slate-600">${comp.target.toFixed(1)}</strong></span>
+                        <span class="font-extrabold ${hasScore ? 'text-slate-800' : 'text-slate-400'}">${hasScore ? scoreVal.toFixed(2) : '—'} / 5.0</span>
+                        <span class="text-[11px] text-slate-400">Target: <strong class="text-slate-600">${targetVal.toFixed(1)}</strong></span>
                     </div>
                     <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                        <div class="${isBelow ? 'bg-red-500' : 'bg-emerald-500'} h-full rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                        <div class="${!hasScore ? 'bg-slate-300' : (isBelow ? 'bg-red-500' : 'bg-emerald-500')} h-full rounded-full transition-all duration-500" style="width: ${pct}%"></div>
                     </div>
                 </div>
             </div>
@@ -3325,17 +3905,26 @@ async function fetchEmployeeSpecificCompetencies(empId = 'emp-101', forceRefresh
     }
     
     try {
-        const res = await fetch(`api/competencies.php?action=get_assessments&employee_id=${encodeURIComponent(cleanId)}`);
+        const res = await fetch(`api/competencies.php?action=get_employee_competencies&employee_id=${encodeURIComponent(cleanId)}`);
         const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            const mapped = json.data.map(item => ({
-                id: item.competency_id,
-                name: item.competency_name || 'Assigned Competency',
-                score: item.rating ? parseFloat(item.rating) : (item.score ? parseFloat(item.score) : 4.0),
-                target: item.benchmark_score ? parseFloat(item.benchmark_score) : 4.0,
-                status: (parseFloat(item.rating || item.score || 4.0) >= 4.0) ? 'Proficient' : ((parseFloat(item.rating || item.score || 4.0) >= 3.0) ? 'On Track' : 'Needs Improvement'),
-                dept: item.category || item.department_name || 'Competency'
-            }));
+        if (json.success && Array.isArray(json.items) && json.items.length > 0) {
+            const mapped = json.items.map(item => {
+                const hasScore = item.current_score !== null && item.current_score !== undefined && item.current_score !== '';
+                const scoreVal = hasScore ? parseFloat(item.current_score) : null;
+                const benchVal = parseFloat(item.benchmark_score || 4.5);
+                let status = 'Not Rated Yet';
+                if (hasScore) {
+                    status = (scoreVal >= 4.0) ? 'Proficient' : ((scoreVal >= 3.0) ? 'On Track' : 'Needs Improvement');
+                }
+                return {
+                    id: item.id,
+                    name: item.name || 'Assigned Competency',
+                    score: scoreVal,
+                    target: benchVal,
+                    status: status,
+                    dept: item.category || item.scope || 'Competency'
+                };
+            });
             window._cachedEmpCompetencies[cleanId] = mapped;
             try {
                 sessionStorage.setItem(cacheKey, JSON.stringify(mapped));
@@ -3381,7 +3970,13 @@ async function renderEmployeeOverviewCompetencies(empId = 'emp-101', forceRefres
 
     if (initialList && initialList.length > 0) {
         if (container) container.innerHTML = renderCompetencyCardsHTML(initialList);
-        if (countEl) countEl.textContent = `${initialList.length} Assigned Competencies`;
+        const assessedInitial = initialList.filter(c => c.score !== null).length;
+        const unratedInitial = initialList.length - assessedInitial;
+        if (countEl) {
+            countEl.textContent = unratedInitial > 0
+                ? `${initialList.length} Assigned (${unratedInitial} Not Rated)`
+                : `${initialList.length} Assigned Competencies`;
+        }
         updateCompetencyKpiCard(initialList, empId);
         hasRenderedFromCache = true;
     } else if (container) {
@@ -3411,7 +4006,13 @@ async function renderEmployeeOverviewCompetencies(empId = 'emp-101', forceRefres
         const freshList = await fetchEmployeeSpecificCompetencies(empId, forceRefresh);
         if (freshList && freshList.length > 0) {
             if (container) container.innerHTML = renderCompetencyCardsHTML(freshList);
-            if (countEl) countEl.textContent = `${freshList.length} Assigned Competencies`;
+            const assessed = freshList.filter(c => c.score !== null).length;
+            const unrated = freshList.length - assessed;
+            if (countEl) {
+                countEl.textContent = unrated > 0
+                    ? `${freshList.length} Assigned (${unrated} Not Rated)`
+                    : `${freshList.length} Assigned Competencies`;
+            }
             updateCompetencyKpiCard(freshList, empId);
         } else if (!initialList || initialList.length === 0) {
             updateCompetencyKpiCard([], empId);
@@ -3440,10 +4041,16 @@ function updateCompetencyKpiCard(list, empId) {
     }
 
     let sum = 0;
+    let ratedCount = 0;
     list.forEach(c => {
-        sum += Number(c.score || c.rating || c.current_score || 0);
+        const val = c.score !== null && c.score !== undefined ? Number(c.score) : null;
+        if (val !== null && !isNaN(val)) {
+            sum += val;
+            ratedCount++;
+        }
     });
-    const avg = Number((sum / list.length).toFixed(1));
+
+    const avg = ratedCount > 0 ? Number((sum / ratedCount).toFixed(1)) : 0.0;
     let level = 1;
     let tier = 'Entry Tier';
     if (avg >= 4.5) { level = 5; tier = 'Master Tier'; }
@@ -3458,8 +4065,10 @@ function updateCompetencyKpiCard(list, empId) {
     if (kpiTier) kpiTier.textContent = tier;
     if (kpiBar) kpiBar.style.width = `${barWidth}%`;
     if (kpiSub) {
-        const personaRole = window.activePersonaRole || 'Front Desk Host';
-        kpiSub.textContent = `${personaRole} promotion track`;
+        const unrated = list.length - ratedCount;
+        kpiSub.textContent = unrated > 0 
+            ? `${ratedCount} of ${list.length} assessed (${unrated} not rated yet)`
+            : `${ratedCount} of ${list.length} role competencies verified`;
     }
 }
 window.renderEmployeeOverviewCompetencies = renderEmployeeOverviewCompetencies;
@@ -3480,6 +4089,15 @@ window.setCompetencyRating = setCompetencyRating;
 window.syncSliderRating = syncSliderRating;
 window.handleAssessmentSubmit = handleAssessmentSubmit;
 window.exportCompetencyReportCSV = exportCompetencyReportCSV;
+window.openManageCompetenciesModal = openManageCompetenciesModal;
+window.loadManageCompetenciesList = loadManageCompetenciesList;
+window.filterManageCompetenciesList = filterManageCompetenciesList;
+window.renderManageCompetenciesTable = renderManageCompetenciesTable;
+window.handleCompRowSelect = handleCompRowSelect;
+window.toggleSelectAllCompetencies = toggleSelectAllCompetencies;
+window.clearAllCompetencySelections = clearAllCompetencySelections;
+window.handleDeleteSingleCompetency = handleDeleteSingleCompetency;
+window.handleBulkDeleteCompetencies = handleBulkDeleteCompetencies;
 
 // Auto-run on load
 window.addEventListener('DOMContentLoaded', () => {

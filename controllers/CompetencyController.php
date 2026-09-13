@@ -130,6 +130,9 @@ class CompetencyController
 
         $res = supabaseRequest('competencies', 'POST', $data, true);
         if ($res['status'] >= 200 && $res['status'] < 300) {
+            // Invalidate server-side matrix cache
+            @array_map('unlink', glob(__DIR__ . '/../cache/comp_matrix_*.json') ?: []);
+
             return [
                 'success' => true,
                 'message' => 'Competency created successfully in database.',
@@ -234,6 +237,197 @@ class CompetencyController
     }
 
     /**
+     * Get an employee's applicable competencies, assessment scores, and multi-rater radar dataset
+     */
+    public function getEmployeeCompetencies(string $empId): array
+    {
+        $pdo = getSupabaseDb();
+        if (!$pdo) {
+            return ['success' => false, 'message' => 'Database connection failed'];
+        }
+
+        // 1. Fetch employee
+        $stmtEmp = $pdo->prepare("SELECT id, employee_code, full_name, title, department_id FROM public.employees WHERE id = :empId LIMIT 1");
+        $stmtEmp->execute([':empId' => $empId]);
+        $emp = $stmtEmp->fetch(\PDO::FETCH_ASSOC);
+
+        $deptId = $emp['department_id'] ?? null;
+        $title  = $emp['title'] ?? '';
+
+        // 2. Fetch all competencies in catalog
+        $stmtComps = $pdo->query("SELECT id, name, category, scope, department_id, position, benchmark_score, max_score, description 
+                                 FROM public.competencies 
+                                 ORDER BY scope ASC, name ASC");
+        $allCompsCatalog = $stmtComps->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        // 3. Fetch employee assessments
+        $stmtAssess = $pdo->prepare("SELECT competency_id, score, comments, assessment_date 
+                                     FROM public.competency_assessments 
+                                     WHERE employee_id = :empId 
+                                     ORDER BY assessment_date DESC");
+        $stmtAssess->execute([':empId' => $empId]);
+        $assessRows = $stmtAssess->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        $assessMap = [];
+        foreach ($assessRows as $a) {
+            if (!isset($assessMap[$a['competency_id']])) {
+                $assessMap[$a['competency_id']] = $a;
+            }
+        }
+
+        // 4. Resolve applicable competencies (Role/Dept specific + General + Any evaluated)
+        $applicableComps = [];
+        $seenIds = [];
+
+        // A. General
+        foreach ($allCompsCatalog as $c) {
+            if (($c['scope'] ?? 'General') === 'General') {
+                $applicableComps[$c['id']] = $c;
+                $seenIds[$c['id']] = true;
+            }
+        }
+
+        // B. Department & Position
+        if ($deptId) {
+            foreach ($allCompsCatalog as $c) {
+                if (($c['scope'] ?? '') === 'Specific' && $c['department_id'] === $deptId) {
+                    $cPos = trim($c['position'] ?? '');
+                    if (empty($cPos) || strcasecmp($title, $cPos) === 0 || stripos($title, $cPos) !== false || stripos($cPos, $title) !== false) {
+                        $applicableComps[$c['id']] = $c;
+                        $seenIds[$c['id']] = true;
+                    }
+                }
+            }
+        }
+
+        // C. Evaluated
+        foreach ($assessMap as $cId => $a) {
+            if (!isset($seenIds[$cId])) {
+                foreach ($allCompsCatalog as $c) {
+                    if ($c['id'] === $cId) {
+                        $applicableComps[$c['id']] = $c;
+                        $seenIds[$c['id']] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Sort: General first, then Specific alphabetically by name
+        uasort($applicableComps, function($a, $b) {
+            $scopeA = $a['scope'] ?? 'General';
+            $scopeB = $b['scope'] ?? 'General';
+            if ($scopeA !== $scopeB) {
+                return $scopeA === 'General' ? -1 : 1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        $items = [];
+        $labels = [];
+        $targetBenchData = [];
+        $selfData = [];
+        $supervisorData = [];
+        $calibratedData = [];
+
+        $assessedCount = 0;
+        $unassessedCount = 0;
+        $sumCurrent = 0;
+        $sumBench = 0;
+
+        foreach ($applicableComps as $c) {
+            $cId = $c['id'];
+            $hasScore = isset($assessMap[$cId]) && $assessMap[$cId]['score'] !== null;
+            $scoreVal = $hasScore ? (float)$assessMap[$cId]['score'] : null;
+            $benchVal = (float)($c['benchmark_score'] ?? 4.5);
+
+            $c['current_score'] = $scoreVal;
+            $c['is_assessed']   = $hasScore;
+            $c['rating']        = $scoreVal;
+            $c['benchmark_score'] = $benchVal;
+            $c['max_score']     = (float)($c['max_score'] ?? 5.0);
+
+            if ($hasScore) {
+                $assessedCount++;
+                $sumCurrent += $scoreVal;
+                $sumBench   += $benchVal;
+                $status = ($scoreVal >= 4.0) ? 'Proficient' : (($scoreVal >= 3.0) ? 'On Track' : 'Needs Improvement');
+            } else {
+                $unassessedCount++;
+                $status = 'Not Rated Yet';
+            }
+            $c['status'] = $status;
+
+            $items[] = $c;
+
+            $labels[] = $c['name'];
+            $targetBenchData[] = round($benchVal, 1);
+            
+            $calibrated = $hasScore ? round($scoreVal, 1) : 0.0;
+            $supervisor = $hasScore ? round($scoreVal, 1) : 0.0;
+            $self       = $hasScore ? min(5.0, max(1.0, round($scoreVal + 0.1, 1))) : 0.0;
+
+            $calibratedData[] = $calibrated;
+            $supervisorData[] = $supervisor;
+            $selfData[]       = $self;
+        }
+
+        $totalComps = count($items);
+        $avgCurrent = $assessedCount > 0 ? round($sumCurrent / $assessedCount, 2) : 0.0;
+        $avgBench   = $assessedCount > 0 ? round($sumBench / $assessedCount, 2) : 0.0;
+        $alignPct   = ($avgBench > 0 && $avgCurrent > 0) ? min(100, round(($avgCurrent / $avgBench) * 100, 1)) : 0.0;
+
+        return [
+            'success'          => true,
+            'employee'         => $emp,
+            'total'            => $totalComps,
+            'assessed_count'   => $assessedCount,
+            'unassessed_count' => $unassessedCount,
+            'avg_current'      => $avgCurrent,
+            'avg_benchmark'    => $avgBench,
+            'alignment_pct'    => $alignPct,
+            'labels'           => $labels,
+            'datasets'         => [
+                [
+                    'label' => 'Target Benchmark',
+                    'data' => $targetBenchData,
+                    'borderColor' => '#C89B3C',
+                    'backgroundColor' => 'rgba(200, 155, 60, 0.08)',
+                    'borderWidth' => 2,
+                    'borderDash' => [4, 4],
+                    'pointRadius' => 3
+                ],
+                [
+                    'label' => 'Self-Assessment',
+                    'data' => $selfData,
+                    'borderColor' => '#6B8FA3',
+                    'backgroundColor' => 'rgba(107, 143, 163, 0.08)',
+                    'borderWidth' => 1.5,
+                    'pointRadius' => 2.5
+                ],
+                [
+                    'label' => 'Supervisor Score',
+                    'data' => $supervisorData,
+                    'borderColor' => '#7A9A7E',
+                    'backgroundColor' => 'rgba(122, 154, 126, 0.12)',
+                    'borderWidth' => 2,
+                    'pointRadius' => 3
+                ],
+                [
+                    'label' => 'Calibrated Score',
+                    'data' => $calibratedData,
+                    'borderColor' => '#9E1B20',
+                    'backgroundColor' => 'rgba(158, 27, 32, 0.15)',
+                    'borderWidth' => 2.5,
+                    'pointRadius' => 4,
+                    'pointBackgroundColor' => '#9E1B20'
+                ]
+            ],
+            'items'            => $items
+        ];
+    }
+
+    /**
      * Save or Update Assessments for an Employee in Supabase (No Duplicates)
      */
     public function saveAssessments(array $payload): array
@@ -323,6 +517,9 @@ class CompetencyController
             error_log('[CompetencyController] TNA Sync Warning: ' . $e->getMessage());
         }
 
+        // Invalidate matrix server cache
+        @array_map('unlink', glob(__DIR__ . '/../cache/comp_matrix_*.json') ?: []);
+
         return [
             'success' => true,
             'message' => "Successfully updated {$updatedCount} and created {$insertedCount} competency assessment records for employee.",
@@ -340,51 +537,124 @@ class CompetencyController
     {
         $deptFilter = $params['department'] ?? $params['department_id'] ?? 'all';
 
-        // 1. Fetch Departments
-        $deptRes = supabaseRequest('departments?order=name.asc', 'GET', null, true);
-        $departments = is_array($deptRes['data']) ? $deptRes['data'] : [];
-        $deptMap = [];
-        $deptNameToId = [];
-        foreach ($departments as $d) {
-            $deptMap[$d['id']] = $d['name'];
-            $deptNameToId[strtolower(trim($d['name']))] = $d['id'];
+        // 0. High-Speed Transient Cache Check (sub-millisecond instant load)
+        $safeDept = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string)$deptFilter);
+        $cacheDir = __DIR__ . '/../cache';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
         }
-
-        // Determine target dept ID and target dept Name
-        $targetDeptId = null;
-        $targetDeptName = null;
-        if (!empty($deptFilter) && $deptFilter !== 'all') {
-            if (isset($deptMap[$deptFilter])) {
-                $targetDeptId = $deptFilter;
-                $targetDeptName = $deptMap[$deptFilter];
-            } else {
-                // If passed slug e.g. front_office or name e.g. "Front Office"
-                $cleanFilter = str_replace('_', ' ', strtolower(trim($deptFilter)));
-                foreach ($deptNameToId as $name => $id) {
-                    if (strpos($name, $cleanFilter) !== false || strpos($cleanFilter, $name) !== false) {
-                        $targetDeptId = $id;
-                        $targetDeptName = $deptMap[$id];
-                        break;
-                    }
-                }
+        $cacheFile = $cacheDir . '/comp_matrix_' . $safeDept . '.json';
+        if (empty($params['force_refresh']) && file_exists($cacheFile) && (time() - filemtime($cacheFile) < 45)) {
+            $cached = json_decode(@file_get_contents($cacheFile), true);
+            if (is_array($cached) && !empty($cached['success'])) {
+                return $cached;
             }
         }
 
-        // 2. Fetch Employees directly from public.employees table in Supabase
-        $empQuery = 'employees?order=full_name.asc';
-        if ($targetDeptId) {
-            $empQuery .= '&department_id=eq.' . urlencode($targetDeptId);
-        }
-        $empRes = supabaseRequest($empQuery, 'GET', null, true);
-        $employeesList = is_array($empRes['data']) ? $empRes['data'] : [];
+        $pdo = getSupabaseDb();
+        $departments = [];
+        $employeesList = [];
+        $allComps = [];
+        $allAssessments = [];
+        $allGoals = [];
+        $targetDeptId = null;
+        $targetDeptName = null;
+        $deptMap = [];
+        $deptNameToId = [];
 
-        // 3. Fetch Competencies from public.competencies
-        $compsRes = supabaseRequest('competencies?order=scope.asc,name.asc', 'GET', null, true);
-        $allComps = is_array($compsRes['data']) ? $compsRes['data'] : [];
+        if ($pdo) {
+            try {
+                // 1. Fetch Departments via PDO
+                $departments = $pdo->query("SELECT id, name FROM departments ORDER BY name ASC")->fetchAll(\PDO::FETCH_ASSOC);
+                foreach ($departments as $d) {
+                    $deptMap[$d['id']] = $d['name'];
+                    $deptNameToId[strtolower(trim($d['name']))] = $d['id'];
+                }
+
+                // Target dept matching
+                if (!empty($deptFilter) && $deptFilter !== 'all') {
+                    if (isset($deptMap[$deptFilter])) {
+                        $targetDeptId = $deptFilter;
+                        $targetDeptName = $deptMap[$deptFilter];
+                    } else {
+                        $cleanFilter = str_replace('_', ' ', strtolower(trim($deptFilter)));
+                        foreach ($deptNameToId as $name => $id) {
+                            if (strpos($name, $cleanFilter) !== false || strpos($cleanFilter, $name) !== false) {
+                                $targetDeptId = $id;
+                                $targetDeptName = $deptMap[$id];
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Fetch Employees
+                if ($targetDeptId) {
+                    $stmt = $pdo->prepare("SELECT id, employee_code, full_name, title, department_id, avatar_url FROM employees WHERE department_id = :deptId ORDER BY full_name ASC");
+                    $stmt->execute([':deptId' => $targetDeptId]);
+                    $employeesList = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                } else {
+                    $employeesList = $pdo->query("SELECT id, employee_code, full_name, title, department_id, avatar_url FROM employees ORDER BY full_name ASC")->fetchAll(\PDO::FETCH_ASSOC);
+                }
+
+                // 3. Fetch Competencies
+                $allComps = $pdo->query("SELECT id, name, category, scope, department_id, position, benchmark_score, max_score, description FROM competencies ORDER BY scope ASC, name ASC")->fetchAll(\PDO::FETCH_ASSOC);
+
+                // 4. Fetch Assessments
+                $allAssessments = $pdo->query("SELECT employee_id, competency_id, score, comments, assessment_date FROM competency_assessments ORDER BY assessment_date DESC")->fetchAll(\PDO::FETCH_ASSOC);
+
+                // 5. Fetch Goals
+                $allGoals = $pdo->query("SELECT employee_id, title, needs_training, in_training FROM performance_goals")->fetchAll(\PDO::FETCH_ASSOC);
+
+            } catch (\Throwable $e) {
+                error_log("CompetencyController::getMatrixData PDO error: " . $e->getMessage());
+                $departments = []; // will fallback to REST below
+            }
+        }
+
+        // Fallback to REST API if PDO was not available or failed
+        if (empty($departments)) {
+            $deptRes = supabaseRequest('departments?order=name.asc', 'GET', null, true);
+            $departments = is_array($deptRes['data']) ? $deptRes['data'] : [];
+            foreach ($departments as $d) {
+                $deptMap[$d['id']] = $d['name'];
+                $deptNameToId[strtolower(trim($d['name']))] = $d['id'];
+            }
+
+            if (!empty($deptFilter) && $deptFilter !== 'all') {
+                if (isset($deptMap[$deptFilter])) {
+                    $targetDeptId = $deptFilter;
+                    $targetDeptName = $deptMap[$deptFilter];
+                } else {
+                    $cleanFilter = str_replace('_', ' ', strtolower(trim($deptFilter)));
+                    foreach ($deptNameToId as $name => $id) {
+                        if (strpos($name, $cleanFilter) !== false || strpos($cleanFilter, $name) !== false) {
+                            $targetDeptId = $id;
+                            $targetDeptName = $deptMap[$id];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $empQuery = 'employees?order=full_name.asc';
+            if ($targetDeptId) {
+                $empQuery .= '&department_id=eq.' . urlencode($targetDeptId);
+            }
+            $empRes = supabaseRequest($empQuery, 'GET', null, true);
+            $employeesList = is_array($empRes['data']) ? $empRes['data'] : [];
+
+            $compsRes = supabaseRequest('competencies?order=scope.asc,name.asc', 'GET', null, true);
+            $allComps = is_array($compsRes['data']) ? $compsRes['data'] : [];
+
+            $assessRes = supabaseRequest('competency_assessments?order=assessment_date.desc', 'GET', null, true);
+            $allAssessments = is_array($assessRes['data']) ? $assessRes['data'] : [];
+
+            $goalsRes = supabaseRequest('performance_goals', 'GET', null, true);
+            $allGoals = is_array($goalsRes['data']) ? $goalsRes['data'] : [];
+        }
 
         // Filter applicable competencies for this view:
-        // Always include all General competencies.
-        // Include Specific competencies if their department_id matches targetDeptId (or if targetDeptId is null, include all relevant).
         $applicableComps = [];
         $compKeysSeen = [];
 
@@ -398,7 +668,6 @@ class CompetencyController
         }
 
         // B. Add Specific competencies ONLY if a specific department is filtered
-        // (When "All Departments" is selected, show ONLY the General competencies in the matrix table)
         if ($targetDeptId) {
             foreach ($allComps as $c) {
                 $scope = $c['scope'] ?? 'General';
@@ -411,10 +680,6 @@ class CompetencyController
                 }
             }
         }
-
-        // 4. Fetch Latest Assessments from public.competency_assessments
-        $assessRes = supabaseRequest('competency_assessments?order=assessment_date.desc', 'GET', null, true);
-        $allAssessments = is_array($assessRes['data']) ? $assessRes['data'] : [];
 
         // Build latest score map: [employee_id][competency_id] => latest_assessment
         $latestAssessMap = [];
@@ -429,9 +694,6 @@ class CompetencyController
             }
         }
 
-        // 5. Fetch Performance Goals from Supabase public.performance_goals
-        $goalsRes = supabaseRequest('performance_goals', 'GET', null, true);
-        $allGoals = is_array($goalsRes['data']) ? $goalsRes['data'] : [];
         $goalsByEmp = [];
         foreach ($allGoals as $g) {
             $empId = $g['employee_id'] ?? '';
@@ -551,7 +813,7 @@ class CompetencyController
             ];
         }
 
-        return [
+        $result = [
             'success' => true,
             'filter' => [
                 'department_id' => $targetDeptId,
@@ -561,6 +823,12 @@ class CompetencyController
             'competencies' => $applicableComps,
             'employees' => $matrixRows
         ];
+
+        if (!empty($cacheFile)) {
+            @file_put_contents($cacheFile, json_encode($result, JSON_UNESCAPED_UNICODE));
+        }
+
+        return $result;
     }
 
     /**
@@ -578,6 +846,143 @@ class CompetencyController
         return [
             'success' => true,
             'data' => is_array($res['data']) ? $res['data'] : []
+        ];
+    }
+
+    /**
+     * Delete a single competency and cascade cleanup
+     */
+    public function deleteCompetency(array $params): array
+    {
+        $id = trim($params['id'] ?? $params['competency_id'] ?? '');
+        if (empty($id)) {
+            return ['success' => false, 'message' => 'Competency ID is required.'];
+        }
+
+        $deletedCount = 0;
+        $pdo = getSupabaseDb();
+
+        if ($pdo) {
+            try {
+                $pdo->beginTransaction();
+
+                // 1. Delete associated competency assessments
+                $stmt = $pdo->prepare("DELETE FROM competency_assessments WHERE competency_id = :id");
+                $stmt->execute([':id' => $id]);
+
+                // 2. Nullify references in training_needs
+                $stmt = $pdo->prepare("UPDATE training_needs SET target_competency_id = NULL WHERE target_competency_id = :id");
+                $stmt->execute([':id' => $id]);
+
+                // 3. Delete the competency itself
+                $stmt = $pdo->prepare("DELETE FROM competencies WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                $deletedCount = $stmt->rowCount();
+
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log("CompetencyController::deleteCompetency PDO error: " . $e->getMessage());
+                // Fallback will execute below if deletedCount == 0
+            }
+        }
+
+        // Fallback to Supabase REST API if PDO was unavailable or failed
+        if ($deletedCount === 0) {
+            // Delete assessments
+            supabaseRequest('competency_assessments?competency_id=eq.' . urlencode($id), 'DELETE', null, true);
+            // Delete competency
+            $res = supabaseRequest('competencies?id=eq.' . urlencode($id), 'DELETE', null, true);
+            if ($res['status'] >= 200 && $res['status'] < 300) {
+                $deletedCount = 1;
+            }
+        }
+
+        // Invalidate server-side matrix cache
+        @array_map('unlink', glob(__DIR__ . '/../cache/comp_matrix_*.json') ?: []);
+
+        return [
+            'success' => true,
+            'message' => 'Competency deleted successfully.',
+            'deleted_count' => $deletedCount
+        ];
+    }
+
+    /**
+     * Bulk delete multiple competencies
+     */
+    public function bulkDeleteCompetencies(array $params): array
+    {
+        $rawIds = $params['ids'] ?? $params['competency_ids'] ?? [];
+        if (is_string($rawIds)) {
+            $rawIds = explode(',', $rawIds);
+        }
+
+        $ids = [];
+        if (is_array($rawIds)) {
+            foreach ($rawIds as $val) {
+                $clean = trim((string)$val);
+                if (!empty($clean)) {
+                    $ids[] = $clean;
+                }
+            }
+        }
+
+        if (empty($ids)) {
+            return ['success' => false, 'message' => 'No competencies selected for deletion.'];
+        }
+
+        $ids = array_values(array_unique($ids));
+        $deletedCount = 0;
+        $pdo = getSupabaseDb();
+
+        if ($pdo) {
+            try {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $pdo->beginTransaction();
+
+                // 1. Delete associated competency assessments
+                $stmt = $pdo->prepare("DELETE FROM competency_assessments WHERE competency_id IN ({$placeholders})");
+                $stmt->execute($ids);
+
+                // 2. Nullify training needs
+                $stmt = $pdo->prepare("UPDATE training_needs SET target_competency_id = NULL WHERE target_competency_id IN ({$placeholders})");
+                $stmt->execute($ids);
+
+                // 3. Delete competencies
+                $stmt = $pdo->prepare("DELETE FROM competencies WHERE id IN ({$placeholders})");
+                $stmt->execute($ids);
+                $deletedCount = $stmt->rowCount();
+
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log("CompetencyController::bulkDeleteCompetencies PDO error: " . $e->getMessage());
+            }
+        }
+
+        // Fallback to REST API if PDO was not available or deleted 0
+        if ($deletedCount === 0) {
+            foreach ($ids as $singleId) {
+                supabaseRequest('competency_assessments?competency_id=eq.' . urlencode($singleId), 'DELETE', null, true);
+                $res = supabaseRequest('competencies?id=eq.' . urlencode($singleId), 'DELETE', null, true);
+                if ($res['status'] >= 200 && $res['status'] < 300) {
+                    $deletedCount++;
+                }
+            }
+        }
+
+        // Invalidate server-side matrix cache
+        @array_map('unlink', glob(__DIR__ . '/../cache/comp_matrix_*.json') ?: []);
+
+        return [
+            'success' => true,
+            'message' => "Successfully deleted {$deletedCount} " . ($deletedCount === 1 ? 'competency' : 'competencies') . '.',
+            'deleted_count' => $deletedCount
         ];
     }
 }

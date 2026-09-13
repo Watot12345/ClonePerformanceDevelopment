@@ -66,6 +66,10 @@
 
                     <!-- Right: Actions -->
                     <div class="flex items-center space-x-2">
+                        <button onclick="openManageCompetenciesModal()" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1.5 shadow-2xs hover:bg-slate-100 transition" title="Manage, delete, or bulk-remove competencies">
+                            <i class="fas fa-list-check text-slate-600"></i>
+                            <span>Manage Catalog</span>
+                        </button>
                         <button onclick="openAddCompetencyModal()" class="btn-primary px-3.5 py-1.5 text-xs font-bold flex items-center space-x-1.5 shadow-2xs">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Add Competency</span>
@@ -104,16 +108,42 @@
                 </div>
             </div>
 
-            <!-- Dynamic Table from Supabase -->
+            <!-- Dynamic Table from Supabase with Initial Loading Shimmer Skeleton -->
             <div class="overflow-x-auto custom-scrollbar border border-[#E8DEDC] rounded-2xl bg-white shadow-2xs">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead id="comp-matrix-thead" class="bg-[#FAF8F7] text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-[#E8DEDC]">
                         <tr id="comp-matrix-thead-tr">
-                            <!-- Populated dynamically by renderCompetencyMatrixTable() -->
+                            <th class="px-4 py-3.5 sticky left-0 bg-brand-canvas z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] border-r border-brand-border min-w-65 text-slate-800 font-bold">
+                                Associate &amp; Role
+                            </th>
+                            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+                            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+                            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+                            <th class="px-4 py-3 text-center min-w-35 border-r border-brand-border/50"><div class="h-3.5 w-24 bg-slate-200 rounded mx-auto animate-pulse"></div></th>
+                            <th class="px-4 py-3.5 text-center min-w-30 text-slate-800 font-bold border-r border-brand-border/50">Overall Proficiency</th>
+                            <th class="px-4 py-3.5 text-right min-w-27.5 text-slate-800 font-bold pr-5 sticky right-0 bg-brand-canvas z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.06)] border-l border-brand-border">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="comp-matrix-tbody" class="divide-y divide-[#E8DEDC]">
-                        <!-- Populated dynamically by renderCompetencyMatrixTable() -->
+                        <?php for ($i = 0; $i < 5; $i++): ?>
+                        <tr class="animate-pulse bg-white border-b border-brand-border/40">
+                            <td class="px-4 py-3.5 sticky left-0 bg-white z-10 border-r border-brand-border/60 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.04)]">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-8 h-8 rounded-full bg-slate-200 shrink-0"></div>
+                                    <div class="space-y-1.5 flex-1 min-w-0">
+                                        <div class="h-3.5 w-28 bg-slate-200 rounded"></div>
+                                        <div class="h-2.5 w-20 bg-slate-100 rounded"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                            <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                            <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                            <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-12 bg-slate-100 rounded-full mx-auto"></div></td>
+                            <td class="px-3.5 py-3.5 text-center border-r border-brand-border/40"><div class="h-5 w-14 bg-slate-200 rounded-full mx-auto"></div></td>
+                            <td class="px-4 py-3.5 text-right sticky right-0 bg-white z-10 border-l border-brand-border/60 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.04)]"><div class="h-6 w-16 bg-slate-100 rounded-lg ml-auto"></div></td>
+                        </tr>
+                        <?php endfor; ?>
                     </tbody>
                 </table>
             </div>

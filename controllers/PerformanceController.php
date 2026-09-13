@@ -157,18 +157,19 @@ class PerformanceController
             $role = $payload['role'] ?? 'Associate';
         }
 
-        // Check if employee already has an active (non-completed) goal
+        // Check if employee already has an active (non-completed and non-failed) goal.
+        // If the previous goal set by the employee has status 'Failed', 'Completed', or 'Done', allow employee to create another goal.
         $existingGoals = $this->goalModel->getGoalsByEmployee($employeeId);
         $activeGoals = array_filter($existingGoals, function($g) {
             $status = strtolower(trim($g['status'] ?? ''));
-            return $status !== 'completed' && $status !== 'done';
+            return $status !== 'completed' && $status !== 'done' && $status !== 'failed';
         });
 
         if (!empty($activeGoals)) {
             return [
                 'success' => false,
                 'data'    => null,
-                'message' => "Employees can create only 1 max in-progress goal. Complete or finish existing active goals before setting a new one."
+                'message' => "Employees can have only 1 active in-progress goal. Complete, finish, or conclude existing active goals before setting a new one."
             ];
         }
 

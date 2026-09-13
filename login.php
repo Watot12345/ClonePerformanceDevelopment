@@ -1,5 +1,9 @@
 <?php
 require_once 'config/config.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+$isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -30,15 +34,17 @@ require_once 'config/config.php';
             };
         </script>
 
-        <!-- Redirect if already authenticated -->
+        <!-- Redirect if already authenticated / Clear stale tokens if not authenticated -->
         <script>
+            const isServerAuth = <?= $isServerAuth ? 'true' : 'false' ?>;
             const urlParams = new URLSearchParams(window.location.search);
             const isLoggingOut = urlParams.get('logout') === '1';
-            if (isLoggingOut) {
+            if (isLoggingOut || !isServerAuth) {
+                // Clear any stale local auth so it never gets stuck in a bounce loop
                 localStorage.removeItem('oxford_session_auth');
                 localStorage.removeItem('oxford_session_user');
                 localStorage.removeItem('oxford_session_role');
-            } else if (localStorage.getItem('oxford_session_auth') === 'true') {
+            } else if (isServerAuth && localStorage.getItem('oxford_session_auth') === 'true') {
                 window.location.replace('index.php');
             }
         </script>

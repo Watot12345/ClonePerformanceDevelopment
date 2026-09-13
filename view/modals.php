@@ -2372,6 +2372,136 @@
     </div>
 </div>
 
+<!-- Modal: Manage Competency Catalog & Bulk Delete -->
+<div id="modal-manage-competencies" class="fixed inset-0 modal-overlay z-50 hidden items-center justify-center p-4">
+    <div class="modal-card max-w-4xl w-full overflow-hidden max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-brand-border">
+        <!-- Header -->
+        <div class="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-primary-50 text-primary flex items-center justify-center text-base font-bold border border-primary-100/80">
+                    <i class="fas fa-list-check"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="badge-primary text-[10px]">Competency Catalog</span>
+                        <span id="manage-comp-total-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">0 items</span>
+                    </div>
+                    <h3 class="font-heading font-bold text-base text-slate-900 mt-0.5">Manage Competency Catalog</h3>
+                </div>
+            </div>
+            <button onclick="closeModal('modal-manage-competencies')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition hover:rotate-90" aria-label="Close">
+                <i class="fas fa-times text-xs"></i>
+            </button>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="px-6 py-3 bg-[#FAF8F7] border-b border-brand-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+            <!-- Search & Filters -->
+            <div class="flex flex-wrap items-center gap-2 flex-1">
+                <div class="relative flex-1 min-w-[180px] max-w-xs">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="manage-comp-search" oninput="filterManageCompetenciesList()" placeholder="Search name, key, or category..." class="w-full pl-8.5 pr-3 py-1.5 text-xs rounded-xl border border-brand-border bg-white focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                <select id="manage-comp-scope-filter" onchange="filterManageCompetenciesList()" class="px-3 py-1.5 text-xs rounded-xl border border-brand-border bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="all">All Scopes</option>
+                    <option value="General">General Only</option>
+                    <option value="Specific">Specific Only</option>
+                </select>
+                <select id="manage-comp-category-filter" onchange="filterManageCompetenciesList()" class="px-3 py-1.5 text-xs rounded-xl border border-brand-border bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="all">All Categories</option>
+                    <option value="Core Hospitality">Core Hospitality</option>
+                    <option value="Technical Systems">Technical Systems</option>
+                    <option value="Compliance & Safety">Compliance &amp; Safety</option>
+                    <option value="Guest Relations">Guest Relations</option>
+                    <option value="Operational Mastery">Operational Mastery</option>
+                    <option value="Culinary Operations">Culinary Operations</option>
+                    <option value="Leadership & Strategy">Leadership &amp; Strategy</option>
+                </select>
+            </div>
+
+            <!-- Quick Add Shortcut -->
+            <div class="flex items-center space-x-2 shrink-0">
+                <button onclick="closeModal('modal-manage-competencies'); openAddCompetencyModal();" class="btn-primary px-3 py-1.5 text-xs font-bold flex items-center space-x-1.5 shadow-2xs">
+                    <i class="fas fa-plus text-[10px]"></i>
+                    <span>Add New</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Bulk Selection Action Bar (Appears when 1+ rows selected) -->
+        <div id="manage-comp-bulk-bar" class="hidden px-6 py-2.5 bg-rose-50 border-b border-rose-200/80 flex items-center justify-between shrink-0 transition-all">
+            <div class="flex items-center space-x-2 text-xs">
+                <span class="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] font-bold">
+                    <i class="fas fa-check"></i>
+                </span>
+                <span class="font-bold text-rose-900">
+                    <span id="manage-comp-selected-count">0</span> competencies selected
+                </span>
+                <span class="text-slate-400">|</span>
+                <button type="button" onclick="clearAllCompetencySelections()" class="text-slate-600 hover:text-slate-900 underline font-medium text-xs">
+                    Clear selection
+                </button>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button type="button" id="btn-manage-comp-bulk-delete" onclick="handleBulkDeleteCompetencies()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition active:scale-98">
+                    <i class="fas fa-trash-alt text-[10px]"></i>
+                    <span>Delete Selected (<span id="manage-comp-bulk-count-btn">0</span>)</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead class="bg-[#FAF8F7] text-slate-600 font-bold uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-brand-border">
+                    <tr>
+                        <th class="w-10 px-4 py-3 text-center">
+                            <input type="checkbox" id="manage-comp-select-all" onchange="toggleSelectAllCompetencies(this.checked)" class="rounded text-primary focus:ring-primary w-3.5 h-3.5 cursor-pointer" title="Select / Deselect all visible">
+                        </th>
+                        <th class="px-4 py-3 text-slate-800 font-bold">Competency Details</th>
+                        <th class="px-4 py-3 text-slate-800 font-bold">Category</th>
+                        <th class="px-4 py-3 text-slate-800 font-bold">Scope &amp; Coverage</th>
+                        <th class="px-4 py-3 text-center text-slate-800 font-bold">Benchmark</th>
+                        <th class="px-4 py-3 text-right text-slate-800 font-bold pr-6">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="manage-comp-tbody" class="divide-y divide-slate-100">
+                    <!-- Dynamic Rows populated by loadManageCompetenciesList() -->
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-400">
+                            <div class="flex items-center justify-center space-x-2">
+                                <i class="fas fa-spinner fa-spin text-primary text-base"></i>
+                                <span class="font-medium">Loading competencies catalog...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Empty State -->
+            <div id="manage-comp-empty" class="hidden p-12 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl mx-auto mb-3">
+                    <i class="fas fa-folder-open"></i>
+                </div>
+                <h4 class="font-bold text-slate-700 text-sm">No competencies found</h4>
+                <p class="text-xs text-slate-400 mt-1">Try adjusting your search query or scope filter.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-3.5 border-t border-slate-100 bg-[#FAF8F7] flex items-center justify-between text-xs text-slate-500 shrink-0">
+            <div>
+                <span id="manage-comp-summary-text" class="font-medium text-slate-600">Showing 0 competencies</span>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button type="button" onclick="closeModal('modal-manage-competencies')" class="btn-secondary px-4 py-2 text-xs font-semibold">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Create 70-20-10 IDP Milestone -->
 <div id="modal-create-idp" class="fixed inset-0 modal-overlay z-50 hidden items-center justify-center p-4">
     <div class="modal-card max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">

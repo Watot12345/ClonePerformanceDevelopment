@@ -11,7 +11,8 @@ try {
             $empId = $_GET['employeeId'] ?? ($_GET['employee_id'] ?? null);
             $filterType = $_GET['filterType'] ?? ($_GET['filter_type'] ?? null);
             $filterVal = $_GET['filterValue'] ?? ($_GET['filter_value'] ?? null);
-            echo json_encode($controller->getSocialOverview($empId, $filterType, $filterVal));
+            $role = $_GET['role'] ?? ($_SESSION['role'] ?? null);
+            echo json_encode($controller->getSocialOverview($empId, $filterType, $filterVal, $role));
             break;
 
         case 'get_roster':
@@ -20,7 +21,8 @@ try {
 
         case 'get_ledger':
             $empId = $_GET['employeeId'] ?? ($_GET['employee_id'] ?? null);
-            echo json_encode($controller->getLedger($empId));
+            $role = $_GET['role'] ?? ($_SESSION['role'] ?? null);
+            echo json_encode($controller->getLedger($empId, $role));
             break;
 
         case 'get_top_champions':

@@ -468,9 +468,17 @@ function renderEmployeePulseGoals(goals) {
             .finally(() => window._fetchingPulseEvals = false);
     }
 
-    // Check Pending Goals Limit (Max 2 Pending allowed for Employee)
-    const pendingGoals = empGoals.filter(g => g.status !== 'Approved');
-    const isBlockedFromSettingGoal = isAssociate && pendingGoals.length >= 2;
+    // Check Pending / In-progress Goals Limit
+    // Goals with status 'Completed', 'Done', or 'Failed' are concluded and do NOT block creating another goal
+    const activeRunningGoals = empGoals.filter(g => {
+        const st = (g.status || '').toLowerCase().trim();
+        return st !== 'completed' && st !== 'done' && st !== 'failed';
+    });
+    const pendingGoals = empGoals.filter(g => {
+        const st = (g.status || '').toLowerCase().trim();
+        return st === 'pending approval' || st === 'pending' || st === 'draft';
+    });
+    const isBlockedFromSettingGoal = isAssociate && (activeRunningGoals.length >= 2 || pendingGoals.length >= 2);
 
     const setGoalBtns = document.querySelectorAll('#btn-open-set-goal-overview, #btn-open-set-goal-perf, [data-action="set-goal"]');
     setGoalBtns.forEach(btn => {
@@ -1448,11 +1456,16 @@ async function handleGoalSubmit(e) {
     let role = isAssociate ? 'Associate' : (selectedOpt ? (selectedOpt.getAttribute('data-role') || currentRole) : currentRole);
     const targetScope = selectedOpt ? (selectedOpt.getAttribute('data-scope') || 'single') : 'single';
 
-    // Requirement 0: 1 Max in-progress goal constraint check
-    const existingRunningGoal = (window.dbGoals || []).find(g => isSameEmployee(g.employee_id, employeeId) && g.status !== 'Completed');
+    // Requirement: Allow employee to create another goal if previous goals are 'Completed', 'Done', or 'Failed'
+    const existingRunningGoal = (window.dbGoals || []).find(g => {
+        if (!isSameEmployee(g.employee_id, employeeId)) return false;
+        const st = (g.status || '').toLowerCase().trim();
+        return st !== 'completed' && st !== 'done' && st !== 'failed';
+    });
+
     if (existingRunningGoal) {
         if (typeof showToast === 'function') {
-            showToast(` Cannot create goal: This employee already has an active in-progress goal ("${existingRunningGoal.title}"). Employees can only create a new goal if they have no active goals or their set goals are marked as Completed.`, 'error');
+            showToast(`Cannot create goal: This employee already has an active in-progress goal ("${existingRunningGoal.title}"). Employees can set a new goal once existing goals are Completed or Failed.`, 'error');
         }
         return;
     }
