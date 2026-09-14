@@ -46,7 +46,7 @@ async function test() {
         `
     });
 
-    await send('Page.navigate', { url: 'http://localhost:8080/index.php' });
+    await send('Page.navigate', { url: 'http://[::1]:8080/index.php' });
     await new Promise(r => setTimeout(r, 3000));
 
     // Check chart and overlay status in browser

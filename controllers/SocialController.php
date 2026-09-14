@@ -199,36 +199,22 @@ class SocialController
      */
     public function giveRecognition(array $payload): array
     {
-        $senderType = $payload['senderType'] ?? ($payload['sender_type'] ?? ($_SESSION['role'] ?? 'Supervisor'));
-        $defaultSenderName = ($senderType === 'Supervisor') ? ($_SESSION['full_name'] ?? 'Chef Marco Rossi') : ($_SESSION['full_name'] ?? 'Maria Santos');
-        $defaultSenderRole = ($senderType === 'Supervisor') ? 'Supervisor' : 'Front Desk Host';
-        $defaultSenderId = ($senderType === 'Supervisor') ? ($_SESSION['user_id'] ?? ($_SESSION['employee_id'] ?? 'emp-102')) : ($_SESSION['user_id'] ?? ($_SESSION['employee_id'] ?? 'emp-101'));
-        $defaultSenderAvatar = ($senderType === 'Supervisor')
-            ? 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+        $senderType = $payload['senderType'] ?? ($payload['sender_type'] ?? ($_SESSION['role'] ?? 'Staff'));
+        $defaultSenderName = $_SESSION['full_name'] ?? 'Colleague';
+        $defaultSenderRole = $_SESSION['role'] ?? 'Staff';
+        $defaultSenderId = $_SESSION['user_id'] ?? ($_SESSION['employee_id'] ?? '');
+        $defaultSenderAvatar = $_SESSION['avatar'] ?? '';
 
         $senderName = $payload['senderName'] ?? ($payload['sender_name'] ?? $defaultSenderName);
-        if (stripos($senderName, 'Elena Vance') !== false) {
-            $senderName = $defaultSenderName;
-        }
-
         $senderRole = $payload['senderRole'] ?? ($payload['sender_role'] ?? $defaultSenderRole);
-        if (stripos($senderRole, 'HR Director') !== false) {
-            $senderRole = $defaultSenderRole;
-        }
-
         $senderId = $payload['senderId'] ?? ($payload['sender_id'] ?? $defaultSenderId);
-        if ($senderId === 'emp-105') {
-            $senderId = $defaultSenderId;
-        }
-
         $senderAvatar = $payload['senderAvatar'] ?? ($payload['sender_avatar'] ?? $defaultSenderAvatar);
 
-        $receiverId = $payload['receiverId'] ?? ($payload['receiver_id'] ?? 'emp-101');
-        $receiverName = $payload['receiverName'] ?? ($payload['receiver_name'] ?? 'Maria Santos');
-        $receiverRole = $payload['receiverRole'] ?? ($payload['receiver_role'] ?? 'Front Desk Host');
-        $receiverDept = $payload['receiverDept'] ?? ($payload['receiver_dept'] ?? ($payload['receiverDepartment'] ?? 'Front Office'));
-        $receiverAvatar = $payload['receiverAvatar'] ?? ($payload['receiver_avatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80');
+        $receiverId = $payload['receiverId'] ?? ($payload['receiver_id'] ?? '');
+        $receiverName = $payload['receiverName'] ?? ($payload['receiver_name'] ?? 'Associate');
+        $receiverRole = $payload['receiverRole'] ?? ($payload['receiver_role'] ?? 'Associate');
+        $receiverDept = $payload['receiverDept'] ?? ($payload['receiver_dept'] ?? ($payload['receiverDepartment'] ?? 'General'));
+        $receiverAvatar = $payload['receiverAvatar'] ?? ($payload['receiver_avatar'] ?? '');
 
         $categoryKey = $payload['categoryKey'] ?? ($payload['category_key'] ?? 'guest_service');
         $categoryLabel = $payload['categoryLabel'] ?? ($payload['category_label'] ?? 'Great Guest Service');
@@ -285,11 +271,19 @@ class SocialController
      */
     public function triggerLmsQuizPass(array $payload): array
     {
-        $recipientId = $payload['employeeId'] ?? 'emp-101';
+        $recipientId = $payload['employeeId'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''));
         $score = (int)($payload['score'] ?? $payload['amount'] ?? 100);
         $lmsPrescribed = $payload['lms_prescribed'] ?? $payload['prescribed_id'] ?? null;
         $quizName = $payload['quizName'] ?? 'Standard Operating Procedure';
         
+        if (empty($recipientId)) {
+            return [
+                'success' => false,
+                'message' => 'Employee ID is required to award quiz XP.',
+                'data' => null
+            ];
+        }
+
         if ($score < 80) {
             return [
                 'success' => false,
@@ -329,15 +323,9 @@ class SocialController
      */
     public function addComment(string $postId, array $payload): array
     {
-        $rawName = $payload['author_name'] ?? ($payload['authorName'] ?? ($_SESSION['full_name'] ?? 'Hospitality Colleague'));
-        $authorName = (stripos($rawName, 'Elena Vance') !== false) ? ($_SESSION['full_name'] ?? 'Chef Marco Rossi') : $rawName;
-
-        $rawRole = $payload['author_role'] ?? ($payload['authorRole'] ?? ($_SESSION['role'] ?? 'Team Associate'));
-        $authorRole = (stripos($rawRole, 'HR Director') !== false) ? 'Supervisor' : $rawRole;
-
-        $authorAvatar = $payload['author_avatar'] ?? ($payload['authorAvatar'] ?? ($authorRole === 'Supervisor' 
-            ? 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'));
+        $authorName = $payload['author_name'] ?? ($payload['authorName'] ?? ($_SESSION['full_name'] ?? 'Colleague'));
+        $authorRole = $payload['author_role'] ?? ($payload['authorRole'] ?? ($_SESSION['role'] ?? 'Associate'));
+        $authorAvatar = $payload['author_avatar'] ?? ($payload['authorAvatar'] ?? ($_SESSION['avatar'] ?? ''));
         $text = trim($payload['text'] ?? '');
 
         if (empty($text)) {
@@ -367,9 +355,9 @@ class SocialController
      */
     public function logShiftSentiment(array $payload): array
     {
-        $empId = $payload['employeeId'] ?? 'emp-101';
-        $empName = $payload['employeeName'] ?? 'Maria Santos';
-        $dept = $payload['department'] ?? 'Front Office';
+        $empId = $payload['employeeId'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''));
+        $empName = $payload['employeeName'] ?? ($_SESSION['full_name'] ?? 'Associate');
+        $dept = $payload['department'] ?? ($_SESSION['department'] ?? 'General');
         $score = (int)($payload['sentimentScore'] ?? ($payload['score'] ?? 5));
         $period = $payload['shiftPeriod'] ?? 'Morning Shift';
         $sentimentType = $payload['sentimentType'] ?? ($score >= 4 ? 'Positive' : ($score === 3 ? 'Neutral' : 'Stressful'));

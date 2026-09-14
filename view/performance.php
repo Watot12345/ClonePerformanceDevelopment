@@ -495,11 +495,15 @@
                                         </div>
 
                                         <!-- Header Action Controls -->
-                                        <div class="flex items-center gap-2 self-end lg:self-center flex-wrap">
+                                        <div class="flex items-center gap-2.5 self-end lg:self-center flex-wrap">
                                             <div class="search-box-pixel">
                                                 <i class="fas fa-magnifying-glass absolute left-2.5 text-slate-400 text-xs pointer-events-none"></i>
                                                 <input id="search-eval-emp" oninput="onEvalEmployeeSearch(this.value)" type="text" placeholder="Search employee..." class="search-input-pixel" />
                                             </div>
+                                            <button type="button" id="btn-ai-appraisal-recommendations" onclick="openAIAppraisalRecommendationsModal(false)" class="btn-primary px-3.5 py-2 text-xs font-bold rounded-xl shadow-xs transition inline-flex items-center space-x-1.5 cursor-pointer">
+                                                <i class="fas fa-wand-magic-sparkles text-amber-300 text-xs"></i>
+                                                <span>AI Recommendations</span>
+                                            </button>
                                         </div>
                                     </div>
 

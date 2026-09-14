@@ -270,7 +270,7 @@ class LmsController
         $desc = trim($postData['description'] ?? '');
         $learningOutcomes = trim($postData['learning_outcomes'] ?? '');
         $status = in_array($postData['status'] ?? '', ['Draft', 'Published', 'Archived']) ? $postData['status'] : 'Published';
-        $uploadedBy = $postData['uploaded_by'] ?? 'emp-103';
+        $uploadedBy = $postData['uploaded_by'] ?? null;
         $isMandatory = !empty($postData['is_mandatory']) || !empty($postData['manatory']) || (isset($postData['mandatory']) && ($postData['mandatory'] === true || $postData['mandatory'] === 1 || $postData['mandatory'] === '1' || $postData['mandatory'] === 'true'));
 
         $now = date('c');
@@ -401,7 +401,7 @@ class LmsController
         $desc = trim($postData['description'] ?? '');
         $learningOutcomes = trim($postData['learning_outcomes'] ?? '');
         $status = in_array($postData['status'] ?? '', ['Draft', 'Published', 'Archived']) ? $postData['status'] : 'Published';
-        $uploadedBy = $postData['uploaded_by'] ?? 'emp-103';
+        $uploadedBy = $postData['uploaded_by'] ?? null;
         $isMandatory = !empty($postData['is_mandatory']) || !empty($postData['manatory']) || (isset($postData['mandatory']) && ($postData['mandatory'] === true || $postData['mandatory'] === 1 || $postData['mandatory'] === '1' || $postData['mandatory'] === 'true'));
 
         // 1. Upload to Supabase Storage in "documents" bucket
@@ -470,21 +470,23 @@ class LmsController
      */
     public function prescribeToAllEmployees(string $lmsId): int
     {
-        $empRes = supabaseRequest('employees', 'GET', null, true);
-        $employees = is_array($empRes['data'] ?? null) ? $empRes['data'] : [];
+        $pdo = getSupabaseDb();
+        $employees = [];
+        if ($pdo) {
+            try {
+                $employees = $pdo->query("SELECT id, full_name FROM public.employees ORDER BY full_name ASC")->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+            } catch (\Throwable $e) {}
+        }
         if (empty($employees)) {
-            $employees = [
-                ['id' => 'emp-101', 'full_name' => 'Maria Santos'],
-                ['id' => 'emp-102', 'full_name' => 'Chef Marco Rossi'],
-                ['id' => 'emp-103', 'full_name' => 'John Marco']
-            ];
+            $empRes = supabaseRequest('employees', 'GET', null, true);
+            $employees = is_array($empRes['data'] ?? null) ? $empRes['data'] : [];
         }
 
         $prescribedCount = 0;
         foreach ($employees as $emp) {
             $empId = $emp['id'] ?? null;
             if (!$empId) continue;
-            $this->prescribeDocument([
+            $res = $this->prescribeDocument([
                 'employee' => $empId,
                 'lms_id' => $lmsId,
                 'goal_id' => null,
@@ -495,6 +497,9 @@ class LmsController
                 'for' => 'both',
                 'time_consumed' => 0
             ]);
+            if (!empty($res['success'])) {
+                $prescribedCount++;
+            }
         }
         return $prescribedCount;
     }
@@ -852,7 +857,7 @@ class LmsController
             $rec['document_department'] = $doc['department_name'] ?? ($doc['department_id'] ?? 'Property-Wide');
             $rec['document_file_path'] = $doc['file_path'] ?? '#';
 
-            $rec['employee_name'] = $emp['full_name'] ?? ($eId === 'emp-101' ? 'Maria Santos' : ($eId === 'emp-102' ? 'Antonio Silva' : ($eId === 'emp-103' ? 'John Marco' : $eId)));
+            $rec['employee_name'] = $emp['full_name'] ?? ($eId ?: 'Staff Member');
             $rec['employee_title'] = $emp['title'] ?? 'Associate';
             $rec['employee_role'] = $emp['role'] ?? 'Associate';
             $rec['employee_avatar'] = $emp['avatar_url'] ?? 'public/images/removed-bg-logo.png';
@@ -1474,7 +1479,10 @@ class LmsController
     {
         $employee = trim($payload['employee'] ?? $payload['employee_id'] ?? '');
         if (empty($employee)) {
-            $employee = 'emp-101';
+            $employee = $_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '');
+        }
+        if (empty($employee)) {
+            return ['success' => false, 'message' => 'Employee identity could not be resolved from session.'];
         }
 
         $lmsId = trim($payload['lms_id'] ?? $payload['book_id'] ?? '');

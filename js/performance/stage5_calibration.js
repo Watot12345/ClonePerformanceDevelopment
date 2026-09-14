@@ -78,16 +78,20 @@ window.checkEmployeeStage5Tasks = checkEmployeeStage5Tasks;
         const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
         const activeGoalId = activeGoal ? activeGoal.id : null;
 
-        const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+        let evalRec = typeof getEmployeeGoalEvaluation === 'function'
             ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
             : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
 
+        if (!evalRec && emp && typeof emp === 'object' && emp.evaluationRecord) {
+            evalRec = emp.evaluationRecord;
+        }
+
         const initialRating = evalRec && typeof evalRec.supervisor_rating !== 'undefined' && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0
             ? parseFloat(evalRec.supervisor_rating)
-            : null;
+            : ((emp && emp.supervisorRating && parseFloat(emp.supervisorRating) > 0) ? parseFloat(emp.supervisorRating) : null);
         const calibratedScore = evalRec && typeof evalRec.calibrated_score !== 'undefined' && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0
             ? parseFloat(evalRec.calibrated_score)
-            : null;
+            : ((emp && emp.calibratedScore && parseFloat(emp.calibratedScore) > 0) ? parseFloat(emp.calibratedScore) : null);
         const isCalibrated = !!(calibratedScore !== null && calibratedScore > 0 && (evalRec?.status === 'Calibrated' || emp.reviewStatus === 'Calibrated'));
         const isRated = !!(initialRating !== null && initialRating > 0);
         const isBelowBenchmark = isCalibrated && calibratedScore !== null && calibratedScore < 3.0;
@@ -478,7 +482,7 @@ window.onCalibrationScoreInput = onCalibrationScoreInput;
 async function handleCalibrationSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
 
-    const empId = document.getElementById('calib-target-emp-id')?.value || 'emp-101';
+    const empId = document.getElementById('calib-target-emp-id')?.value || window.selectedCalibEmpId || '';
     const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
 
     const scoreSlider = document.getElementById('calib-score-slider');
@@ -595,10 +599,10 @@ async function handleCalibrationSubmit(e) {
 window.handleCalibrationSubmit = handleCalibrationSubmit;
 
 function openPIPModal(empId) {
-    const emp = (window.perfRoster || []).find(e => e.id === empId) || (window.perfRoster || [])[0];
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     if (!emp) return;
 
-    const evalRec = getDbEvaluations().find(ev => ev.employee_id === emp.id || (emp.id === 'emp-101' && (ev.employee_id === 'emp-1' || ev.employee_id === 'OXF-EMP-1001')) || (emp.id === 'emp-102' && (ev.employee_id === 'emp-2' || ev.employee_id === 'OXF-SUP-2001')));
+    const evalRec = getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id));
 
     const targetInput = document.getElementById('pip-target-emp-id');
     const titleEl = document.getElementById('pip-modal-title');
@@ -629,7 +633,7 @@ window.openPIPModal = openPIPModal;
 async function handlePIPSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
 
-    const empId = document.getElementById('pip-target-emp-id')?.value || 'emp-101';
+    const empId = document.getElementById('pip-target-emp-id')?.value || '';
     const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     const deficiencies = document.getElementById('pip-deficiencies')?.value.trim() || 'Remediation plan initiated.';
     const milestones = document.getElementById('pip-milestones')?.value.trim() || 'Complete remedial requirements.';
@@ -680,8 +684,8 @@ async function handlePIPSubmit(e) {
 window.handlePIPSubmit = handlePIPSubmit;
 
 function proceedFromPhase5ToPhase6(empId) {
-    const targetEmpId = empId || window.selectedCalibEmpId || window.selectedEvalEmpId || (window.perfRoster && window.perfRoster[0] ? window.perfRoster[0].id : 'emp-101');
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, targetEmpId)) || (window.perfRoster || [])[0];
+    const targetEmpId = empId || window.selectedCalibEmpId || window.selectedEvalEmpId || '';
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, targetEmpId));
 
     if (typeof closeModal === 'function') {
         closeModal('modal-view-calibration');

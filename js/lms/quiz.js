@@ -28,7 +28,7 @@
     const STORAGE_KEY_PREFIX = 'oxford_lms_active_quiz_';
 
     function getStorageKey(bookId) {
-        const empId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+        const empId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
         return `${STORAGE_KEY_PREFIX}${empId}_${bookId}`;
     }
 
@@ -37,7 +37,7 @@
      */
     function findAnyActiveQuizSession() {
         try {
-            const empId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+            const empId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
             const prefix = `${STORAGE_KEY_PREFIX}${empId}_`;
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
@@ -60,7 +60,7 @@
      */
     window.getCompletedQuizRecord = function (bookId) {
         if (!bookId) return null;
-        const currentUserId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+        const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
 
         let match = null;
         if (window.dynamicLmsState && Array.isArray(window.dynamicLmsState.prescribed)) {
@@ -68,10 +68,7 @@
                 const pBookId = p.lms_id || p.book_id || p.id;
                 if (String(pBookId) !== String(bookId)) return false;
                 const empId = (p.employee || p.employee_id || '').toLowerCase();
-                const empName = (p.employee_name || '').toLowerCase();
-                return empId === currentUserId ||
-                    (currentUserId === 'emp-101' && (empId.includes('101') || empId.includes('maria') || empName.includes('maria'))) ||
-                    (currentUserId === 'emp-102' && (empId.includes('102') || empId.includes('antonio') || empName.includes('antonio')));
+                return isSameEmployee(empId, currentUserId);
             });
         }
 
@@ -807,7 +804,7 @@
         const elapsedRemSec = elapsedSec % 60;
         const timeTakenStr = `${elapsedMin}m ${elapsedRemSec}s`;
 
-        const currentUserId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+        const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
 
         // 2. Dispatch to Backend
         let serverResult = null;
@@ -1037,7 +1034,7 @@
         const bookId = window.activeQuizState.bookId;
         clearQuizLocalStorage(bookId);
         try {
-            const currentUserId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+            const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
             localStorage.removeItem('oxford_lms_completed_quiz_' + bookId + '_' + currentUserId);
             localStorage.removeItem('oxford_lms_completed_quiz_' + bookId);
         } catch (e) {}

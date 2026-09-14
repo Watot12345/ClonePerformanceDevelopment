@@ -64,7 +64,7 @@ class CertificateModel extends BaseModel
         $clean = [
             'id'                     => $data['id'] ?? ('cert-' . substr(bin2hex(random_bytes(3)), 0, 6)),
             'certificate_number'     => $data['certificate_number'] ?? ($data['certificateNumber'] ?? ('OXF-CERT-' . date('Y') . '-' . str_pad(rand(100, 9999), 4, '0', STR_PAD_LEFT))),
-            'employee_id'            => $data['employee_id'] ?? ($data['employeeId'] ?? ($data['associate_id'] ?? 'emp-101')),
+            'employee_id'            => $data['employee_id'] ?? ($data['employeeId'] ?? ($data['associate_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')))),
             'program_id'             => !empty($data['program_id']) ? $data['program_id'] : null,
             'evaluation_id'          => !empty($data['evaluation_id']) ? $data['evaluation_id'] : null,
             'associate_name'         => $data['associate_name'] ?? ($data['associateName'] ?? 'Associate'),

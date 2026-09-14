@@ -150,7 +150,7 @@ class PerformanceTaskModel extends BaseModel
         $record = [
             'id'                      => 'task-spec-' . substr(bin2hex(random_bytes(4)), 0, 8),
             'goal_id'                 => $data['goal_id'] ?? null,
-            'employee_id'             => trim($data['employee_id'] ?? 'emp-101'),
+            'employee_id'             => trim($data['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))),
             'task_type'               => 'specific',
             'general_task_id'         => null,
             'title'                   => trim($data['title'] ?? 'Specific Improvement Task'),

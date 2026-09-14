@@ -92,7 +92,7 @@
         const activeRole = String(window.activePersonaRole || sessionUser?.role || storageRole || 'Associate').toLowerCase().trim();
         const isSupervisor = ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'].includes(activeRole) || ['supervisor', 'manager', 'hradmin', 'generalmanager', 'depthead', 'director'].includes(storageRole);
 
-        const empId = options.employeeId || window.currentUser?.id || sessionUser?.id || (isSupervisor ? 'emp-102' : 'emp-101');
+        const empId = options.employeeId || window.currentUser?.id || sessionUser?.id || '';
         const role  = isSupervisor ? 'Supervisor' : 'Associate';
 
         // 1. Instant Stale-While-Revalidate Display from Cache (0ms latency!)
@@ -236,13 +236,23 @@
 
         // Action button to jump to relevant Pillar
         if (actBtn) {
+            const roleName = String(window.currentUser?.role || window.activePersonaRole || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').role || '').toLowerCase().trim();
+            const isAssociateRole = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
             const targetPillar = payload.target_pillar || 'pillar-perf';
-            const actionLabel  = payload.action_label || 'Go to Module';
-            actBtn.innerHTML = `<span>${escapeHtml(actionLabel)}</span><i class="fas fa-arrow-right text-[10px] ml-1.5"></i>`;
-            actBtn.onclick = function() {
-                if (typeof closeModal === 'function') closeModal('modal-overview-drilldown');
-                if (typeof switchPillar === 'function') switchPillar(targetPillar);
-            };
+            const actionLabel  = payload.action_label || '';
+
+            if (!actionLabel || (isAssociateRole && (payload.metric === 'active_objectives' || payload.metric === 'goals_progress' || actionLabel.toLowerCase().includes('performance planning')))) {
+                actBtn.classList.add('hidden');
+                actBtn.style.display = 'none';
+            } else {
+                actBtn.classList.remove('hidden');
+                actBtn.style.display = 'inline-flex';
+                actBtn.innerHTML = `<span>${escapeHtml(actionLabel)}</span><i class="fas fa-arrow-right text-[10px] ml-1.5"></i>`;
+                actBtn.onclick = function() {
+                    if (typeof closeModal === 'function') closeModal('modal-overview-drilldown');
+                    if (typeof switchPillar === 'function') switchPillar(targetPillar);
+                };
+            }
         }
 
         // Construct Body HTML
@@ -638,13 +648,6 @@
     }
 
     function renderSystemChartsOnDemand() {
-        if (_hasRenderedSystemCharts) {
-            if (window.chartSystemDeptProgressInstance) window.chartSystemDeptProgressInstance.resize();
-            if (window.chartSentimentDoughnutInstance) window.chartSentimentDoughnutInstance.resize();
-            return;
-        }
-        _hasRenderedSystemCharts = true;
-
         // Chart: Department Execution Matrix
         if (typeof getOrCreateDeptProgressChart === 'function') {
             getOrCreateDeptProgressChart();
@@ -691,6 +694,13 @@
             }
         }
 
+        if (window.chartSystemDeptProgressInstance) {
+            try {
+                window.chartSystemDeptProgressInstance.resize();
+                window.chartSystemDeptProgressInstance.update();
+            } catch (e) {}
+        }
+
         if (typeof fetchAndRenderDepartmentExecutionMatrix === 'function') {
             fetchAndRenderDepartmentExecutionMatrix();
         }
@@ -699,6 +709,9 @@
         const ctxSentiment = document.getElementById('chart-sentiment-doughnut');
         if (ctxSentiment && typeof updateShiftClimatePulseFromSupabase === 'function') {
             updateShiftClimatePulseFromSupabase(window.shiftSentimentsState || null);
+        }
+        if (window.chartSentimentDoughnutInstance) {
+            try { window.chartSentimentDoughnutInstance.resize(); } catch (e) {}
         }
     }
 

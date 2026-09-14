@@ -35,7 +35,7 @@ function checkLmsTaskProgress(task, empId = null) {
         : (window.dbPrescribedLms || (sessionStorage.getItem('lms_prescribed_cache') ? JSON.parse(sessionStorage.getItem('lms_prescribed_cache')) : []));
 
     // Find employee ID
-    const targetEmpId = empId || task.employee_id || window.selectedEvalEmpId || 'emp-101';
+    const targetEmpId = empId || task.employee_id || window.selectedEvalEmpId || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
 
     let record = null;
     if (task.prescribed_lms_id) {
@@ -966,6 +966,90 @@ function renderEmployeeMonitoringStream(emp) {
                     `;
         }).join('')}
             </div>
+
+            <!-- Logged Shift Milestones & KPI Stream -->
+            ${(() => {
+                const allLogsSource = (emp.logs && emp.logs.length > 0) ? emp.logs : (window.dbMonitoringLogs || []);
+                const goalMilestones = allLogsSource.filter(m => {
+                    const isEmpMatch = isSameEmployee(m.employee_id, emp.id);
+                    if (!isEmpMatch) return false;
+                    if (!m.goal_id) return true;
+                    return String(m.goal_id) === String(goal.id);
+                });
+
+                if (goalMilestones.length === 0) return '';
+
+                return `
+                    <div class="space-y-2 pt-2 border-t border-slate-100">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center space-x-1.5">
+                                <i class="fas fa-flag-checkered text-emerald-600"></i>
+                                <span>Logged Shift Milestones &amp; KPI Records (${goalMilestones.length})</span>
+                            </span>
+                        </div>
+                        <div class="space-y-2">
+                            ${goalMilestones.map(m => {
+                                const dateStr = m.created_at ? new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recorded';
+                                const prog = parseInt(m.progress || '0', 10);
+                                return `
+                                    <div class="p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-1.5 text-xs shadow-2xs">
+                                        <div class="flex items-center justify-between flex-wrap gap-1.5">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center space-x-1">
+                                                    <i class="fas fa-flag text-[8px] text-emerald-700"></i>
+                                                    <span>Milestone Log</span>
+                                                </span>
+                                                <span class="font-bold text-slate-900 text-xs">${m.milestone_title || 'Shift KPI Progress'}</span>
+                                            </div>
+                                            <span class="text-slate-400 font-mono text-[10px]">${dateStr}</span>
+                                        </div>
+                                        <div class="flex items-center space-x-2 text-[10px] flex-wrap gap-1">
+                                            <span class="font-bold text-primary font-mono bg-primary/10 px-2 py-0.5 rounded">${m.actual_metric || goal.target_metric || 'Deliverable Recorded'}</span>
+                                            <span class="font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded">${prog}% Target Progress</span>
+                                        </div>
+                                        ${m.accomplishments ? `
+                                            <div class="p-2 bg-white rounded-lg border border-emerald-100 text-[11px] space-y-0.5">
+                                                <span class="font-bold text-emerald-900 text-[10px] flex items-center space-x-1">
+                                                    <i class="fas fa-check-circle text-emerald-600 text-[9px]"></i>
+                                                    <span>Accomplishments / Deliverables:</span>
+                                                </span>
+                                                <p class="text-slate-700 leading-relaxed">${m.accomplishments}</p>
+                                            </div>
+                                        ` : ''}
+                                        ${m.challenges ? `
+                                            <div class="p-2 bg-amber-50 rounded-lg border border-amber-200 text-[10px] space-y-0.5">
+                                                <span class="font-bold text-amber-900 flex items-center space-x-1">
+                                                    <i class="fas fa-triangle-exclamation text-amber-600 text-[9px]"></i>
+                                                    <span>Challenges &amp; Mitigations:</span>
+                                                </span>
+                                                <p class="text-slate-800">${m.challenges}</p>
+                                            </div>
+                                        ` : ''}
+                                        ${m.supporting_evidence ? `
+                                            <div class="p-2 bg-slate-50 rounded-lg border border-slate-200 text-[10px] space-y-0.5">
+                                                <span class="font-bold text-slate-700 flex items-center space-x-1">
+                                                    <i class="fas fa-paperclip text-slate-500 text-[9px]"></i>
+                                                    <span>Supporting Evidence:</span>
+                                                </span>
+                                                <p class="text-slate-800 font-mono text-[10px]">${m.supporting_evidence}</p>
+                                            </div>
+                                        ` : ''}
+                                        ${m.supervisor_notes || m.feedback ? `
+                                            <div class="p-2 bg-purple-50 rounded-lg border border-purple-200 text-[10px] space-y-0.5">
+                                                <span class="font-bold text-purple-900 flex items-center space-x-1">
+                                                    <i class="fas fa-user-check text-purple-600 text-[9px]"></i>
+                                                    <span>Supervisor Feedback &amp; Notes:</span>
+                                                </span>
+                                                <p class="text-slate-800">${m.supervisor_notes || m.feedback}</p>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            })()}
         `;
 
         container.appendChild(goalCard);
@@ -1033,7 +1117,7 @@ function onMilestoneGoalChange() {
 window.onMilestoneGoalChange = onMilestoneGoalChange;
 
 function logAchievementPrompt() {
-    const activeEmpId = window.selectedEmployeeContext?.id || 'emp-101';
+    const activeEmpId = window.selectedEmployeeContext?.id || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     openLogMilestoneModal(activeEmpId);
 }
 window.logAchievementPrompt = logAchievementPrompt;
@@ -1080,6 +1164,27 @@ async function saveMilestoneLog(event) {
             notes: notes
         });
 
+        const newLog = {
+            id: 'mon-' + Date.now(),
+            goal_id: goalId,
+            employee_id: empId,
+            milestone_title: milestoneTitle,
+            actual_metric: actualMetric,
+            progress: progressVal,
+            accomplishments: accomplishments,
+            challenges: challenges,
+            feedback: feedback,
+            supporting_evidence: supportingEvidence,
+            supervisor_notes: notes,
+            created_at: new Date().toISOString()
+        };
+
+        if (!emp.logs) emp.logs = [];
+        emp.logs.unshift(newLog);
+
+        if (!window.dbMonitoringLogs) window.dbMonitoringLogs = [];
+        window.dbMonitoringLogs.unshift(newLog);
+
         if (emp.goals) {
             const targetGoal = emp.goals.find(g => String(g.id) === String(goalId));
             if (targetGoal) {
@@ -1092,22 +1197,12 @@ async function saveMilestoneLog(event) {
         emp.monitoringProgress = calculateEmployeeProgress(emp);
         emp.monitoringStatus = emp.monitoringProgress >= 90 ? 'Exceeding' : (emp.monitoringProgress >= 75 ? 'On Track' : 'Needs Support');
 
-        addMilestoneToTimeline(emp, {
-            title: milestoneTitle,
-            actualMetric: actualMetric,
-            progress: progressVal,
-            accomplishments: accomplishments,
-            challenges: challenges,
-            feedback: feedback,
-            supportingEvidence: supportingEvidence,
-            notes: notes
-        });
-
+        renderEmployeeMonitoringStream(emp);
         closeModal('modal-log-milestone');
         renderMonitoringRosterTable();
 
         if (typeof showToast === 'function') {
-            showToast(` Shift monitoring log saved for ${emp.name}!`, 'success');
+            showToast(`✓ Milestone Logged! "${milestoneTitle}" (${progressVal}% progress) recorded for ${emp.name}.`, 'success', { duration: 6000 });
         }
 
         if (typeof loadLiveNotifications === 'function') {
@@ -1242,7 +1337,7 @@ function applyAiFeedbackToNotes() {
 window.applyAiFeedbackToNotes = applyAiFeedbackToNotes;
 
 function triggerEvaluationForEmployee(empId) {
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId)) || (window.perfRoster || [])[0];
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     if (!emp) return;
 
     const inTraining = isEmployeeInTraining(emp.id);

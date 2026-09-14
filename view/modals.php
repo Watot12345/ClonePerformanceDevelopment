@@ -697,7 +697,7 @@
         </div>
 
         <form id="form-appraisal-evaluation" onsubmit="handleAppraisalSubmit(event)" class="flex flex-col flex-1 overflow-hidden">
-            <input type="hidden" id="eval-target-emp-id" value="emp-101">
+            <input type="hidden" id="eval-target-emp-id" value="">
             <input type="hidden" id="eval-target-goal-id" value="">
 
             <div class="p-6 overflow-y-auto custom-scrollbar space-y-4 text-xs bg-white flex-1">
@@ -3901,7 +3901,7 @@
 
                 <!-- Calibration Form -->
                 <form id="form-1on1-calibration" onsubmit="handleCalibrationSubmit(event)" class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs bg-slate-100/40">
-                    <input type="hidden" id="calib-target-emp-id" value="emp-101">
+                    <input type="hidden" id="calib-target-emp-id" value="">
 
                     <!-- Container 1: Employee Diagnostic & Benchmark Comparison Well -->
                     <div class="p-4.5 bg-white rounded-2xl border border-slate-200/80 space-y-3.5 shadow-2xs">
@@ -4083,7 +4083,7 @@
 
                 <div class="p-4 bg-white border-t border-slate-100 flex items-center justify-between">
                     <button type="button" onclick="closeModal('modal-1on1-minutes-viewer')" class="btn-secondary px-4 py-2 text-xs font-bold">Close</button>
-                    <button id="minutes-modal-btn-calibrate" onclick="closeModal('modal-1on1-minutes-viewer'); openCalibrationModal(window.selectedCalibEmpId || window.selectedEvalEmpId || 'emp-101');" class="btn-primary px-4 py-2 text-xs font-bold shadow-xs flex items-center space-x-1.5">
+                    <button id="minutes-modal-btn-calibrate" onclick="closeModal('modal-1on1-minutes-viewer'); openCalibrationModal(window.selectedCalibEmpId || window.selectedEvalEmpId || '');" class="btn-primary px-4 py-2 text-xs font-bold shadow-xs flex items-center space-x-1.5">
                         <i class="fas fa-sliders"></i>
                         <span>Edit / Calibrate 1-on-1</span>
                     </button>
@@ -4240,7 +4240,7 @@
                                 <i class="fas fa-list-check text-slate-400"></i>
                                 <span>70-20-10 Learning Commitments &amp; Concrete Tasks</span>
                             </h4>
-                            <button onclick="closeModal('modal-view-idp-plan'); openAddSpecificTaskModal(window.selectedEvalEmpId || 'emp-101')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200 transition flex items-center space-x-1">
+                            <button onclick="closeModal('modal-view-idp-plan'); openAddSpecificTaskModal(window.selectedEvalEmpId || '')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200 transition flex items-center space-x-1">
                                 <i class="fas fa-plus text-slate-500"></i>
                                 <span>Add Specific Task</span>
                             </button>
@@ -4254,11 +4254,11 @@
                 <div class="p-4 bg-white border-t border-slate-100 flex items-center justify-between">
                     <button type="button" onclick="closeModal('modal-view-idp-plan')" class="btn-secondary px-4 py-2 text-xs font-bold">Close</button>
                     <div id="modal-idp-plan-footer-actions" class="flex items-center space-x-2">
-                        <button onclick="closeModal('modal-view-idp-plan'); openRemedialBooksModal(window.selectedEvalEmpId || 'emp-101')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs border border-slate-200 shadow-2xs transition flex items-center space-x-1.5">
+                        <button onclick="closeModal('modal-view-idp-plan'); openRemedialBooksModal(window.selectedEvalEmpId || '')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs border border-slate-200 shadow-2xs transition flex items-center space-x-1.5">
                             <i class="fas fa-book-medical text-slate-600"></i>
                             <span>Prescribe LMS Books</span>
                         </button>
-                        <button onclick="proceedFromPhase5ToPhase6(window.selectedEvalEmpId || 'emp-101')" class="btn-primary px-4 py-2 text-xs font-bold shadow-xs flex items-center space-x-1.5">
+                        <button onclick="proceedFromPhase5ToPhase6(window.selectedEvalEmpId || '')" class="btn-primary px-4 py-2 text-xs font-bold shadow-xs flex items-center space-x-1.5">
                             <span>Open Stage 6 Workspace &rarr;</span>
                         </button>
                     </div>
@@ -4288,7 +4288,7 @@
                 </div>
 
                 <form id="form-add-specific-task" onsubmit="handleCreateSpecificTaskSubmit(event)" class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs">
-                    <input type="hidden" id="add-task-target-emp-id" value="emp-101">
+                    <input type="hidden" id="add-task-target-emp-id" value="">
                     <input type="hidden" id="add-task-target-goal-id" value="">
 
                     <div class="space-y-1">
@@ -4499,7 +4499,7 @@
 
                 <!-- Footer -->
                 <div class="p-4 sm:px-6 border-t border-slate-100 bg-white flex items-center justify-between shrink-0">
-                    <button onclick="viewEmployeeCompetencyRadar(window.selectedEvalEmpId || 'emp-101')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs transition flex items-center space-x-1.5" title="Inspect Associate Competency Radar">
+                    <button onclick="viewEmployeeCompetencyRadar(window.selectedEvalEmpId || '')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs transition flex items-center space-x-1.5" title="Inspect Associate Competency Radar">
                         <i class="fas fa-chart-radar text-slate-600"></i>
                         <span>Competency Radar</span>
                     </button>
@@ -4571,7 +4571,7 @@
                     <i class="fas fa-wand-magic-sparkles text-[10px]"></i>
                     <span>AI Copilot</span>
                 </button>
-                <button onclick="openLogMilestoneModal(window.selectedEmployeeContext?.id || 'emp-101')" class="btn-secondary px-3 py-1.5 text-xs font-semibold hover:bg-slate-100 flex items-center space-x-1">
+                <button onclick="openLogMilestoneModal(window.selectedEmployeeContext?.id || '')" class="btn-secondary px-3 py-1.5 text-xs font-semibold hover:bg-slate-100 flex items-center space-x-1">
                     <i class="fas fa-flag-checkered text-emerald-600 text-xs"></i>
                     <span>+ Log KPI</span>
                 </button>
@@ -4724,7 +4724,7 @@
                 <button type="button" onclick="closeModal('modal-view-appraisal')" class="btn-secondary px-5 py-2 text-xs font-bold">
                     Close
                 </button>
-                <button onclick="viewEmployeeCompetencyRadar(window.selectedEvalEmpId || 'emp-101')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition flex items-center space-x-1.5" title="Inspect Associate Competency Radar &amp; Gap Diagnostic">
+                <button onclick="viewEmployeeCompetencyRadar(window.selectedEvalEmpId || '')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition flex items-center space-x-1.5" title="Inspect Associate Competency Radar &amp; Gap Diagnostic">
                     <i class="fas fa-chart-radar text-slate-500"></i>
                     <span>Competency Radar &amp; Gaps</span>
                 </button>
@@ -4794,7 +4794,7 @@
             <button type="button" onclick="closeModal('modal-view-calibration')" class="btn-secondary px-5 py-2 text-xs font-bold">
                 Close
             </button>
-            <button id="calib-detail-btn-open-modal" onclick="closeModal('modal-view-calibration'); openCalibrationModal(window.selectedCalibEmpId || window.selectedEvalEmpId || 'emp-101');" class="btn-primary px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 border-indigo-600 shadow-xs flex items-center space-x-1.5">
+            <button id="calib-detail-btn-open-modal" onclick="closeModal('modal-view-calibration'); openCalibrationModal(window.selectedCalibEmpId || window.selectedEvalEmpId || '');" class="btn-primary px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 border-indigo-600 shadow-xs flex items-center space-x-1.5">
                 <i class="fas fa-sliders mr-1"></i>
                 <span>Open Calibration Editor</span>
             </button>
@@ -4953,6 +4953,117 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- MODAL: AI APPRAISAL RECOMMENDATION ENGINE                  -->
+        <!-- ======================================================== -->
+        <div id="modal-ai-appraisal-recommendations" class="fixed inset-0 modal-overlay z-50 hidden items-center justify-center p-4">
+            <div class="modal-card max-w-4xl w-full overflow-hidden flex flex-col max-h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-100">
+                <!-- Header -->
+                <div class="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-lg font-bold border border-indigo-200 shadow-2xs">
+                            <i class="fas fa-wand-magic-sparkles text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+                                    <i class="fas fa-sparkles text-[9px]"></i>
+                                    <span>AI Appraisal Engine</span>
+                                </span>
+                                <span id="ai-appraisal-pending-count" class="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
+                                    Scanning...
+                                </span>
+                                <span id="ai-appraisal-cache-indicator" class="hidden text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                    <i class="fas fa-bolt text-[9px] mr-0.5 text-amber-500"></i> Cached
+                                </span>
+                            </div>
+                            <h3 class="font-heading font-bold text-base text-slate-900 mt-0.5">AI Evidence-Based Performance Recommendations</h3>
+                            <p class="text-xs text-slate-500">Automated appraisal scoring synthesized from floor coaching notes, associate reflections, and logged shift milestones.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <!-- Regenerate Analysis Button -->
+                        <button type="button" id="btn-ai-appraisal-regenerate" onclick="openAIAppraisalRecommendationsModal(true)" title="Re-run fresh AI analysis across all evidence" class="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition inline-flex items-center space-x-1.5 cursor-pointer border border-purple-200">
+                            <i class="fas fa-arrows-rotate text-purple-600 text-[10px]"></i>
+                            <span>Regenerate</span>
+                        </button>
+                        <!-- Minimize Button -->
+                        <button type="button" onclick="minimizeAIAppraisalModal()" title="Minimize to background floating dock" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer">
+                            <i class="fas fa-window-minimize text-xs -translate-y-1"></i>
+                        </button>
+                        <!-- Close Button -->
+                        <button type="button" onclick="closeAIAppraisalRecommendationsModal()" title="Close" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition hover:rotate-90 cursor-pointer">
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action Controls Bar -->
+                <div class="px-6 py-3 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 text-xs">
+                    <div class="flex items-center space-x-3">
+                        <label class="inline-flex items-center space-x-2 cursor-pointer select-none font-bold text-slate-700">
+                            <input type="checkbox" id="ai-appraisal-select-all" onchange="toggleAllAIAppraisalSelections(this.checked)" class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300">
+                            <span>Select All Candidates</span>
+                        </label>
+                        <span id="ai-appraisal-selected-label" class="text-slate-400 font-mono text-[11px]">(0 selected)</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button type="button" id="btn-apply-selected-ai-appraisals" onclick="applySelectedAIAppraisalRecommendations()" class="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-2xs cursor-pointer">
+                            <i class="fas fa-check text-emerald-600 text-[10px]"></i>
+                            <span>Apply Selected</span>
+                        </button>
+                        <button type="button" id="btn-apply-all-ai-appraisals" onclick="applyAllAIAppraisalRecommendations()" class="btn-primary px-4 py-1.5 text-xs font-bold rounded-xl shadow-xs transition inline-flex items-center space-x-1.5 cursor-pointer">
+                            <i class="fas fa-wand-magic-sparkles text-amber-300 text-[10px]"></i>
+                            <span>Apply All Recommendations</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Body (Scrollable Recommendations List) -->
+                <div id="ai-appraisal-cards-container" class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs bg-slate-50/40">
+                    <!-- Rendered dynamically by js/performance/stage4_appraisal.js -->
+                </div>
+
+                <!-- Footer -->
+                <div class="p-4 sm:px-6 border-t border-slate-100 bg-white flex items-center justify-between shrink-0">
+                    <span class="text-[11px] text-slate-400 font-medium">
+                        <i class="fas fa-shield-check text-emerald-600 mr-1"></i>
+                        <span>AI provides diagnostic scoring recommendations. Human supervisor retains final calibration control.</span>
+                    </span>
+                    <button type="button" onclick="closeAIAppraisalRecommendationsModal()" class="btn-secondary px-5 py-2 text-xs font-bold">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Minimized AI Appraisal Dock / Widget -->
+        <div id="ai-appraisal-minimized-dock" class="fixed bottom-6 right-6 hidden transition-all duration-300" style="z-index: 999999;">
+            <div onclick="restoreAIAppraisalModal()" class="relative bg-primary hover:bg-primary-dark text-white shadow-2xl rounded-2xl border-2 border-primary-dark p-3.5 flex items-center space-x-3.5 cursor-pointer group hover:shadow-2xl transition transform hover:-translate-y-0.5">
+                <!-- Ping Animation Ring when Ready or Analyzing -->
+                <span id="ai-appraisal-dock-pulse-ring" class="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white text-[8px] text-white items-center justify-center font-bold"></span>
+                </span>
+
+                <div class="text-left pr-1">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-bold text-white tracking-wide">AI Appraisal Assistant</span>
+                        <span id="ai-appraisal-dock-badge" class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white text-primary shadow-2xs">Ready</span>
+                    </div>
+                    <p id="ai-appraisal-dock-status" class="text-[11px] text-rose-100 font-medium truncate max-w-[220px]">Analyzing shift evidence...</p>
+                </div>
+                <div class="flex items-center space-x-1.5 text-rose-200 group-hover:text-white pl-2.5 border-l border-white/20">
+                    <button type="button" onclick="event.stopPropagation(); restoreAIAppraisalModal()" title="Expand Recommendations" class="w-8 h-8 rounded-lg bg-black/20 hover:bg-black/30 flex items-center justify-center transition text-white cursor-pointer">
+                        <i class="fas fa-up-right-and-down-left-from-center text-xs"></i>
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); closeAIAppraisalMinimizedDock()" title="Dismiss" class="w-8 h-8 rounded-lg bg-black/20 hover:bg-black/30 flex items-center justify-center transition text-rose-200 hover:text-white cursor-pointer">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                </div>
             </div>
         </div>
 

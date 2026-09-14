@@ -201,12 +201,14 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                         <script>
                                             (function() {
                                                 try {
-                                                    var activeId = window.currentUser?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
-                                                    var rawCached = localStorage.getItem('oxford_cached_total_xp_' + activeId);
-                                                    if (rawCached !== null) {
-                                                        var xp = parseInt(rawCached, 10) || 0;
-                                                        var elVal = document.getElementById('kpi-xp-val');
-                                                        if (elVal) elVal.innerHTML = xp.toLocaleString() + ' <span class="text-xs font-normal text-slate-400">XP</span>';
+                                                    var activeId = window.currentUser?.id || '';
+                                                    if (activeId) {
+                                                        var rawCached = localStorage.getItem('oxford_cached_total_xp_' + activeId);
+                                                        if (rawCached !== null) {
+                                                            var xp = parseInt(rawCached, 10) || 0;
+                                                            var elVal = document.getElementById('kpi-xp-val');
+                                                            if (elVal) elVal.innerHTML = xp.toLocaleString() + ' <span class="text-xs font-normal text-slate-400">XP</span>';
+                                                        }
                                                     }
                                                 } catch(e) {}
                                             })();

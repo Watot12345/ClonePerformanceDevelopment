@@ -142,7 +142,14 @@ class PerformanceController
         }
 
         // 2. Prepare Data & Resolve Real Author from users table
-        $employeeId = $payload['employee_id'] ?? 'emp-101';
+        $employeeId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
+        if (empty($employeeId)) {
+            return [
+                'success' => false,
+                'data'    => null,
+                'message' => 'Validation error: Employee ID is required to create a performance objective.'
+            ];
+        }
         $user = $this->authModel->find($employeeId) ?: $this->authModel->findByEmployeeCode($employeeId);
 
         if ($user) {
@@ -214,10 +221,11 @@ class PerformanceController
         try {
             $goalId = !empty($created['id']) && is_numeric($created['id']) ? (int)$created['id'] : null;
             if (strcasecmp($role, 'Supervisor') === 0 || strcasecmp($role, 'Manager') === 0) {
-                // If Supervisor created a goal, notify department associates
+                // If Supervisor created a goal, notify the assigned associate
+                $targetAssociateId = !empty($employeeId) ? $employeeId : ($created['employee_id'] ?? null);
                 $this->notificationModel->createNotification([
                     'recipient_role' => 'Associate',
-                    'user_id'        => 'emp-101',
+                    'user_id'        => $targetAssociateId,
                     'type'           => 'goal_created',
                     'title'          => 'New Department Objective Set 📋',
                     'message'        => "Supervisor {$authorName} established new target \"{$title}\" ({$data['department']}).",
@@ -225,10 +233,10 @@ class PerformanceController
                     'goal_id'        => $goalId
                 ]);
             } else {
-                // If Associate created a goal, notify Supervisor
+                // If Associate created a goal, notify department Supervisors (role-broadcast)
                 $this->notificationModel->createNotification([
                     'recipient_role' => 'Supervisor',
-                    'user_id'        => 'emp-102',
+                    'user_id'        => null,
                     'type'           => 'goal_created',
                     'title'          => 'New Performance Objective Submitted',
                     'message'        => "Associate {$authorName} submitted a new performance target: \"{$title}\" ({$data['department']}). Awaiting supervisor calibration.",
@@ -275,11 +283,11 @@ class PerformanceController
         }
 
         // When approved, verify that general tasks are assigned
-        if (strcasecmp($status, 'Approved') === 0) {
+        if (strcasecmp($status, 'Approved') === 0 && !empty($updated['employee_id'])) {
             try {
                 $this->taskModel->assignGeneralTasksToGoal(
                     $id,
-                    $updated['employee_id'] ?? 'emp-101',
+                    $updated['employee_id'],
                     $updated['target_date'] ?? date('Y-m-d', strtotime('+30 days'))
                 );
             } catch (\Throwable $e) {
@@ -288,8 +296,8 @@ class PerformanceController
         }
 
         // Look up owner dynamically from users table
-        $ownerId = $updated['employee_id'] ?? 'emp-101';
-        $owner = $this->authModel->find($ownerId) ?: $this->authModel->findByEmployeeCode($ownerId);
+        $ownerId = $updated['employee_id'] ?? '';
+        $owner = !empty($ownerId) ? ($this->authModel->find($ownerId) ?: $this->authModel->findByEmployeeCode($ownerId)) : null;
         $ownerName = $owner['full_name'] ?? 'Associate';
 
         // Create Notification for Associate when approved
@@ -341,8 +349,8 @@ class PerformanceController
         }
 
         // Look up owner dynamically from users table
-        $ownerId = $updated['employee_id'] ?? 'emp-101';
-        $owner = $this->authModel->find($ownerId) ?: $this->authModel->findByEmployeeCode($ownerId);
+        $ownerId = $updated['employee_id'] ?? '';
+        $owner = !empty($ownerId) ? ($this->authModel->find($ownerId) ?: $this->authModel->findByEmployeeCode($ownerId)) : null;
 
         // Create Notification for Associate when goal is revised
         try {
@@ -438,9 +446,9 @@ class PerformanceController
         $goals = $this->goalModel->getGoals();
         foreach ($goals as $g) {
             $goalId = $g['id'] ?? null;
-            $empId = $g['employee_id'] ?? 'emp-101';
+            $empId = $g['employee_id'] ?? null;
             $gDate = $g['target_date'] ?? date('Y-m-d', strtotime('+30 days'));
-            if ($goalId) {
+            if ($goalId && $empId) {
                 $this->taskModel->assignGeneralTasksToGoal($goalId, $empId, $gDate);
             }
         }
@@ -525,7 +533,7 @@ class PerformanceController
     public function createSpecificTask(array $payload = []): array
     {
         $goalId = $payload['goal_id'] ?? null;
-        $empId = trim($payload['employee_id'] ?? 'emp-101');
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $tasksList = $payload['tasks'] ?? [];
 
         if (empty($goalId)) {
@@ -675,7 +683,7 @@ class PerformanceController
             }
 
             if (!empty($presId) || !empty($lmsId)) {
-                $empId = $existingTask['employee_id'] ?? 'emp-101';
+                $empId = $existingTask['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''));
                 $checkPres = null;
                 if (!empty($presId)) {
                     $checkPres = supabaseRequest('lms_prescribed?id=eq.' . urlencode($presId), 'GET', null, true);
@@ -717,7 +725,7 @@ class PerformanceController
         try {
             $this->monitoringModel->logMilestone([
                 'goal_id'             => $goalId,
-                'employee_id'         => $updatedTask['employee_id'] ?? 'emp-101',
+                'employee_id'         => $updatedTask['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')),
                 'milestone_title'     => 'Task Completed: ' . $updatedTask['title'],
                 'actual_metric'       => "Goal Progress: {$newProgress}%",
                 'progress'            => $newProgress,
@@ -734,7 +742,7 @@ class PerformanceController
         try {
             $this->notificationModel->createNotification([
                 'recipient_role' => 'Supervisor',
-                'user_id'        => 'emp-102',
+                'user_id'        => null,
                 'type'           => 'task_completed',
                 'title'          => 'Task Completed with Feedback ✨',
                 'message'        => "Employee completed \"{$updatedTask['title']}\" and submitted learnings & feedback.",
@@ -852,7 +860,7 @@ class PerformanceController
         $feedback = trim($payload['feedback'] ?? '');
         $supportingEvidence = trim($payload['supporting_evidence'] ?? $payload['evidence'] ?? '');
         $notes = trim($payload['notes'] ?? $payload['supervisor_notes'] ?? '');
-        $empId = trim($payload['employee_id'] ?? 'emp-101');
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
 
         if (empty($id)) {
             return [
@@ -880,9 +888,8 @@ class PerformanceController
         if (!empty($notes) || !empty($feedback)) {
             $updateData['supervisor_notes'] = $notes ?: $feedback;
         }
-        if ($progress >= 100) {
-            $updateData['status'] = 'Completed';
-        }
+        // Note: Goal status stays 'Approved' throughout Monitoring (Stage 3) and Appraisal (Stage 4).
+        // It is formally marked 'Completed' only at Stage 7 cycle finalization.
 
         $updated = $this->goalModel->update((string)$id, $updateData);
 
@@ -937,10 +944,10 @@ class PerformanceController
         $allTasks = $this->taskModel->all();
         $users = $this->authModel->all();
 
-        // Filter ONLY approved (active, not completed) goals for Phase 3-7 Monitoring and Evaluation
+        // Filter active approved and in-progress goals for Phase 3-7 Monitoring and Evaluation
         $approvedGoals = array_values(array_filter($enrichedGoals, function ($g) {
             $st = strtolower(trim($g['status'] ?? ''));
-            return $st === 'approved';
+            return in_array($st, ['approved', 'in progress', 'in_progress', 'completed', 'done']);
         }));
 
         // Map users by id and employee_code
@@ -953,7 +960,8 @@ class PerformanceController
         // Group approved goals strictly by employee_id from performance_goals table
         $empGoalsMap = [];
         foreach ($approvedGoals as $g) {
-            $eId = strtolower(trim($g['employee_id'] ?? 'emp-101'));
+            $eId = strtolower(trim($g['employee_id'] ?? ''));
+            if (empty($eId)) continue;
             if (!isset($empGoalsMap[$eId])) {
                 $empGoalsMap[$eId] = [];
             }
@@ -964,7 +972,7 @@ class PerformanceController
         $roster = [];
         foreach ($empGoalsMap as $eId => $goals) {
             $user = $userMap[$eId] ?? null;
-            $name = $user['full_name'] ?? ($eId === 'emp-101' ? 'Maria Santos' : ($eId === 'emp-102' ? 'Chef Marco Rossi' : ucfirst($eId)));
+            $name = $user['full_name'] ?? ucfirst($eId);
             $pos = $user['title'] ?? ($goals[0]['department'] ?? 'Associate');
             $dept = $goals[0]['department'] ?? ($user['department'] ?? 'Hotel Operations');
             
@@ -1054,12 +1062,12 @@ class PerformanceController
      */
     public function getEvaluation(array $payload): array
     {
-        $empId = $payload['employee_id'] ?? $payload['id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($payload['id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))));
         $goalId = !empty($payload['goal_id']) ? (int)$payload['goal_id'] : null;
-        $evaluation = $this->evaluationModel->getEvaluationByEmployee($empId, $goalId);
+        $evaluation = !empty($empId) ? $this->evaluationModel->getEvaluationByEmployee($empId, $goalId) : null;
 
         // Fetch employee's approved goals to construct criteria
-        $allGoals = $this->enrichGoalsWithTasks($this->goalModel->getGoalsByEmployee($empId));
+        $allGoals = !empty($empId) ? $this->enrichGoalsWithTasks($this->goalModel->getGoalsByEmployee($empId)) : [];
         $approvedGoals = array_values(array_filter($allGoals, function ($g) {
             $st = strtolower(trim($g['status'] ?? ''));
             return in_array($st, ['approved', 'completed']);
@@ -1080,25 +1088,426 @@ class PerformanceController
      */
     public function submitAppraisal(array $payload): array
     {
-        $empId = $payload['employee_id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $saved = $this->evaluationModel->saveSupervisorAppraisal($payload);
 
         // Create notification for employee
         $score = $saved['supervisor_rating'] ?? 4.60;
-        $this->notificationModel->create([
-            'id' => 'notif-' . bin2hex(random_bytes(4)),
-            'user_id' => $empId,
-            'type' => 'performance',
-            'title' => 'Performance Appraisal Endorsed',
-            'message' => "Your supervisor has submitted and endorsed your formal performance appraisal with an overall score of {$score} / 5.0 ({$saved['tier_label']}).",
-            'is_read' => false,
-            'created_at' => date('c')
-        ]);
+        if (!empty($empId)) {
+            $this->notificationModel->create([
+                'id' => 'notif-' . bin2hex(random_bytes(4)),
+                'user_id' => $empId,
+                'type' => 'performance',
+                'title' => 'Performance Appraisal Endorsed',
+                'message' => "Your supervisor has submitted and endorsed your formal performance appraisal with an overall score of {$score} / 5.0 ({$saved['tier_label']}).",
+                'is_read' => false,
+                'created_at' => date('c')
+            ]);
+        }
 
         return [
             'success' => true,
             'data'    => $saved,
             'message' => "Formal appraisal successfully saved to database with score {$score}."
+        ];
+    }
+
+    /**
+     * Generate AI Appraisal Recommendations for un-evaluated employees
+     * Analyzes:
+     * - Supervisor Coaching & Notes
+     * - Employee Feedback
+     * - Employee Learnings & Reflections
+     * - Logged Shift Milestones & KPI Records
+     */
+    public function generateAppraisalRecommendations(array $payload = []): array
+    {
+        $allGoals = $this->goalModel->getGoals();
+        $enrichedGoals = $this->enrichGoalsWithTasks($allGoals);
+        $allLogs = $this->monitoringModel->getMonitoringLogs();
+        $allEvaluations = $this->evaluationModel->all();
+        $users = $this->authModel->all();
+
+        // Build map of evaluated employee + goal pairs
+        $evaluatedGoalMap = [];
+        foreach ($allEvaluations as $ev) {
+            $eId = strtolower(trim($ev['employee_id'] ?? ''));
+            $gId = !empty($ev['goal_id']) ? (string)$ev['goal_id'] : 'primary';
+            $supRating = isset($ev['supervisor_rating']) ? (float)$ev['supervisor_rating'] : 0.0;
+            if ($supRating > 0) {
+                $evaluatedGoalMap[$eId . '_' . $gId] = true;
+                $evaluatedGoalMap[$eId] = true;
+            }
+        }
+
+        // Build user map
+        $userMap = [];
+        foreach ($users as $u) {
+            if (!empty($u['id'])) $userMap[strtolower($u['id'])] = $u;
+            if (!empty($u['employee_code'])) $userMap[strtolower($u['employee_code'])] = $u;
+        }
+
+        $targetEmpIds = !empty($payload['employee_ids']) ? (array)$payload['employee_ids'] : null;
+        if ($targetEmpIds) {
+            $targetEmpIds = array_map(fn($id) => strtolower(trim((string)$id)), $targetEmpIds);
+        }
+
+        $recommendations = [];
+
+        foreach ($enrichedGoals as $goal) {
+            $eId = strtolower(trim($goal['employee_id'] ?? ''));
+            $gId = (string)($goal['id'] ?? '');
+            $gStatus = strtolower(trim($goal['status'] ?? ''));
+
+            if (empty($eId) || !in_array($gStatus, ['approved', 'in progress', 'in_progress', 'completed', 'done'])) {
+                continue;
+            }
+
+            if ($targetEmpIds && !in_array($eId, $targetEmpIds)) {
+                continue;
+            }
+
+            // Check if already evaluated
+            $isAlreadyEvaluated = isset($evaluatedGoalMap[$eId . '_' . $gId]) || isset($evaluatedGoalMap[$eId]);
+            if ($isAlreadyEvaluated && empty($payload['include_evaluated'])) {
+                continue;
+            }
+
+            $user = $userMap[$eId] ?? null;
+            $name = $user['full_name'] ?? ($user['name'] ?? ucfirst($eId));
+            $pos = $user['title'] ?? ($goal['department'] ?? 'Associate');
+            $dept = $goal['department'] ?? ($user['department'] ?? 'Hotel Operations');
+
+            $tasks = $goal['tasks'] ?? [];
+            $completedTasks = array_values(array_filter($tasks, fn($t) => ($t['status'] ?? '') === 'completed'));
+            $totalTasks = count($tasks);
+
+            // 1. Extract Supervisor Coaching & Notes
+            $supervisorNotesList = [];
+            if (!empty($goal['supervisor_notes'])) {
+                $supervisorNotesList[] = $goal['supervisor_notes'];
+            }
+            foreach ($tasks as $t) {
+                if (!empty($t['supervisor_feedback'])) $supervisorNotesList[] = $t['supervisor_feedback'];
+                if (!empty($t['supervisor_accomplishment'])) $supervisorNotesList[] = $t['supervisor_accomplishment'];
+            }
+
+            // 2. Extract Employee Feedback
+            $employeeFeedbackList = [];
+            if (!empty($goal['feedback'])) $employeeFeedbackList[] = $goal['feedback'];
+            foreach ($tasks as $t) {
+                if (!empty($t['employee_feedback'])) $employeeFeedbackList[] = $t['employee_feedback'];
+            }
+
+            // 3. Extract Employee Learnings & Reflections
+            $employeeLearningsList = [];
+            foreach ($tasks as $t) {
+                if (!empty($t['employee_learnings'])) $employeeLearningsList[] = $t['employee_learnings'];
+            }
+
+            // 4. Extract Logged Shift Milestones & KPI Records
+            $empLogs = array_values(array_filter($allLogs, function ($l) use ($eId, $gId) {
+                $matchEmp = strtolower(trim($l['employee_id'] ?? '')) === $eId;
+                if (!$matchEmp) return false;
+                if (!empty($l['goal_id'])) return (string)$l['goal_id'] === $gId;
+                return true;
+            }));
+
+            $milestoneTexts = [];
+            foreach ($empLogs as $l) {
+                if (!empty($l['milestone_title'])) $milestoneTexts[] = $l['milestone_title'];
+                if (!empty($l['actual_metric'])) $milestoneTexts[] = $l['actual_metric'];
+                if (!empty($l['notes'])) $milestoneTexts[] = $l['notes'];
+            }
+
+            // Perform in-depth Substance & Sentiment Analysis
+            $supAnalysis = $this->analyzeTextSubstanceAndSentiment($supervisorNotesList);
+            $learnAnalysis = $this->analyzeTextSubstanceAndSentiment($employeeLearningsList);
+            $fbAnalysis = $this->analyzeTextSubstanceAndSentiment($employeeFeedbackList);
+            $msAnalysis = $this->analyzeTextSubstanceAndSentiment($milestoneTexts);
+
+            // Calculate Task Ratio
+            $taskRatio = $totalTasks > 0 ? (count($completedTasks) / $totalTasks) : 1.0;
+
+            // Detect any placeholder inputs or negative feedback
+            $hasPlaceholders = $learnAnalysis['is_placeholder'] || $supAnalysis['is_placeholder'] || $msAnalysis['is_placeholder'];
+            $isNegative = ($supAnalysis['sentiment_score'] < 0) || ($learnAnalysis['sentiment_score'] < 0);
+
+            $placeholderWarnings = [];
+            if ($learnAnalysis['is_placeholder']) {
+                $placeholderWarnings[] = "reflections ('" . implode(', ', $learnAnalysis['flagged_samples']) . "')";
+            }
+            if ($supAnalysis['is_placeholder']) {
+                $placeholderWarnings[] = "supervisor notes ('" . implode(', ', $supAnalysis['flagged_samples']) . "')";
+            }
+            if ($msAnalysis['is_placeholder']) {
+                $placeholderWarnings[] = "shift milestones ('" . implode(', ', $msAnalysis['flagged_samples']) . "')";
+            }
+
+            // Scoring Engine:
+            // If criteria contain gibberish/placeholders or negative sentiment, rating MUST be strictly below 3.0 (< 3.00)
+            if ($hasPlaceholders || $isNegative) {
+                // Starts at 1.80 (Needs Improvement baseline)
+                $calculatedScore = 1.80;
+                // Task completion contributes up to +0.80 for 100% completed tasks
+                $calculatedScore += ($taskRatio * 0.80);
+
+                // If negative sentiment, penalize further
+                if ($isNegative) {
+                    $calculatedScore += min(0, ($supAnalysis['sentiment_score'] + $learnAnalysis['sentiment_score']) * 0.40);
+                }
+
+                // If multiple placeholders present, apply small penalty
+                if (count($placeholderWarnings) >= 2) {
+                    $calculatedScore -= 0.15;
+                }
+
+                // Strict ceiling: Guarantee score is below 3.0 (max 2.85)
+                $recommendedScore = min(2.85, max(1.20, round($calculatedScore, 2)));
+                $tierLabel = 'Below Benchmark (Needs Calibration)';
+            } else {
+                // Legitimate, authentic substance and positive/constructive evidence
+                $calculatedScore = 3.20; // Proficient starting baseline
+                $calculatedScore += ($taskRatio * 0.50); // up to 3.70
+                $calculatedScore += ($supAnalysis['quality_score'] * 0.45); // up to 4.15
+                $calculatedScore += ($learnAnalysis['quality_score'] * 0.35); // up to 4.50
+                $calculatedScore += ($msAnalysis['quality_score'] * 0.35); // up to 4.85
+                $calculatedScore += max(0, $supAnalysis['sentiment_score'] * 0.15); // bonus for stellar praise
+
+                $recommendedScore = min(5.00, max(3.00, round($calculatedScore, 2)));
+
+                if ($recommendedScore >= 4.50) $tierLabel = 'Master Tier';
+                elseif ($recommendedScore >= 3.75) $tierLabel = 'Advanced Tier';
+                else $tierLabel = 'Proficient';
+            }
+
+            // Synthesize AI Endorsement & Audit Notes
+            if (!empty($placeholderWarnings)) {
+                $aiNotes = "AI Appraisal Review: Associate {$name} completed task checklist (" . count($completedTasks) . "/{$totalTasks}). However, " . implode(' and ', $placeholderWarnings) . " contain gibberish/placeholder text. Due to lack of qualitative floor evidence, a rating below 3.0 ({$recommendedScore}/5.0 · {$tierLabel}) is assigned. Supervisor floor calibration required.";
+            } elseif ($isNegative) {
+                $aiNotes = "AI Appraisal Review: Critical performance/compliance concerns were flagged in supervisor notes or feedback. A below-benchmark rating of {$recommendedScore}/5.0 ({$tierLabel}) is assigned pending formal remediation/coaching.";
+            } else {
+                $evidenceSnippets = [];
+                if (!empty($supAnalysis['clean_snippets'][0])) $evidenceSnippets[] = "Supervisor notes: \"{$supAnalysis['clean_snippets'][0]}\"";
+                if (!empty($learnAnalysis['clean_snippets'][0])) $evidenceSnippets[] = "Associate reflections: \"{$learnAnalysis['clean_snippets'][0]}\"";
+                if (!empty($msAnalysis['clean_snippets'][0])) $evidenceSnippets[] = "Shift milestone: \"{$msAnalysis['clean_snippets'][0]}\"";
+
+                $aiNotes = "AI Appraisal Recommendation: Associate {$name} demonstrated solid operational performance in \"{$goal['title']}\". ";
+                if (!empty($evidenceSnippets)) {
+                    $aiNotes .= implode('. ', $evidenceSnippets) . '. ';
+                }
+                $aiNotes .= "Recommended for {$tierLabel} rating ({$recommendedScore}/5.0) based on verified KPI deliverables and completed checklist matrix.";
+            }
+
+            // Generate criteria breakdown with realistic sub-ratings
+            $criteriaList = [
+                [
+                    'title'     => 'Operational Excellence & Protocol Adherence',
+                    'metric'    => $goal['target_metric'] ?: '100% SOP Compliance',
+                    'weight'    => 40,
+                    'rating'    => min(5.0, max(1.0, round($recommendedScore + 0.1, 1))),
+                    'rationale' => !empty($learnAnalysis['clean_snippets'][0]) 
+                        ? 'Demonstrated strong operational diligence: "' . substr($learnAnalysis['clean_snippets'][0], 0, 90) . '..."'
+                        : ($learnAnalysis['is_placeholder'] 
+                            ? 'Checklist verified. Reflections contain minimal text (' . ($learnAnalysis['flagged_samples'][0] ?? 'n/a') . ').'
+                            : 'Verified shift checklist completion and operational compliance.')
+                ],
+                [
+                    'title'     => 'Shift Execution, KPI Delivery & Diligence',
+                    'metric'    => count($empLogs) > 0 ? ($empLogs[0]['actual_metric'] ?? 'Target >= 95% Deliverable') : 'Shift KPI Deliverables Met',
+                    'weight'    => 30,
+                    'rating'    => min(5.0, max(1.0, round($recommendedScore, 1))),
+                    'rationale' => count($empLogs) > 0 
+                        ? (!$msAnalysis['is_placeholder']
+                            ? 'Logged ' . count($empLogs) . ' shift milestone(s) with verified deliverables (' . ($empLogs[0]['milestone_title'] ?? 'KPI Delivery') . ').'
+                            : 'Logged shift milestone contains minimal metric placeholder (' . ($msAnalysis['flagged_samples'][0] ?? 'n/a') . ').')
+                        : 'Achieved checklist execution within scheduled shift timeline.'
+                ],
+                [
+                    'title'     => 'Teamwork, Conflict De-escalation & Mentorship',
+                    'metric'    => 'Zero Unresolved Escalations / Positive Peer Collaboration',
+                    'weight'    => 30,
+                    'rating'    => min(5.0, max(1.0, round($recommendedScore - 0.1, 1))),
+                    'rationale' => !empty($supAnalysis['clean_snippets'][0])
+                        ? 'Supervisor coaching recorded: "' . substr($supAnalysis['clean_snippets'][0], 0, 90) . '..."'
+                        : ($supAnalysis['is_placeholder']
+                            ? 'Supervisor coaching note contains brief placeholder text (' . ($supAnalysis['flagged_samples'][0] ?? 'n/a') . ').'
+                            : 'Maintained proactive guest engagement and positive floor coordination.')
+                ]
+            ];
+
+            $recommendations[] = [
+                'employee_id'         => $eId,
+                'employee_name'       => $name,
+                'employee_position'   => $pos,
+                'employee_department' => $dept,
+                'avatar'              => strtoupper(substr($name, 0, 2)),
+                'goal_id'             => (int)$gId,
+                'goal_title'          => $goal['title'],
+                'target_metric'       => $goal['target_metric'] ?? 'Standard KPI',
+                'recommended_score'   => $recommendedScore,
+                'tier_label'          => $tierLabel,
+                'supervisor_notes'    => $aiNotes,
+                'criteria_scores'     => $criteriaList,
+                'evidence_summary'    => [
+                    'supervisor_notes_count'   => count($supervisorNotesList),
+                    'employee_feedback_count'  => count($employeeFeedbackList),
+                    'employee_learnings_count' => count($employeeLearningsList),
+                    'milestones_count'         => count($empLogs),
+                    'completed_tasks_count'    => count($completedTasks),
+                    'total_tasks_count'        => $totalTasks,
+                    'sample_supervisor_note'   => $supervisorNotesList[0] ?? null,
+                    'sample_learning'          => $employeeLearningsList[0] ?? null,
+                    'sample_milestone'         => count($empLogs) > 0 ? $empLogs[0]['milestone_title'] : null,
+                    'has_placeholders'         => !empty($placeholderWarnings)
+                ]
+            ];
+        }
+
+        return [
+            'success' => true,
+            'data'    => [
+                'recommendations' => $recommendations,
+                'count'           => count($recommendations)
+            ],
+            'message' => count($recommendations) . ' AI appraisal recommendations generated based on shift evidence.'
+        ];
+    }
+
+    /**
+     * Analyzes text substance, length, placeholder patterns, and sentiment.
+     */
+    private function analyzeTextSubstanceAndSentiment(array $texts): array
+    {
+        if (empty($texts)) {
+            return [
+                'count'           => 0,
+                'substance_level' => 'empty',
+                'quality_score'   => 0.0,
+                'sentiment_score' => 0.0,
+                'is_placeholder'  => false,
+                'clean_snippets'  => [],
+                'flagged_samples' => []
+            ];
+        }
+
+        $placeholderPatterns = [
+            '/^[a-z0-9\s]{1,4}$/i',                       // 1 to 4 characters like "a", "asd", "d", "test"
+            '/^(.)\1{2,}$/i',                             // repeating chars like "aaa", "...", "zzz"
+            '/^(na|n\/a|none|nil|null|test|testing|asd|asdf|zsdas|abc|xyz|sample|placeholder|todo)$/i'
+        ];
+
+        $positiveKeywords = [
+            'excellent', 'outstanding', 'exceeded', 'surpassed', 'mastered', 'stellar', 'exceptional',
+            'diligent', 'proactive', 'resolved', 'improved', 'commendable', 'flawless', 'exemplary',
+            'efficient', 'punctual', 'compliance', 'initiative', 'thorough', 'smooth',
+            'great', 'good', 'satisfied', 'success', 'collaborative', 'mentor', 'leadership',
+            'zero escalations', 'zero complaints', 'no complaints', 'zero incidents', 'resolved issues'
+        ];
+
+        $negativeKeywords = [
+            'delayed', 'missed', 'failed', 'complaint', 'escalation',
+            'struggled', 'needs improvement', 'incident', 'poor', 'absent',
+            'incomplete', 'violation', 'dispute', 'warning'
+        ];
+
+        $validTexts = [];
+        $flaggedSamples = [];
+        $totalWords = 0;
+        $sentimentSum = 0;
+
+        foreach ($texts as $raw) {
+            $trimmed = trim((string)$raw);
+            if ($trimmed === '') continue;
+
+            $isPlaceholder = false;
+            foreach ($placeholderPatterns as $pat) {
+                if (preg_match($pat, $trimmed)) {
+                    $isPlaceholder = true;
+                    break;
+                }
+            }
+
+            $words = preg_split('/\s+/', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
+            $wordCount = count($words);
+
+            if ($isPlaceholder || ($wordCount <= 1 && strlen($trimmed) <= 4)) {
+                $flaggedSamples[] = $trimmed;
+            } else {
+                $validTexts[] = $trimmed;
+                $totalWords += $wordCount;
+
+                $lower = strtolower($trimmed);
+                foreach ($positiveKeywords as $kw) {
+                    if (strpos($lower, $kw) !== false) $sentimentSum += 0.25;
+                }
+                foreach ($negativeKeywords as $kw) {
+                    // Check if prefixed with zero or no or resolved
+                    if (preg_match('/(zero|no|resolved|prevented)\s+(guest\s+|floor\s+|client\s+)?' . preg_quote($kw, '/') . '/i', $lower)) {
+                        $sentimentSum += 0.25; // Turning into positive achievement
+                    } elseif (strpos($lower, $kw) !== false) {
+                        $sentimentSum -= 0.30;
+                    }
+                }
+            }
+        }
+
+        $allCount = count($texts);
+        $validCount = count($validTexts);
+        $placeholderCount = count($flaggedSamples);
+
+        if ($validCount === 0 && $placeholderCount > 0) {
+            return [
+                'count'           => $allCount,
+                'valid_count'     => 0,
+                'substance_level' => 'placeholder',
+                'quality_score'   => 0.05,
+                'sentiment_score' => 0.0,
+                'is_placeholder'  => true,
+                'clean_snippets'  => [],
+                'flagged_samples' => $flaggedSamples
+            ];
+        }
+
+        if ($validCount === 0) {
+            return [
+                'count'           => 0,
+                'valid_count'     => 0,
+                'substance_level' => 'empty',
+                'quality_score'   => 0.0,
+                'sentiment_score' => 0.0,
+                'is_placeholder'  => false,
+                'clean_snippets'  => [],
+                'flagged_samples' => []
+            ];
+        }
+
+        $avgWords = $totalWords / max(1, $validCount);
+        $substanceLevel = 'minimal';
+        $qualityScore = 0.35;
+
+        if ($avgWords >= 20 || $totalWords >= 30) {
+            $substanceLevel = 'comprehensive';
+            $qualityScore = 1.0;
+        } elseif ($avgWords >= 10 || $totalWords >= 15) {
+            $substanceLevel = 'moderate';
+            $qualityScore = 0.75;
+        } elseif ($avgWords >= 4) {
+            $substanceLevel = 'minimal';
+            $qualityScore = 0.45;
+        }
+
+        $clampedSentiment = max(-1.0, min(1.0, $sentimentSum));
+
+        return [
+            'count'           => $allCount,
+            'valid_count'     => $validCount,
+            'substance_level' => $substanceLevel,
+            'quality_score'   => $qualityScore,
+            'sentiment_score' => $clampedSentiment,
+            'is_placeholder'  => false,
+            'clean_snippets'  => $validTexts,
+            'flagged_samples' => $flaggedSamples
         ];
     }
 
@@ -1122,7 +1531,7 @@ class PerformanceController
             }
         }
 
-        $empId = $payload['employee_id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $saved = $this->evaluationModel->saveSelfAssessment($payload);
 
         return [
@@ -1137,7 +1546,7 @@ class PerformanceController
      */
     public function calibrateEvaluation(array $payload): array
     {
-        $empId = $payload['employee_id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $saved = $this->evaluationModel->calibrateEvaluation($payload);
 
         $calibratedScore = isset($payload['calibrated_score']) && $payload['calibrated_score'] !== ''
@@ -1245,7 +1654,10 @@ class PerformanceController
      */
     public function retryPlan(array $payload): array
     {
-        $empId = $payload['employee_id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
+        if (empty($empId)) {
+            return ['success' => false, 'message' => 'Employee ID is required to retry plan.'];
+        }
         $goals = $this->goalModel->getGoalsByEmployee($empId);
 
         $maxRetry = 0;
@@ -1308,7 +1720,7 @@ class PerformanceController
     public function assignFormalCurriculum(array $payload): array
     {
         $programId = $payload['program_id'] ?? $payload['programId'] ?? null;
-        $empId = $payload['employee_id'] ?? $payload['employeeId'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($payload['employeeId'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))));
         $goalId = $payload['goal_id'] ?? $payload['target_goal_id'] ?? null;
 
         if (empty($programId)) {
@@ -1323,12 +1735,6 @@ class PerformanceController
         }
 
         // 2. Fetch employee details
-        $empRes = supabaseRequest('employees?id=eq.' . urlencode($empId), 'GET', null, true);
-        $emp = (!empty($empRes['data']) && is_array($empRes['data'])) ? $empRes['data'][0] : null;
-        $empName = $emp['full_name'] ?? ($emp['name'] ?? ($payload['associate_name'] ?? 'Associate'));
-        $empRole = $emp['title'] ?? ($emp['role'] ?? ($payload['associate_role'] ?? 'Staff'));
-        $dept = $emp['department'] ?? ($program['dept'] ?? 'General');
-
         // 3. Resolve active goal if goalId is missing
         if (empty($goalId)) {
             $goals = $this->goalModel->getGoalsByEmployee($empId);
@@ -1401,12 +1807,14 @@ class PerformanceController
     public function continueToFinal1on1Evaluation(array $payload): array
     {
         $goalId = $payload['goal_id'] ?? $payload['id'] ?? null;
-        $empId = $payload['employee_id'] ?? 'emp-101';
+        $empId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
 
         if (!empty($goalId)) {
             $updated = $this->goalModel->setGoalRetryCount($goalId, 4);
-        } else {
+        } elseif (!empty($empId)) {
             $updated = $this->goalModel->setEmployeeGoalsRetryCount($empId, 4);
+        } else {
+            $updated = [];
         }
 
         return [
@@ -1555,7 +1963,7 @@ class PerformanceController
      */
     public function awardPerformanceXP(array $payload): array
     {
-        $employeeId = $payload['employee_id'] ?? 'emp-101';
+        $employeeId = trim($payload['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $evalId = $payload['performance_eval_id'] ?? $payload['eval_id'] ?? null;
         $rating = isset($payload['rating']) ? (float)$payload['rating'] : 4.5;
 

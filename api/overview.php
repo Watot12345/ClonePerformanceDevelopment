@@ -21,7 +21,7 @@ require_once __DIR__ . '/../config/config.php';
 
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'get_drilldown');
 $metric = $_GET['metric'] ?? ($_POST['metric'] ?? 'goals_progress');
-$empId  = $_GET['employee_id'] ?? ($_POST['employee_id'] ?? ($_SESSION['employee_id'] ?? 'emp-101'));
+$empId  = $_GET['employee_id'] ?? ($_POST['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
 $role   = $_GET['role'] ?? ($_POST['role'] ?? ($_SESSION['role'] ?? 'Associate'));
 
 // Normalize Department Names
@@ -127,7 +127,7 @@ try {
                         'subtitle'       => $scopeToEmployee ? 'Live goal tracking, milestone review schedule, and approval status' : 'Live telemetry tracking SMART objective approval velocity across departments',
                         'theme'          => 'sage',
                         'target_pillar'  => 'pillar-perf',
-                        'action_label'   => 'Open Performance Planning',
+                        'action_label'   => $isAssociate ? null : 'Open Performance Planning',
                         'summary'        => [
                             ['label' => 'Total Goals', 'value' => $total, 'sub' => $scopeToEmployee ? 'Assigned to You' : 'All active cycles'],
                             ['label' => 'Approval Rate', 'value' => $rate . '%', 'sub' => ($approved + $completed) . ' Approved / Completed'],

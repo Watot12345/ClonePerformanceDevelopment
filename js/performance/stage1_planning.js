@@ -78,6 +78,9 @@ async function loadAndRenderPlanningGoals(silent = false) {
             if (emp.employee_code) empMap.set(String(emp.employee_code).toLowerCase().trim(), emp);
         });
 
+        // Store monitoring logs globally
+        window.dbMonitoringLogs = (monResult.status === 'fulfilled' && Array.isArray(monResult.value?.logs)) ? monResult.value.logs : [];
+
         // Apply monitoring roster fields if available (without overwriting goals array)
         if (monResult.status === 'fulfilled' && monResult.value?.roster && Array.isArray(monResult.value.roster)) {
             monResult.value.roster.forEach(dynEmp => {
@@ -155,9 +158,9 @@ async function loadAndRenderPlanningGoals(silent = false) {
             (window.perfRoster || []).forEach(emp => {
                 const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
                 const activeGoalId = activeGoal ? String(activeGoal.id) : null;
-                const ev = activeGoalId
-                    ? evList.find(rec => isSameEmployee(emp.id, rec.employee_id) && String(rec.goal_id) === activeGoalId)
-                    : (evList.find(rec => isSameEmployee(emp.id, rec.employee_id)) || null);
+                const ev = typeof getEmployeeGoalEvaluation === 'function'
+                    ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
+                    : (activeGoalId ? evList.find(rec => isSameEmployee(emp.id, rec.employee_id) && String(rec.goal_id) === activeGoalId) : (evList.find(rec => isSameEmployee(emp.id, rec.employee_id)) || emp.evaluationRecord || null));
 
                 if (ev) {
                     emp.evaluationRecord = ev;
@@ -165,13 +168,13 @@ async function loadAndRenderPlanningGoals(silent = false) {
                         ? parseFloat(ev.self_evaluation)
                         : ((ev.self_rating !== undefined && ev.self_rating !== null && parseFloat(ev.self_rating) > 0)
                             ? parseFloat(ev.self_rating)
-                            : 0.0);
+                            : (emp.selfRating || 0.0));
                     const supScore = (ev.supervisor_rating !== undefined && ev.supervisor_rating !== null && parseFloat(ev.supervisor_rating) > 0)
                         ? parseFloat(ev.supervisor_rating)
-                        : 0.0;
+                        : (emp.supervisorRating || 0.0);
                     const calibScore = (ev.calibrated_score !== undefined && ev.calibrated_score !== null && parseFloat(ev.calibrated_score) > 0)
                         ? parseFloat(ev.calibrated_score)
-                        : null;
+                        : (emp.calibratedScore || null);
 
                     emp.selfRating = selfScore || 0.0;
                     emp.supervisorRating = supScore;
@@ -179,7 +182,7 @@ async function loadAndRenderPlanningGoals(silent = false) {
                     if (calibScore) emp.calibratedScore = calibScore;
                     emp.evaluationStatus = ev.status || (calibScore ? 'Calibrated' : (supScore > 0 ? 'Rated' : (selfScore ? 'Self-Reviewed' : 'Pending Evaluation')));
                     if (ev.tier_label) emp.tierLabel = ev.tier_label;
-                } else {
+                } else if (!emp.evaluationRecord && !emp.supervisorRating) {
                     emp.evaluationRecord = null;
                     emp.selfRating = 0.0;
                     emp.supervisorRating = 0.0;
@@ -340,8 +343,8 @@ async function fetchDynamicGoalCoaching(goal, force = false) {
                 status: goal.status,
                 progress_pct: goal.progress_pct || 0,
                 tasks: goal.tasks || [],
-                employee_name: window.currentUser?.name || (window.activePersonaRole === 'Supervisor' ? 'Marco Rossi' : 'Maria Santos'),
-                user_id: window.currentUser?.id || 'emp-101'
+                employee_name: window.currentUser?.name || window.currentUser?.full_name || 'Associate',
+                user_id: window.currentUser?.id || ''
             })
         });
 
@@ -407,7 +410,7 @@ function renderEmployeePulseGoals(goals) {
     const allGoals = (goals && goals.length > 0) ? goals : (window.dbGoals || []);
 
     const userObj = window.currentUser || JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
-    const currentUserId = (userObj.id || userObj.employee_code || (typeof activePersonaKey !== 'undefined' && activePersonaKey === 'supervisor' ? 'emp-102' : 'emp-101')).toLowerCase().trim();
+    const currentUserId = (userObj.id || userObj.employee_code || '').toLowerCase().trim();
     const currentRole = window.activePersonaRole || userObj.role || 'Associate';
     const isAssociate = (currentRole.toLowerCase() === 'associate' || currentRole.toLowerCase() === 'employee' || (typeof activePersonaKey !== 'undefined' && (activePersonaKey === 'associate' || activePersonaKey === 'employee')));
 
@@ -739,7 +742,7 @@ function openEmployeeSelfEvalModal(goalId, empId) {
             return;
         }
     }
-    const targetEmpId = empId || goal?.employee_id || 'emp-101';
+    const targetEmpId = empId || goal?.employee_id || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     const evalRec = getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, targetEmpId));
 
     const goalIdInput = document.getElementById('self-eval-goal-id');
@@ -786,7 +789,7 @@ async function handleEmployeeSelfEvalSubmit(event) {
             return;
         }
     }
-    const empId = document.getElementById('self-eval-emp-id')?.value || 'emp-101';
+    const empId = document.getElementById('self-eval-emp-id')?.value || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     const rating = parseFloat(document.getElementById('self-eval-rating-input')?.value || '4.5');
     const notes = document.getElementById('self-eval-notes-input')?.value || '';
 
@@ -1481,7 +1484,7 @@ async function handleGoalSubmit(e) {
     const storedUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
     const roleStr = String(window.activePersonaRole || window.currentUser?.role || storedUser.role || (typeof activePersonaKey !== 'undefined' ? activePersonaKey : '')).toLowerCase().trim();
     const isAssociate = (roleStr === 'associate' || roleStr === 'employee' || roleStr === 'staff');
-    const currentUserId = window.currentUser?.id || storedUser.id || (isAssociate ? 'emp-101' : 'emp-102');
+    const currentUserId = window.currentUser?.id || storedUser.id || '';
     const currentRole = window.currentUser?.role || storedUser.role || (isAssociate ? 'Associate' : 'Supervisor');
 
     const selectedOpt = scopeSelect && scopeSelect.selectedIndex >= 0 ? scopeSelect.options[scopeSelect.selectedIndex] : null;

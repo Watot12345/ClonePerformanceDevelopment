@@ -1275,7 +1275,7 @@ window.deleteTaskFromGoal = deleteTaskFromGoal;
  * Open Confirmation Modal before retrying a plan
  */
 function openPlanRetryConfirmModal(empId) {
-    const targetEmpId = empId || window.selectedEvalEmpId || 'emp-101';
+    const targetEmpId = empId || window.selectedEvalEmpId || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     window.pendingPlanRetryEmpId = targetEmpId;
     const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, targetEmpId)) || { id: targetEmpId, name: 'Associate' };
     const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(targetEmpId) : null;
@@ -1338,7 +1338,7 @@ window.openPlanRetryConfirmModal = openPlanRetryConfirmModal;
  * Execute Plan Retry upon confirmation
  */
 async function confirmExecutePlanRetry() {
-    const empId = window.pendingPlanRetryEmpId || window.selectedEvalEmpId || 'emp-101';
+    const empId = window.pendingPlanRetryEmpId || window.selectedEvalEmpId || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     const btn = document.getElementById('btn-confirm-execute-retry');
     const origHtml = btn ? btn.innerHTML : '';
     if (btn) {
@@ -1393,7 +1393,7 @@ window.confirmExecutePlanRetry = confirmExecutePlanRetry;
  * Proceed from Stage 7 review tasks directly to Stage 3 Continuous Monitoring (via confirmation modal)
  */
 async function proceedFromTasksToMonitoring() {
-    const empId = window.selectedEvalEmpId || 'emp-101';
+    const empId = window.selectedEvalEmpId || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     openPlanRetryConfirmModal(empId);
 }
 window.proceedFromTasksToMonitoring = proceedFromTasksToMonitoring;

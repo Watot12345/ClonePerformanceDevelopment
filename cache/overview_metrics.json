@@ -3,11 +3,11 @@
     "liveKudosSent": 7,
     "liveBadgesCount": 2,
     "liveActiveStaffCount": 5,
-    "liveTotalGoals": 2,
-    "liveApprovedGoals": 1,
+    "liveTotalGoals": 3,
+    "liveApprovedGoals": 2,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
-    "liveGoalsApprovalRate": 50,
+    "liveGoalsApprovalRate": 66.7,
     "liveTotalPrescribed": 1,
     "livePassedPrescribed": 1,
     "liveLmsAvgScore": 100,
@@ -23,8 +23,8 @@
             "staff_ids": [
                 "emp-101"
             ],
-            "goals_total": 1,
-            "goals_approved": 0,
+            "goals_total": 2,
+            "goals_approved": 1,
             "lms_total": 1,
             "lms_progress_sum": 100,
             "lms_passed": 1,
@@ -35,8 +35,8 @@
             "department": "Food & Beverage",
             "staff_count": 0,
             "staff_ids": [],
-            "goals_total": 0,
-            "goals_approved": 0,
+            "goals_total": 1,
+            "goals_approved": 1,
             "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
@@ -77,8 +77,8 @@
                 "3bb792e6-b25e-460e-a8fa-712c65c3b2e2",
                 "b7e1a2c4-9d3f-4a1e-8c6b-1f2e3d4a5b6c"
             ],
-            "goals_total": 1,
-            "goals_approved": 1,
+            "goals_total": 0,
+            "goals_approved": 0,
             "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
@@ -106,17 +106,22 @@
             "is_ready": false
         },
         {
-            "employee_id": null,
-            "name": "Ready",
-            "role": "Open Slot",
-            "department": "Contender",
-            "avatar": "",
-            "total_xp": 0,
-            "trophies": 0,
+            "employee_id": "emp-102",
+            "name": "Chef Marco Rossi",
+            "role": "Kitchen Staff",
+            "title": "Kitchen Staff",
+            "raw_role": "Supervisor",
+            "is_supervisor": true,
+            "department": "Kitchen",
+            "avatar": "https:\/\/images.unsplash.com\/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80",
+            "total_xp": 50,
+            "trophies": 1,
             "rank": 2,
+            "place_number": 2,
+            "is_ranked": true,
             "rank_label": "SECOND",
             "is_tied": false,
-            "is_ready": true
+            "is_ready": false
         },
         {
             "employee_id": null,
@@ -158,5 +163,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789288086
+    "cached_at": 1789369574
 }

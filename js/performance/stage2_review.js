@@ -291,7 +291,7 @@ function applySpecificTaskGoalData(goal, empId = null) {
     const empDisp = document.getElementById('specific-task-emp-name-display');
 
     if (goalIdEl) goalIdEl.value = goal.id;
-    if (empIdEl) empIdEl.value = goal.employee_id || empId || 'emp-101';
+    if (empIdEl) empIdEl.value = goal.employee_id || empId || '';
     if (targetDateEl) targetDateEl.value = goal.target_date || '';
 
     if (titleDisp) titleDisp.textContent = goal.title;
@@ -571,10 +571,10 @@ function renderApprovalRosterTable() {
         let emp = window.perfRoster.find(e => isSameEmployee(e.id, goal.employee_id));
         if (!emp) {
             emp = {
-                id: goal.employee_id || 'emp-101',
-                name: goal.role === 'Supervisor' ? 'Chef Marco Rossi' : 'Maria Santos',
-                position: goal.role === 'Supervisor' ? 'Executive Sous Chef' : 'Front Desk Host',
-                department: goal.department || 'Front Office',
+                id: goal.employee_id || '',
+                name: goal.employee_name || 'Staff Member',
+                position: goal.role || 'Associate',
+                department: goal.department || 'Hotel Operations',
                 avatarBg: 'bg-primary'
             };
         }

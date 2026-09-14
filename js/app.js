@@ -239,16 +239,6 @@ try {
 
 // Sub-Tab Switcher inside Pillar
 function switchSubTab(pillarPrefix, subKey) {
-    if (pillarPrefix === 'dashboard') {
-        const userObj = window.currentUser || JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
-        const currentRole = String(window.activePersonaRole || userObj.role || (typeof activePersonaKey !== 'undefined' && activePersonaKey === 'supervisor' ? 'Supervisor' : 'Associate')).toLowerCase().trim();
-        const isAssociate = (currentRole === 'associate' || currentRole === 'employee' || currentRole === 'staff' || (typeof activePersonaKey !== 'undefined' && (activePersonaKey === 'associate' || activePersonaKey === 'employee')));
-        if (!isAssociate && subKey === 'pulse') {
-            subKey = 'system';
-        } else if (isAssociate && subKey === 'system') {
-            subKey = 'pulse';
-        }
-    }
 
     // Persist active subtab for this pillar to localStorage
     try {
@@ -778,8 +768,9 @@ function applyRoleVisibility(userRole) {
 
     function getCurrentlyViewedCompetencyEmpName() {
         const dynEmps = window.dynamicCompetencyState?.employees || [];
-        const activeKey = window.activeCompetencyEmpKey || window.selectedEvalEmpId || 'emp-101';
-        let emp = dynEmps.find(e => e.id === activeKey);
+        const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+        const activeKey = window.activeCompetencyEmpKey || window.selectedEvalEmpId || window.currentUser?.id || sessionUser.id || '';
+        let emp = dynEmps.find(e => isSameEmployee(e.id, activeKey));
         if (!emp && typeof associatesCompetencyData !== 'undefined' && associatesCompetencyData[activeKey]) {
             emp = associatesCompetencyData[activeKey];
         }
@@ -807,8 +798,9 @@ function applyRoleVisibility(userRole) {
 
         // Force active competency employee key to logged-in user
         if (typeof selectEmployeeForCompetencies === 'function') {
-            const empId = window.currentUser?.id || 'emp-101';
-            selectEmployeeForCompetencies(empId);
+            const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+            const empId = window.currentUser?.id || sessionUser.id || '';
+            if (empId) selectEmployeeForCompetencies(empId);
         }
     } else {
         const viewedName = getCurrentlyViewedCompetencyEmpName();

@@ -46,7 +46,7 @@ class EvaluationModel extends BaseModel
             'program_title'           => $data['program_title'] ?? ($data['programTitle'] ?? 'Training Program'),
             'category'                => $data['category'] ?? 'Skill Gap',
             'dept'                    => $data['dept'] ?? 'Front Office',
-            'associate_id'            => $data['associate_id'] ?? ($data['associateId'] ?? ($data['employee_id'] ?? ($data['employeeId'] ?? 'emp-101'))),
+            'associate_id'            => $data['associate_id'] ?? ($data['associateId'] ?? ($data['employee_id'] ?? ($data['employeeId'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))))),
             'associate_name'          => $data['associate_name'] ?? ($data['associateName'] ?? 'Associate'),
             'associate_role'          => $data['associate_role'] ?? ($data['associateRole'] ?? 'Hotel Staff'),
             'associate_avatar'        => $data['associate_avatar'] ?? ($data['associateAvatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'),

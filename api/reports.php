@@ -90,7 +90,7 @@ try {
             }
             foreach ($needs as $nd) {
                 if (($nd['status'] ?? '') === 'Resolved' || ($nd['status'] ?? '') === 'Completed') {
-                    $empId = $nd['employee_id'] ?? ($nd['employeeId'] ?? 'emp-101');
+                    $empId = $nd['employee_id'] ?? ($nd['employeeId'] ?? '');
                     $num = 'OXF-CERT-2026-' . strtoupper(substr(md5($empId), 0, 4));
                     if (!isset($uniqueLicenses[$num])) {
                         $uniqueLicenses[$num] = [
@@ -105,10 +105,6 @@ try {
                 }
             }
             $activeCertsCount = count($uniqueLicenses);
-            if ($activeCertsCount === 0) {
-                // Ensure benchmark certified associates (Maria Santos & Chef Marco Rossi) are counted
-                $activeCertsCount = 2;
-            }
 
             // 4. Bench Coverage (Succession Depth from Succession Planning)
             $totalPositions = count($positions);

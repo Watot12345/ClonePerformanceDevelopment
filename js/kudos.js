@@ -62,9 +62,7 @@ function getActiveSessionUser() {
         ? rawRole 
         : (isSupervisor ? 'Supervisor' : 'Front Desk Host');
 
-    const cleanId = (sessionUser?.id && sessionUser.id !== 'emp-105') 
-        ? sessionUser.id 
-        : (isSupervisor ? 'emp-102' : 'emp-101');
+    const cleanId = sessionUser?.id || window.currentUser?.id || '';
 
     return {
         id: cleanId,
@@ -273,15 +271,15 @@ function normalizeRecognitionPost(p) {
 
     return {
         id: p.id || ('post-' + Math.random()),
-        senderId: p.sender_id || p.senderId || 'emp-102',
-        senderName: (p.sender_name && !p.sender_name.includes('Elena Vance')) ? p.sender_name : (p.senderName || 'Chef Marco Rossi'),
-        senderRole: (p.sender_role && !p.sender_role.includes('HR Director')) ? p.sender_role : (p.senderRole || 'Supervisor'),
-        senderType: p.sender_type || p.senderType || 'Supervisor',
+        senderId: p.sender_id || p.senderId || '',
+        senderName: p.sender_name || p.senderName || 'Staff Member',
+        senderRole: p.sender_role || p.senderRole || 'Staff',
+        senderType: p.sender_type || p.senderType || 'Peer',
         senderAvatar: p.sender_avatar || p.senderAvatar || 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop&q=80',
-        receiverId: p.receiver_id || p.receiverId || 'emp-101',
-        receiverName: p.receiver_name || p.receiverName || 'Maria Santos',
-        receiverRole: p.receiver_role || p.receiverRole || 'Front Desk Host',
-        receiverDept: p.receiver_dept || p.receiverDept || (p.department || 'Front Office'),
+        receiverId: p.receiver_id || p.receiverId || '',
+        receiverName: p.receiver_name || p.receiverName || 'Staff Member',
+        receiverRole: p.receiver_role || p.receiverRole || 'Associate',
+        receiverDept: p.receiver_dept || p.receiverDept || (p.department || 'Hotel Operations'),
         receiverAvatar: p.receiver_avatar || p.receiverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         categoryKey: catKey,
         categoryLabel: catLabel,
@@ -702,7 +700,7 @@ async function loadAndRenderTop5Champions(employeeId) {
 
     if (!hasOverviewPodium && !hasEmployeePodium && !hasStandingCard) return;
 
-    const empId = employeeId || window.currentUser?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
+    const empId = employeeId || window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '';
 
     try {
         const res = await fetch(`api/social.php?action=get_top_champions&employee_id=${encodeURIComponent(empId)}`);
@@ -799,7 +797,7 @@ function renderSocialFeed() {
         const comments = post.comments || [];
         const hasComments = comments.length > 0;
 
-        const activeUserId = window.currentUser?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
+        const activeUserId = window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '';
         const userReactionsMap = (post.reactions && post.reactions.user_reactions) ? post.reactions.user_reactions : {};
         const myActiveReaction = userReactionsMap[activeUserId] || null;
 
@@ -929,7 +927,7 @@ async function reactToPost(postId, reactionType) {
     const post = socialFeedPostsState.find(p => p.id === postId);
     if (!post) return;
 
-    const currentUserId = window.currentUser?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
+    const currentUserId = window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '';
     if (!post.reactions.user_reactions) {
         post.reactions.user_reactions = {};
     }
@@ -993,7 +991,7 @@ function updatePostReactionsUI(postId) {
     const post = socialFeedPostsState.find(p => p.id === postId);
     if (!post) return;
 
-    const activeUserId = window.currentUser?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
+    const activeUserId = window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '';
     const myReaction = (post.reactions && post.reactions.user_reactions && post.reactions.user_reactions[activeUserId]) || null;
 
     const types = ['clap', 'heart', 'star', 'fire'];
@@ -1917,11 +1915,12 @@ function renderQualitativePerformanceFeed() {
     const container = document.getElementById('perf-qualitative-recognition-container');
     if (!container) return;
 
-    const empId = window.selectedEvalEmpId || 'emp-101';
-    const qualitativePosts = socialFeedPostsState.filter(p =>
-        (p.receiverId && p.receiverId === empId) ||
-        (p.receiverName && p.receiverName.toLowerCase().includes('maria'))
-    );
+    const empId = window.selectedEvalEmpId || '';
+    if (!empId) {
+        container.innerHTML = '';
+        return;
+    }
+    const qualitativePosts = socialFeedPostsState.filter(p => isSameEmployee(p.receiverId, empId));
 
     if (qualitativePosts.length === 0) {
         container.innerHTML = '';

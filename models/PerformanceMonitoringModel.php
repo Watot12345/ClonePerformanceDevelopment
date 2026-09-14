@@ -59,7 +59,7 @@ class PerformanceMonitoringModel extends BaseModel
         $record = [
             'id'                  => $data['id'] ?? ('mon-' . bin2hex(random_bytes(4))),
             'goal_id'             => $goalId,
-            'employee_id'         => trim($data['employee_id'] ?? 'emp-101'),
+            'employee_id'         => trim($data['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))),
             'milestone_title'     => trim($data['milestone_title'] ?? $data['title'] ?? 'Shift Milestone'),
             'actual_metric'       => trim($data['actual_metric'] ?? 'Metric Logged'),
             'progress'            => isset($data['progress']) ? (int)$data['progress'] : 85,

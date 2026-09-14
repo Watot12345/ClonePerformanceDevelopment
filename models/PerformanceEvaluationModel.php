@@ -181,13 +181,13 @@ class PerformanceEvaluationModel extends BaseModel
      */
     public function saveSupervisorAppraisal(array $data): array
     {
-        $empId = $data['employee_id'] ?? 'emp-101';
+        $empId = trim($data['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
-        $existing = $this->getEvaluationByEmployee($empId, $goalId);
+        $existing = $empId ? $this->getEvaluationByEmployee($empId, $goalId) : null;
 
         $evalId = $existing['id'] ?? ($data['id'] ?? ('eval-' . substr(bin2hex(random_bytes(4)), 0, 8)));
         $cycle = $data['cycle_period'] ?? ($existing['cycle_period'] ?? '2026 Q3');
-        $evaluatorId = $data['evaluator_id'] ?? ($existing['evaluator_id'] ?? 'emp-102');
+        $evaluatorId = $data['evaluator_id'] ?? ($existing['evaluator_id'] ?? ($_SESSION['user_id'] ?? ''));
 
         $supervisorRating = isset($data['supervisor_rating']) ? round((float)$data['supervisor_rating'], 2) : 4.60;
         $selfEvaluation = isset($data['self_evaluation']) ? round((float)$data['self_evaluation'], 2) : ($existing['self_evaluation'] ?? null);
@@ -258,9 +258,9 @@ class PerformanceEvaluationModel extends BaseModel
      */
     public function saveSelfAssessment(array $data): array
     {
-        $empId = $data['employee_id'] ?? 'emp-101';
+        $empId = trim($data['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
-        $existing = $this->getEvaluationByEmployee($empId, $goalId);
+        $existing = $empId ? $this->getEvaluationByEmployee($empId, $goalId) : null;
 
         $selfEvaluation = isset($data['self_evaluation']) ? round((float)$data['self_evaluation'], 2) : ($existing['self_evaluation'] ?? null);
         $evalId = $existing['id'] ?? ($data['id'] ?? ('eval-' . substr(bin2hex(random_bytes(4)), 0, 8)));
@@ -299,9 +299,9 @@ class PerformanceEvaluationModel extends BaseModel
      */
     public function calibrateEvaluation(array $data): array
     {
-        $empId = $data['employee_id'] ?? 'emp-101';
+        $empId = trim($data['employee_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
         $goalId = isset($data['goal_id']) && is_numeric($data['goal_id']) ? (int)$data['goal_id'] : null;
-        $existing = $this->getEvaluationByEmployee($empId, $goalId);
+        $existing = $empId ? $this->getEvaluationByEmployee($empId, $goalId) : null;
 
         if (!$existing) {
             $existing = $this->saveSupervisorAppraisal($data);

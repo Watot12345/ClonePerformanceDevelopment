@@ -54,8 +54,9 @@ class CoachingController
             ];
         }
 
+        $targetEmpId = $employeeId ?: ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''));
         $created = $this->model->createNote([
-            'employee_id'   => $employeeId ?: 'emp-101',
+            'employee_id'   => $targetEmpId,
             'supervisor_id' => $supervisorId,
             'situation'     => $situation,
             'behavior'      => $behavior,

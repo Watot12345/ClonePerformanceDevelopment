@@ -117,7 +117,7 @@ function renderTnaEnrollmentsTableRows() {
         return {
             id: item.id,
             employeeId: item.employee,
-            empName: item.employee_name || (item.employee === 'emp-101' ? 'Maria Santos' : (item.employee === 'emp-102' ? 'Antonio Silva' : (item.employee === 'emp-103' ? 'John Marco' : item.employee))),
+            empName: item.employee_name || item.employee || 'Associate',
             empRole: item.employee_title || 'Associate',
             empDept: item.document_department || 'Property-Wide',
             empAvatar: item.employee_avatar || 'public/images/removed-bg-logo.png',
@@ -139,7 +139,7 @@ function renderTnaEnrollmentsTableRows() {
     });
 
     const userRole = (window.currentUser?.role || window.activePersonaRole || '').toLowerCase();
-    const currentUserId = (window.currentUser?.id || 'emp-101').toLowerCase();
+    const currentUserId = (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
     const isSupervisorOrManager = userRole.includes('supervisor') || userRole.includes('manager') || userRole.includes('admin') || userRole.includes('hr') || userRole.includes('executive');
 
     // Toggle Prescribe Book button based on employee vs manager role
@@ -153,14 +153,8 @@ function renderTnaEnrollmentsTableRows() {
     }
 
     let allRoster = mappedDb;
-    if (!isSupervisorOrManager) {
-        allRoster = allRoster.filter(r => {
-            const eId = (r.employeeId || '').toLowerCase();
-            const eName = (r.empName || '').toLowerCase();
-            return eId === currentUserId ||
-                (currentUserId === 'emp-101' && (eId.includes('101') || eId.includes('maria') || eName.includes('maria'))) ||
-                (currentUserId === 'emp-102' && (eId.includes('102') || eId.includes('antonio') || eName.includes('antonio')));
-        });
+    if (!isSupervisorOrManager && currentUserId) {
+        allRoster = allRoster.filter(r => isSameEmployee(r.employeeId, currentUserId));
     }
 
     if (allRoster.length === 0) {

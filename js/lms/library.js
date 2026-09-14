@@ -21,7 +21,7 @@ let currentReadingBookId = null;
 // Unified Quiz Completion Detector
 window.getCompletedQuizRecord = function (bookId) {
     if (!bookId) return null;
-    const currentUserId = (window.currentUser?.id || window.activePersonaId || 'emp-101').toLowerCase();
+    const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
 
     let match = null;
     if (window.dynamicLmsState && Array.isArray(window.dynamicLmsState.prescribed)) {
@@ -29,10 +29,7 @@ window.getCompletedQuizRecord = function (bookId) {
             const pBookId = p.lms_id || p.book_id || p.id;
             if (String(pBookId) !== String(bookId)) return false;
             const empId = (p.employee || p.employee_id || '').toLowerCase();
-            const empName = (p.employee_name || '').toLowerCase();
-            return empId === currentUserId ||
-                (currentUserId === 'emp-101' && (empId.includes('101') || empId.includes('maria') || empName.includes('maria'))) ||
-                (currentUserId === 'emp-102' && (empId.includes('102') || empId.includes('antonio') || empName.includes('antonio')));
+            return isSameEmployee(empId, currentUserId);
         });
     }
 
@@ -117,7 +114,7 @@ async function fetchDynamicLmsDocuments(deptFilter = null, searchVal = null) {
     if (searchVal !== null) window.dynamicLmsState.search = searchVal;
 
     const userRole = (window.currentUser?.role || window.activePersonaRole || '').toLowerCase();
-    const currentUserId = (window.currentUser?.id || window.activePersonaId || (userRole.includes('supervisor') ? 'emp-102' : 'emp-101')).toLowerCase();
+    const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
 
     // 1. Instant 0ms render if cache available
     if (window.dynamicLmsState.documents && window.dynamicLmsState.documents.length > 0) {
@@ -217,7 +214,7 @@ function renderLmsBooks() {
     if (!container) return;
 
     const userRole = (window.currentUser?.role || window.activePersonaRole || '').toLowerCase();
-    const currentUserId = (window.currentUser?.id || window.activePersonaId || (userRole.includes('supervisor') ? 'emp-102' : 'emp-101')).toLowerCase();
+    const currentUserId = (window.currentUser?.id || window.activePersonaId || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '').toLowerCase();
     const isSupervisorOrManager = userRole.includes('supervisor') || userRole.includes('manager') || userRole.includes('admin') || userRole.includes('hr') || userRole.includes('executive');
 
     // Toggle Upload Action visibility based on user role
@@ -237,10 +234,7 @@ function renderLmsBooks() {
     const prescribedList = window.dynamicLmsState.prescribed || [];
     const myPrescribedLmsIds = prescribedList.filter(p => {
         const empId = (p.employee || p.employee_id || '').toLowerCase();
-        const empName = (p.employee_name || '').toLowerCase();
-        return empId === currentUserId ||
-            (currentUserId === 'emp-101' && (empId.includes('101') || empId.includes('maria') || empName.includes('maria'))) ||
-            (currentUserId === 'emp-102' && (empId.includes('102') || empId.includes('antonio') || empName.includes('antonio')));
+        return isSameEmployee(empId, currentUserId);
     }).map(p => String(p.lms_id || p.book_id || p.id));
 
     // Visibility Rule:

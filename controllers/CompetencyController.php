@@ -152,17 +152,7 @@ class CompetencyController
      */
     public function getAssessments(array $params = []): array
     {
-        $empId = $params['employee_id'] ?? null;
-        if (!empty($empId)) {
-            $clean = strtolower(trim($empId));
-            if ($clean === 'maria_santos' || str_contains($clean, 'maria')) {
-                $empId = 'emp-101';
-            } elseif ($clean === 'marco_rossi' || $clean === 'antonio_silva' || str_contains($clean, 'antonio')) {
-                $empId = 'emp-102';
-            } elseif ($clean === 'john_marco' || $clean === 'elena_vance' || str_contains($clean, 'john')) {
-                $empId = 'emp-103';
-            }
-        }
+        $empId = !empty($params['employee_id']) ? trim((string)$params['employee_id']) : null;
 
         // 1. High-Speed Direct Database Query
         try {
@@ -247,9 +237,15 @@ class CompetencyController
         }
 
         // 1. Fetch employee
-        $stmtEmp = $pdo->prepare("SELECT id, employee_code, full_name, title, department_id FROM public.employees WHERE id = :empId LIMIT 1");
-        $stmtEmp->execute([':empId' => $empId]);
+        $stmtEmp = $pdo->prepare("SELECT id, employee_code, full_name, title, department_id FROM public.employees WHERE id = :empId OR employee_code ILIKE :empCode LIMIT 1");
+        $stmtEmp->execute([':empId' => $empId, ':empCode' => $empId]);
         $emp = $stmtEmp->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$emp) {
+            $stmtUser = $pdo->prepare("SELECT id, employee_code, full_name, title, department_id FROM public.users WHERE id = :empId OR employee_code ILIKE :empCode LIMIT 1");
+            $stmtUser->execute([':empId' => $empId, ':empCode' => $empId]);
+            $emp = $stmtUser->fetch(\PDO::FETCH_ASSOC);
+        }
 
         $deptId = $emp['department_id'] ?? null;
         $title  = $emp['title'] ?? '';
@@ -433,7 +429,7 @@ class CompetencyController
     public function saveAssessments(array $payload): array
     {
         $employeeId = $payload['employee_id'] ?? null;
-        $assessedBy = $payload['assessed_by'] ?? 'emp-103';
+        $assessedBy = $payload['assessed_by'] ?? null;
         $ratings = $payload['ratings'] ?? []; // Array of ['competency_id' => ..., 'score' => ..., 'comments' => ...]
         $generalNotes = $payload['notes'] ?? $payload['comments'] ?? null;
 

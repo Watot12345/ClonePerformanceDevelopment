@@ -36,7 +36,7 @@ function checkEmployeeStage6ObjectivesProgress(empId) {
 window.checkEmployeeStage6ObjectivesProgress = checkEmployeeStage6ObjectivesProgress;
 
 function openViewIDPPlanModal(empId) {
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId)) || (window.perfRoster || [])[0];
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     if (!emp) return;
 
     window.selectedEvalEmpId = emp.id;
@@ -345,7 +345,7 @@ window.loadDraftSummary = loadDraftSummary;
 async function handleCreateSpecificTaskSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
 
-    const empId = document.getElementById('add-task-target-emp-id')?.value || window.selectedEvalEmpId || 'emp-101';
+    const empId = document.getElementById('add-task-target-emp-id')?.value || window.selectedEvalEmpId || '';
     const goalId = document.getElementById('add-task-goal-select')?.value;
     const title = document.getElementById('add-task-title')?.value.trim();
     const targetDate = document.getElementById('add-task-target-date')?.value;
@@ -944,13 +944,9 @@ function showIDPDetail(empId, openModalImmediately = false) {
     const strengths = criteria.filter(c => parseFloat(c.rating || 0) >= 3.5);
     const gaps = criteria.filter(c => parseFloat(c.rating || 0) < 3.5);
 
-    const empKey = isSameEmployee(emp.id, 'emp-101') ? 'maria' : (isSameEmployee(emp.id, 'emp-102') ? 'antonio' : emp.id);
     const dbPrescribed = (window.dynamicLmsState && Array.isArray(window.dynamicLmsState.prescribed)) ? window.dynamicLmsState.prescribed : [];
-    const empDbPrescribed = dbPrescribed.filter(item => isSameEmployee(item.employee, emp.id) || (empKey === 'maria' && isSameEmployee(item.employee, 'emp-101')));
-    const memoryPrescribed = [
-        ...(window.prescribedBooksPerAssociate?.[emp.id] || []),
-        ...(window.prescribedBooksPerAssociate?.[empKey] || [])
-    ];
+    const empDbPrescribed = dbPrescribed.filter(item => isSameEmployee(item.employee, emp.id));
+    const memoryPrescribed = window.prescribedBooksPerAssociate?.[emp.id] || [];
     const prescribedIds = Array.from(new Set([
         ...empDbPrescribed.map(p => String(p.lms_id)),
         ...memoryPrescribed.map(p => String(p))

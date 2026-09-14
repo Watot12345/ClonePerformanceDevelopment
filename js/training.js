@@ -339,7 +339,7 @@ function normalizeTrainingResult(res) {
         programTitle: res.programTitle || res.program_title || 'Training Program',
         category: res.category || 'Service',
         dept: res.dept || 'Front Office',
-        associateId: res.associateId || res.associate_id || 'emp-101',
+        associateId: res.associateId || res.associate_id || '',
         associateName: res.associateName || res.associate_name || 'Associate',
         associateRole: res.associateRole || res.associate_role || 'Staff',
         associateAvatar: res.associateAvatar || res.associate_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -2281,21 +2281,12 @@ async function saveScheduledSession() {
         resultId: null
     }));
 
-    // Fallback if none checked
+    // If none checked, warn user and return
     if (selectedRoster.length === 0) {
-        selectedRoster.push({
-            associateId: 'emp-101',
-            name: 'Maria Santos',
-            role: 'Front Desk Host',
-            dept: 'Front Office',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            attendanceStatus: 'Attended',
-            attendanceRate: 100,
-            checkInTime: '13:50',
-            evaluationStatus: 'Pending',
-            score: null,
-            resultId: null
-        });
+        if (typeof showToast === 'function') {
+            showToast('Please select at least one associate for the session roster.', 'warning');
+        }
+        return;
     }
 
     const newSession = {

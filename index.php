@@ -65,8 +65,8 @@
         <script>
             window._toastQueue = [];
             window._activeToastIds = [];
-            const MAX_VISIBLE_TOASTS = 3;
-            const TOAST_DURATION = 2500;
+            const MAX_VISIBLE_TOASTS = 4;
+            const TOAST_DURATION = 5000;
 
             window.showToast = function(msg, type = 'info', customOptions = {}) {
                 if (window.toast) {
@@ -78,7 +78,7 @@
                     }
                     const isDurationSpecified = typeof customOptions.duration === 'number';
                     const duration = isDurationSpecified ? customOptions.duration : (type === 'loading' ? 10000 : TOAST_DURATION);
-                    const options = { duration, ...customOptions };
+                    const options = { duration, closeButton: true, ...customOptions };
                     let id;
                     if (type === 'success') id = window.toast.success(msg, options);
                     else if (type === 'error') id = window.toast.error(msg, options);
@@ -161,8 +161,6 @@
             html.role-associate [data-pillar="pillar-perf"],
             html.role-associate [data-pillar="pillar-succession"],
             html.role-associate [data-pillar="pillar-reports"],
-            html.role-associate [data-sub="system"],
-            html.role-associate #sub-dashboard-system,
             html.role-associate #btn-create-program,
             html.role-associate #btn-schedule-session,
             html.role-associate #btn-mark-all-attended,
@@ -171,28 +169,6 @@
             html.role-associate #subtab-btn-comp-profiles,
             html.role-associate [data-sub="schedules"].subnav-training {
                 display: none !important;
-            }
-
-            /* Ensure Associate sees Pulse panel and tabs immediately */
-            html.role-associate #sub-dashboard-pulse {
-                display: block !important;
-            }
-            html.role-associate [data-sub="pulse"] {
-                display: inline-flex !important;
-            }
-
-            /* Zero-Flash RBAC Guard Styles - Instantly hide individual employee pulse tabs & panels for Supervisor/Management */
-            html.role-management [data-sub="pulse"],
-            html.role-management #sub-dashboard-pulse {
-                display: none !important;
-            }
-
-            /* Ensure Supervisor / Management sees System Analytics panel and tabs immediately */
-            html.role-management #sub-dashboard-system {
-                display: block !important;
-            }
-            html.role-management [data-sub="system"] {
-                display: inline-flex !important;
             }
 
             html.role-associate #subtab-btn-comp-assessment,
@@ -331,10 +307,12 @@
                     window.activePersonaRole = role === 'supervisor' ? 'Supervisor' : (role === 'hradmin' ? 'HRAdmin' : (role === 'generalmanager' ? 'GeneralManager' : 'Associate'));
                     window.activePersonaKey = role;
                     if (user) window.currentUser = user;
-                    var empId = user?.id || (window.activePersonaRole === 'Supervisor' ? 'emp-102' : 'emp-101');
-                    var cachedXp = localStorage.getItem('oxford_cached_total_xp_' + empId);
-                    if (cachedXp !== null) {
-                        window._initialCachedXp = parseInt(cachedXp, 10) || 0;
+                    var empId = user?.id || '';
+                    if (empId) {
+                        var cachedXp = localStorage.getItem('oxford_cached_total_xp_' + empId);
+                        if (cachedXp !== null) {
+                            window._initialCachedXp = parseInt(cachedXp, 10) || 0;
+                        }
                     }
                 } catch(e) {}
 

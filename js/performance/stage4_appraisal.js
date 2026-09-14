@@ -36,21 +36,27 @@ function getEmployeeEvalData(emp, goalId = null) {
     const activeGoal = goalId ? { id: goalId } : (typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(empId) : null);
     const activeGoalId = activeGoal ? activeGoal.id : null;
 
-    const evalRec = typeof getEmployeeGoalEvaluation === 'function'
+    let evalRec = typeof getEmployeeGoalEvaluation === 'function'
         ? getEmployeeGoalEvaluation(empId, activeGoalId)
         : (activeGoalId ? getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, empId) && String(ev.goal_id) === String(activeGoalId)) : null);
 
+    if (!evalRec && emp && typeof emp === 'object' && emp.evaluationRecord) {
+        evalRec = emp.evaluationRecord;
+    }
+
     const rawSup = evalRec && evalRec.supervisor_rating !== undefined && evalRec.supervisor_rating !== null && parseFloat(evalRec.supervisor_rating) > 0
         ? parseFloat(evalRec.supervisor_rating)
-        : null;
+        : ((emp && typeof emp === 'object' && emp.supervisorRating && parseFloat(emp.supervisorRating) > 0) ? parseFloat(emp.supervisorRating) : null);
+
     const rawSelf = evalRec && evalRec.self_evaluation !== undefined && evalRec.self_evaluation !== null && parseFloat(evalRec.self_evaluation) > 0
         ? parseFloat(evalRec.self_evaluation)
-        : null;
+        : ((emp && typeof emp === 'object' && emp.selfRating && parseFloat(emp.selfRating) > 0) ? parseFloat(emp.selfRating) : null);
+
     return {
-        record: evalRec,
+        record: evalRec || (emp && typeof emp === 'object' ? emp.evaluationRecord : null),
         supervisorRating: rawSup,
         selfRating: rawSelf,
-        isRated: rawSup !== null
+        isRated: rawSup !== null && rawSup > 0
     };
 }
 window.getEmployeeEvalData = getEmployeeEvalData;
@@ -279,7 +285,7 @@ window.filterEvaluationRoster = filterEvaluationRoster;
 // ============================================================================
 
 function showEmployeeEvalDetail(empId, openModalImmediately = false) {
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId)) || (window.perfRoster || [])[0];
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     if (!emp) return;
 
     window.selectedEvalEmpId = emp.id;
@@ -437,7 +443,7 @@ window.hideEmployeeEvalDetail = hideEmployeeEvalDetail;
 window.pendingEvalEmpId = null;
 
 function openAppraisalModal(empId, isPostTraining = false) {
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId)) || (window.perfRoster || [])[0];
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
     if (!emp) return;
 
     window.selectedEvalEmpId = emp.id;
@@ -570,8 +576,8 @@ window.updateAppraisalComputedScore = updateAppraisalComputedScore;
 async function handleAppraisalSubmit(e) {
     if (e && e.preventDefault) e.preventDefault();
 
-    const empId = document.getElementById('eval-target-emp-id')?.value || window.selectedEvalEmpId || 'emp-101';
-    const emp = window.perfRoster.find(e => e.id === empId);
+    const empId = document.getElementById('eval-target-emp-id')?.value || window.selectedEvalEmpId || '';
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, empId));
 
     const submitBtn = document.getElementById('btn-submit-appraisal');
     const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
@@ -652,7 +658,7 @@ async function handleAppraisalSubmit(e) {
         updateDbEvaluationRecord(saved);
 
         if (typeof showToast === 'function') {
-            showToast(` Formal appraisal successfully saved for ${emp ? emp.name : 'Employee'}! (${finalScore.toFixed(2)} / 5.0)`, 'success');
+            showToast(`✓ Formal appraisal saved for ${emp ? emp.name : 'Employee'} (${finalScore.toFixed(2)} / 5.0 · ${emp ? emp.tierLabel : 'Rated'})!`, 'success', { duration: 6000 });
         }
 
         closeModal('modal-self-assessment');
@@ -742,8 +748,8 @@ function triggerSendKudosForEmployee(empId) {
 window.triggerSendKudosForEmployee = triggerSendKudosForEmployee;
 
 function proceedFromPhase4ToPhase5(empId) {
-    const targetEmpId = empId || window.selectedEvalEmpId || (window.perfRoster && window.perfRoster[0] ? window.perfRoster[0].id : 'emp-101');
-    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, targetEmpId)) || (window.perfRoster || [])[0];
+    const targetEmpId = empId || window.selectedEvalEmpId || '';
+    const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, targetEmpId));
 
     if (typeof closeModal === 'function') {
         closeModal('modal-view-appraisal');
@@ -772,3 +778,916 @@ function proceedFromPhase4ToPhase5(empId) {
 }
 window.proceedFromPhase4ToPhase5 = proceedFromPhase4ToPhase5;
 
+// ============================================================================
+// AI Appraisal Recommendation Engine
+// Analyzes: Supervisor Coaching & Notes, Employee Feedback, Learnings, Milestones
+// Features: LocalStorage Caching, Minimization Background Dock, Full Regeneration
+// ============================================================================
+
+window.currentAIAppraisalRecommendations = [];
+window.selectedAIAppraisalEmpIds = new Set();
+const AI_APPRAISAL_CACHE_KEY = 'oxf_ai_appraisal_cache_v2';
+
+function getAIAppraisalCache() {
+    try {
+        const raw = localStorage.getItem(AI_APPRAISAL_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.recommendations)) {
+            return parsed.recommendations;
+        }
+    } catch (e) {
+        console.warn('Failed to read AI appraisal cache:', e);
+    }
+    return null;
+}
+
+function setAIAppraisalCache(recs) {
+    try {
+        localStorage.setItem(AI_APPRAISAL_CACHE_KEY, JSON.stringify({
+            timestamp: Date.now(),
+            recommendations: Array.isArray(recs) ? recs : []
+        }));
+    } catch (e) {
+        console.warn('Failed to save AI appraisal cache:', e);
+    }
+}
+
+function clearAIAppraisalCache() {
+    try {
+        localStorage.removeItem(AI_APPRAISAL_CACHE_KEY);
+    } catch (e) {}
+}
+
+function updateAIAppraisalMinimizedDock(status = 'ready', message = '', count = null) {
+    const dock = document.getElementById('ai-appraisal-minimized-dock');
+    const badge = document.getElementById('ai-appraisal-dock-badge');
+    const statusEl = document.getElementById('ai-appraisal-dock-status');
+    const icon = document.getElementById('ai-appraisal-dock-icon');
+    const spinner = document.getElementById('ai-appraisal-dock-spinner');
+    const ring = document.getElementById('ai-appraisal-dock-pulse-ring');
+
+    if (!dock) return;
+
+    if (status === 'analyzing') {
+        if (badge) {
+            badge.textContent = 'Analyzing...';
+            badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-400 text-slate-900 border border-amber-300 animate-pulse';
+        }
+        if (statusEl) statusEl.textContent = message || 'Synthesizing shift evidence...';
+        if (icon) icon.className = 'fas fa-wand-magic-sparkles text-amber-300 text-sm animate-pulse';
+        if (spinner) spinner.classList.remove('hidden');
+        if (ring) ring.classList.remove('hidden');
+    } else if (status === 'ready') {
+        const c = count !== null ? count : (window.currentAIAppraisalRecommendations?.length || 0);
+        if (badge) {
+            badge.textContent = `${c} Ready`;
+            badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-white text-primary shadow-2xs';
+        }
+        if (statusEl) statusEl.textContent = message || (c > 0 ? 'Click to open & apply recommendations' : 'All candidates evaluated');
+        if (icon) icon.className = 'fas fa-wand-magic-sparkles text-amber-300 text-sm';
+        if (spinner) spinner.classList.add('hidden');
+        if (ring) {
+            if (c > 0) ring.classList.remove('hidden');
+            else ring.classList.add('hidden');
+        }
+    }
+}
+
+function minimizeAIAppraisalModal() {
+    if (typeof closeModal === 'function') {
+        closeModal('modal-ai-appraisal-recommendations');
+    }
+    const dock = document.getElementById('ai-appraisal-minimized-dock');
+    if (dock) {
+        dock.classList.remove('hidden');
+        dock.style.display = 'block';
+        const count = window.currentAIAppraisalRecommendations?.length || 0;
+        updateAIAppraisalMinimizedDock('ready', `${count} candidate recommendation${count === 1 ? '' : 's'} ready`, count);
+    }
+    if (typeof showToast === 'function') {
+        showToast('AI Assistant minimized to bottom-right widget. Click anytime to restore.', 'info', { duration: 3500 });
+    }
+}
+window.minimizeAIAppraisalModal = minimizeAIAppraisalModal;
+
+function restoreAIAppraisalModal() {
+    const dock = document.getElementById('ai-appraisal-minimized-dock');
+    if (dock) {
+        dock.classList.add('hidden');
+        dock.style.display = 'none';
+    }
+    if (typeof openModal === 'function') {
+        openModal('modal-ai-appraisal-recommendations');
+    }
+    renderAIAppraisalRecommendationsList();
+}
+window.restoreAIAppraisalModal = restoreAIAppraisalModal;
+
+function closeAIAppraisalMinimizedDock() {
+    const dock = document.getElementById('ai-appraisal-minimized-dock');
+    if (dock) {
+        dock.classList.add('hidden');
+        dock.style.display = 'none';
+    }
+}
+window.closeAIAppraisalMinimizedDock = closeAIAppraisalMinimizedDock;
+
+function closeAIAppraisalRecommendationsModal() {
+    if (typeof closeModal === 'function') {
+        closeModal('modal-ai-appraisal-recommendations');
+    }
+    closeAIAppraisalMinimizedDock();
+}
+window.closeAIAppraisalRecommendationsModal = closeAIAppraisalRecommendationsModal;
+
+async function openAIAppraisalRecommendationsModal(forceRegenerate = false, startMinimized = false) {
+    const modal = document.getElementById('modal-ai-appraisal-recommendations');
+    const container = document.getElementById('ai-appraisal-cards-container');
+    const countEl = document.getElementById('ai-appraisal-pending-count');
+    const cacheIndicator = document.getElementById('ai-appraisal-cache-indicator');
+    const selectAllCb = document.getElementById('ai-appraisal-select-all');
+
+    if (!modal || !container) return;
+
+    // 1. Check LocalStorage Cache if not forced to regenerate
+    if (!forceRegenerate) {
+        const cached = getAIAppraisalCache();
+        if (cached && cached.length > 0) {
+            window.currentAIAppraisalRecommendations = cached;
+            window.selectedAIAppraisalEmpIds = new Set(cached.map(r => String(r.employee_id)));
+            if (selectAllCb) selectAllCb.checked = cached.length > 0;
+            if (cacheIndicator) cacheIndicator.classList.remove('hidden');
+            renderAIAppraisalRecommendationsList();
+            updateAIAppraisalMinimizedDock('ready', `${cached.length} recommendations ready`, cached.length);
+            
+            if (startMinimized) {
+                const dock = document.getElementById('ai-appraisal-minimized-dock');
+                if (dock) {
+                    dock.classList.remove('hidden');
+                    dock.style.display = 'block';
+                }
+            } else {
+                if (typeof openModal === 'function') {
+                    openModal('modal-ai-appraisal-recommendations');
+                }
+                closeAIAppraisalMinimizedDock();
+            }
+            return;
+        }
+    }
+
+    if (cacheIndicator) cacheIndicator.classList.add('hidden');
+
+    if (startMinimized) {
+        const dock = document.getElementById('ai-appraisal-minimized-dock');
+        if (dock) {
+            dock.classList.remove('hidden');
+            dock.style.display = 'block';
+        }
+        updateAIAppraisalMinimizedDock('analyzing', 'Synthesizing shift evidence...');
+    } else {
+        if (typeof openModal === 'function') {
+            openModal('modal-ai-appraisal-recommendations');
+        }
+        closeAIAppraisalMinimizedDock();
+    }
+
+    // 2. Loading / Analyzing State
+    if (countEl) countEl.textContent = 'Analyzing shift evidence...';
+    updateAIAppraisalMinimizedDock('analyzing', 'Synthesizing evidence across roster...');
+    container.innerHTML = `
+        <div class="py-14 text-center space-y-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl mx-auto border border-indigo-200 shadow-2xs">
+                <i class="fas fa-wand-magic-sparkles fa-spin"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-slate-800 text-sm">AI Copilot Analyzing Performance Evidence</h4>
+                <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Evaluating supervisor floor notes, associate reflection logs, milestone deliverables, and checklist progress...</p>
+            </div>
+            <div class="w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden mx-auto">
+                <div class="h-full bg-primary rounded-full animate-pulse w-full"></div>
+            </div>
+            <div class="pt-2">
+                <button type="button" onclick="minimizeAIAppraisalModal()" class="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition inline-flex items-center space-x-1.5 cursor-pointer">
+                    <i class="fas fa-window-minimize text-[10px] -translate-y-0.5"></i>
+                    <span>Run in Background (Minimize)</span>
+                </button>
+            </div>
+        </div>
+    `;
+
+    try {
+        let recs = [];
+        try {
+            const apiRes = await PerformanceAPI.generateAppraisalRecommendations();
+            recs = apiRes?.recommendations || apiRes?.data?.recommendations || [];
+        } catch (apiErr) {
+            console.warn('API generateAppraisalRecommendations fallback:', apiErr);
+        }
+
+        // Resilient client-side fallback if backend returns empty or offline
+        if (!Array.isArray(recs) || recs.length === 0) {
+            recs = generateClientSideAppraisalRecommendations();
+        }
+
+        // Save fresh results into LocalStorage cache
+        setAIAppraisalCache(recs);
+
+        window.currentAIAppraisalRecommendations = recs;
+        window.selectedAIAppraisalEmpIds = new Set(recs.map(r => String(r.employee_id)));
+
+        if (selectAllCb) {
+            selectAllCb.checked = recs.length > 0;
+        }
+
+        renderAIAppraisalRecommendationsList();
+        updateAIAppraisalMinimizedDock('ready', `${recs.length} recommendations ready - Click to view!`, recs.length);
+
+        const isMinimized = !document.getElementById('ai-appraisal-minimized-dock')?.classList.contains('hidden');
+        if (isMinimized && typeof showToast === 'function') {
+            showToast(`✨ AI Appraisal Analysis Complete! (${recs.length} candidates ready). Click the bottom-right dock to review.`, 'success', { duration: 6000 });
+        } else if (forceRegenerate && typeof showToast === 'function') {
+            showToast('✓ AI Recommendations refreshed with latest shift evidence.', 'success', { duration: 4000 });
+        }
+    } catch (err) {
+        console.error('Error generating AI appraisal recommendations:', err);
+        container.innerHTML = `
+            <div class="p-8 text-center bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-800 space-y-2">
+                <i class="fas fa-triangle-exclamation text-rose-600 text-base"></i>
+                <p class="font-bold">Failed to generate AI recommendations</p>
+                <p class="text-slate-600">${err.message || 'Please check connection and retry.'}</p>
+                <button onclick="openAIAppraisalRecommendationsModal(true)" class="mt-2 btn-secondary px-3 py-1.5 text-xs font-bold">Retry Analysis</button>
+            </div>
+        `;
+        updateAIAppraisalMinimizedDock('ready', 'Analysis interrupted');
+    }
+}
+window.openAIAppraisalRecommendationsModal = openAIAppraisalRecommendationsModal;
+
+function analyzeClientTextSubstanceAndSentiment(texts) {
+    if (!texts || texts.length === 0) {
+        return { count: 0, valid_count: 0, substance_level: 'empty', quality_score: 0.0, sentiment_score: 0.0, is_placeholder: false, clean_snippets: [], flagged_samples: [] };
+    }
+
+    const placeholderPatterns = [
+        /^[a-z0-9\s]{1,4}$/i,
+        /^(.)\1{2,}$/i,
+        /^(na|n\/a|none|nil|null|test|testing|asd|asdf|zsdas|abc|xyz|sample|placeholder|todo)$/i
+    ];
+
+    const positiveKeywords = [
+        'excellent', 'outstanding', 'exceeded', 'surpassed', 'mastered', 'stellar', 'exceptional',
+        'diligent', 'proactive', 'resolved', 'improved', 'commendable', 'flawless', 'exemplary',
+        'efficient', 'punctual', 'compliance', 'initiative', 'thorough', 'smooth',
+        'great', 'good', 'satisfied', 'success', 'collaborative', 'mentor', 'leadership',
+        'zero escalations', 'zero complaints', 'no complaints', 'zero incidents', 'resolved issues'
+    ];
+    const negativeKeywords = [
+        'delayed', 'missed', 'failed', 'complaint', 'escalation',
+        'struggled', 'needs improvement', 'incident', 'poor', 'absent',
+        'incomplete', 'violation', 'dispute', 'warning'
+    ];
+
+    const validTexts = [];
+    const flaggedSamples = [];
+    let totalWords = 0;
+    let sentimentSum = 0;
+
+    texts.forEach(raw => {
+        const trimmed = String(raw || '').trim();
+        if (!trimmed) return;
+
+        let isPlaceholder = false;
+        for (const pat of placeholderPatterns) {
+            if (pat.test(trimmed)) {
+                isPlaceholder = true;
+                break;
+            }
+        }
+
+        const words = trimmed.split(/\s+/).filter(Boolean);
+        const wordCount = words.length;
+
+        if (isPlaceholder || (wordCount <= 1 && trimmed.length <= 4)) {
+            flaggedSamples.push(trimmed);
+        } else {
+            validTexts.push(trimmed);
+            totalWords += wordCount;
+
+            const lower = trimmed.toLowerCase();
+            positiveKeywords.forEach(kw => { if (lower.includes(kw)) sentimentSum += 0.25; });
+            negativeKeywords.forEach(kw => {
+                const reg = new RegExp('(zero|no|resolved|prevented)\\s+(guest\\s+|floor\\s+|client\\s+)?' + kw, 'i');
+                if (reg.test(lower)) {
+                    sentimentSum += 0.25;
+                } else if (lower.includes(kw)) {
+                    sentimentSum -= 0.30;
+                }
+            });
+        }
+    });
+
+    const allCount = texts.length;
+    const validCount = validTexts.length;
+    const placeholderCount = flaggedSamples.length;
+
+    if (validCount === 0 && placeholderCount > 0) {
+        return { count: allCount, valid_count: 0, substance_level: 'placeholder', quality_score: 0.05, sentiment_score: 0.0, is_placeholder: true, clean_snippets: [], flagged_samples: flaggedSamples };
+    }
+
+    if (validCount === 0) {
+        return { count: 0, valid_count: 0, substance_level: 'empty', quality_score: 0.0, sentiment_score: 0.0, is_placeholder: false, clean_snippets: [], flagged_samples: [] };
+    }
+
+    const avgWords = totalWords / Math.max(1, validCount);
+    let substanceLevel = 'minimal';
+    let qualityScore = 0.35;
+
+    if (avgWords >= 20 || totalWords >= 30) {
+        substanceLevel = 'comprehensive';
+        qualityScore = 1.0;
+    } else if (avgWords >= 10 || totalWords >= 15) {
+        substanceLevel = 'moderate';
+        qualityScore = 0.75;
+    } else if (avgWords >= 4) {
+        substanceLevel = 'minimal';
+        qualityScore = 0.45;
+    }
+
+    const clampedSentiment = Math.max(-1.0, Math.min(1.0, sentimentSum));
+
+    return {
+        count: allCount,
+        valid_count: validCount,
+        substance_level: substanceLevel,
+        quality_score: qualityScore,
+        sentiment_score: clampedSentiment,
+        is_placeholder: false,
+        clean_snippets: validTexts,
+        flagged_samples: flaggedSamples
+    };
+}
+
+function generateClientSideAppraisalRecommendations() {
+    const unrated = (window.perfRoster || []).filter(emp => {
+        const evalData = getEmployeeEvalData(emp);
+        const hasGoal = typeof employeeHasApprovedGoal === 'function' ? employeeHasApprovedGoal(emp) : (emp.goals && emp.goals.length > 0);
+        return hasGoal && !evalData.isRated;
+    });
+
+    const allLogs = window.dbMonitoringLogs || [];
+
+    return unrated.map(emp => {
+        const goal = (emp.goals || []).find(g => (g.status || '').toLowerCase() === 'approved') || emp.goals[0] || {};
+        const tasks = goal.tasks || [];
+        const completedTasks = tasks.filter(t => t.status === 'completed');
+        const taskRatio = tasks.length > 0 ? (completedTasks.length / tasks.length) : 1.0;
+
+        const supervisorNotes = [];
+        if (goal.supervisor_notes) supervisorNotes.push(goal.supervisor_notes);
+        tasks.forEach(t => {
+            if (t.supervisor_feedback) supervisorNotes.push(t.supervisor_feedback);
+            if (t.supervisor_accomplishment) supervisorNotes.push(t.supervisor_accomplishment);
+        });
+
+        const employeeLearnings = [];
+        tasks.forEach(t => {
+            if (t.employee_learnings) employeeLearnings.push(t.employee_learnings);
+        });
+
+        const employeeFeedback = [];
+        if (goal.feedback) employeeFeedback.push(goal.feedback);
+        tasks.forEach(t => {
+            if (t.employee_feedback) employeeFeedback.push(t.employee_feedback);
+        });
+
+        const empLogs = allLogs.filter(l => isSameEmployee(l.employee_id, emp.id));
+        const milestoneTexts = [];
+        empLogs.forEach(l => {
+            if (l.milestone_title) milestoneTexts.push(l.milestone_title);
+            if (l.actual_metric) milestoneTexts.push(l.actual_metric);
+            if (l.notes) milestoneTexts.push(l.notes);
+        });
+
+        // Perform substance & sentiment analysis
+        const supAnalysis = analyzeClientTextSubstanceAndSentiment(supervisorNotes);
+        const learnAnalysis = analyzeClientTextSubstanceAndSentiment(employeeLearnings);
+        const fbAnalysis = analyzeClientTextSubstanceAndSentiment(employeeFeedback);
+        const msAnalysis = analyzeClientTextSubstanceAndSentiment(milestoneTexts);
+
+        const hasPlaceholders = learnAnalysis.is_placeholder || supAnalysis.is_placeholder || msAnalysis.is_placeholder;
+        const isNegative = (supAnalysis.sentiment_score < 0) || (learnAnalysis.sentiment_score < 0);
+
+        const placeholderWarnings = [];
+        if (learnAnalysis.is_placeholder) placeholderWarnings.push(`reflections ('${learnAnalysis.flagged_samples.join(', ')}')`);
+        if (supAnalysis.is_placeholder) placeholderWarnings.push(`supervisor notes ('${supAnalysis.flagged_samples.join(', ')}')`);
+        if (msAnalysis.is_placeholder) placeholderWarnings.push(`shift milestones ('${msAnalysis.flagged_samples.join(', ')}')`);
+
+        let calculatedScore = 1.80;
+        let recommendedScore = 2.50;
+        let tierLabel = 'Below Benchmark (< 3.0)';
+
+        if (hasPlaceholders || isNegative) {
+            calculatedScore = 1.80 + (taskRatio * 0.80);
+            if (isNegative) {
+                calculatedScore += Math.min(0, (supAnalysis.sentiment_score + learnAnalysis.sentiment_score) * 0.40);
+            }
+            if (placeholderWarnings.length >= 2) {
+                calculatedScore -= 0.15;
+            }
+            recommendedScore = Math.min(2.85, Math.max(1.20, parseFloat(calculatedScore.toFixed(2))));
+            tierLabel = 'Below Benchmark (Needs Calibration)';
+        } else {
+            calculatedScore = 3.20;
+            calculatedScore += (taskRatio * 0.50);
+            calculatedScore += (supAnalysis.quality_score * 0.45);
+            calculatedScore += (learnAnalysis.quality_score * 0.35);
+            calculatedScore += (msAnalysis.quality_score * 0.35);
+            calculatedScore += Math.max(0, supAnalysis.sentiment_score * 0.15);
+
+            recommendedScore = Math.min(5.00, Math.max(3.00, parseFloat(calculatedScore.toFixed(2))));
+            if (recommendedScore >= 4.50) tierLabel = 'Master Tier';
+            else if (recommendedScore >= 3.75) tierLabel = 'Advanced Tier';
+            else tierLabel = 'Proficient';
+        }
+
+        const tier = getTierInfo(recommendedScore);
+
+        let aiNotes = '';
+        if (placeholderWarnings.length > 0) {
+            aiNotes = `AI Appraisal Review: Associate ${emp.name} completed task checklist (${completedTasks.length}/${tasks.length}). However, ${placeholderWarnings.join(' and ')} contain gibberish/placeholder text. Due to lack of qualitative floor evidence, a rating below 3.0 (${recommendedScore.toFixed(2)}/5.0 · ${tierLabel}) is assigned. Supervisor floor calibration required.`;
+        } else if (isNegative) {
+            aiNotes = `AI Appraisal Review: Critical performance/compliance concerns were flagged in supervisor notes or feedback. A below-benchmark rating of ${recommendedScore.toFixed(2)}/5.0 (${tierLabel}) is assigned pending formal remediation/coaching.`;
+        } else {
+            const snippets = [];
+            if (supAnalysis.clean_snippets[0]) snippets.push(`Supervisor notes: "${supAnalysis.clean_snippets[0]}"`);
+            if (learnAnalysis.clean_snippets[0]) snippets.push(`Associate reflections: "${learnAnalysis.clean_snippets[0]}"`);
+            if (msAnalysis.clean_snippets[0]) snippets.push(`Shift milestone: "${msAnalysis.clean_snippets[0]}"`);
+
+            aiNotes = `AI Appraisal Recommendation: Associate ${emp.name} demonstrated solid operational performance in "${goal.title || 'Shift Operations'}". `;
+            if (snippets.length > 0) aiNotes += snippets.join('. ') + '. ';
+            aiNotes += `Recommended for ${tierLabel} rating (${recommendedScore.toFixed(2)}/5.0) based on verified KPI deliverables and completed checklist matrix.`;
+        }
+
+        return {
+            employee_id: emp.id,
+            employee_name: emp.name,
+            employee_position: emp.position,
+            employee_department: emp.department,
+            avatar: emp.avatar || emp.name.charAt(0),
+            goal_id: goal.id || null,
+            goal_title: goal.title || 'Operational Excellence Target',
+            target_metric: goal.target_metric || '100% SOP Compliance',
+            recommended_score: recommendedScore,
+            tier_label: tier.label,
+            supervisor_notes: aiNotes,
+            criteria_scores: [
+                {
+                    title: 'Operational Excellence & Protocol Adherence',
+                    metric: goal.target_metric || '100% SOP Compliance',
+                    weight: 40,
+                    rating: Math.min(5.0, Math.max(1.0, parseFloat((recommendedScore + 0.1).toFixed(1)))),
+                    rationale: learnAnalysis.clean_snippets[0] 
+                        ? `Demonstrated strong operational diligence: "${learnAnalysis.clean_snippets[0].substring(0, 80)}..."` 
+                        : (learnAnalysis.is_placeholder 
+                            ? `Checklist verified. Reflections contain minimal text (${learnAnalysis.flagged_samples[0] || 'n/a'}).`
+                            : 'Verified shift checklist completion and operational compliance.')
+                },
+                {
+                    title: 'Shift Execution, KPI Delivery & Diligence',
+                    metric: empLogs.length > 0 ? (empLogs[0].actual_metric || 'Target >= 95% Deliverable') : 'Shift KPI Deliverables Met',
+                    weight: 30,
+                    rating: Math.min(5.0, Math.max(1.0, parseFloat(recommendedScore.toFixed(1)))),
+                    rationale: empLogs.length > 0 
+                        ? (!msAnalysis.is_placeholder
+                            ? `Logged ${empLogs.length} shift milestone(s) with verified deliverables.`
+                            : `Logged shift milestone contains minimal metric placeholder (${msAnalysis.flagged_samples[0] || 'n/a'}).`)
+                        : 'Achieved checklist execution within scheduled shift timeline.'
+                },
+                {
+                    title: 'Teamwork, Conflict De-escalation & Mentorship',
+                    metric: 'Zero Unresolved Escalations / Positive Peer Collaboration',
+                    weight: 30,
+                    rating: Math.min(5.0, Math.max(1.0, parseFloat((recommendedScore - 0.1).toFixed(1)))),
+                    rationale: supAnalysis.clean_snippets[0] 
+                        ? `Supervisor coaching recorded: "${supAnalysis.clean_snippets[0].substring(0, 80)}..."` 
+                        : (supAnalysis.is_placeholder
+                            ? `Supervisor coaching note contains brief placeholder text (${supAnalysis.flagged_samples[0] || 'n/a'}).`
+                            : 'Maintained proactive guest engagement and positive floor coordination.')
+                }
+            ],
+            evidence_summary: {
+                supervisor_notes_count: supervisorNotes.length,
+                employee_feedback_count: employeeFeedback.length,
+                employee_learnings_count: employeeLearnings.length,
+                milestones_count: empLogs.length,
+                completed_tasks_count: completedTasks.length,
+                total_tasks_count: tasks.length,
+                sample_supervisor_note: supervisorNotes[0] || null,
+                sample_learning: employeeLearnings[0] || null,
+                sample_milestone: empLogs[0]?.milestone_title || null,
+                has_placeholders: placeholderWarnings.length > 0
+            }
+        };
+    });
+}
+
+function renderAIAppraisalRecommendationsList() {
+    const container = document.getElementById('ai-appraisal-cards-container');
+    const countEl = document.getElementById('ai-appraisal-pending-count');
+    const selectedLabel = document.getElementById('ai-appraisal-selected-label');
+    const selectAllCb = document.getElementById('ai-appraisal-select-all');
+
+    if (!container) return;
+
+    const recs = window.currentAIAppraisalRecommendations || [];
+
+    if (countEl) {
+        countEl.textContent = `${recs.length} Candidate${recs.length === 1 ? '' : 's'} Analyzed`;
+    }
+
+    if (selectedLabel) {
+        selectedLabel.textContent = `(${window.selectedAIAppraisalEmpIds.size} selected)`;
+    }
+
+    if (selectAllCb) {
+        selectAllCb.checked = recs.length > 0 && window.selectedAIAppraisalEmpIds.size === recs.length;
+    }
+
+    if (recs.length === 0) {
+        container.innerHTML = `
+            <div class="py-12 text-center bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mx-auto border border-emerald-100">
+                    <i class="fas fa-check-double"></i>
+                </div>
+                <div>
+                    <h4 class="font-bold text-slate-900 text-sm">All Associates Formally Evaluated</h4>
+                    <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">All active associates currently have completed appraisal ratings. You can re-evaluate or calibrate individual scores in the Roster table.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = recs.map(rec => {
+        const isSelected = window.selectedAIAppraisalEmpIds.has(String(rec.employee_id));
+        const tier = getTierInfo(rec.recommended_score);
+        const ev = rec.evidence_summary || {};
+
+        return `
+            <div class="p-4 bg-white rounded-2xl border ${isSelected ? 'border-purple-300 ring-2 ring-purple-100' : 'border-slate-200'} shadow-2xs space-y-3.5 transition hover:border-purple-300" id="ai-rec-card-${rec.employee_id}">
+                <!-- Header -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+                    <div class="flex items-center space-x-3">
+                        <input type="checkbox" onchange="toggleAIAppraisalSelection('${rec.employee_id}', this.checked)" ${isSelected ? 'checked' : ''} class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 cursor-pointer">
+                        <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            ${rec.avatar || rec.employee_name.charAt(0)}
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-900 text-xs">${rec.employee_name}</div>
+                            <div class="text-[10px] text-slate-500">${rec.employee_position} · ${rec.employee_department}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 self-end sm:self-center">
+                        <span class="px-2.5 py-1 rounded-xl text-xs font-bold ${tier.badgeClass} border inline-flex items-center space-x-1.5 shadow-2xs">
+                            <i class="fas fa-star text-amber-500 text-[10px]"></i>
+                            <span>⭐ ${rec.recommended_score.toFixed(2)} / 5.0</span>
+                            <span class="text-[10px] font-normal">(${rec.tier_label})</span>
+                        </span>
+                        <button type="button" onclick="applySingleAIAppraisalRecommendation('${rec.employee_id}')" id="btn-apply-rec-${rec.employee_id}" class="btn-primary px-3.5 py-1.5 text-xs font-bold rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer transition">
+                            <i class="fas fa-check text-[10px]"></i>
+                            <span>Apply Recommendation</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Goal Context & Metric -->
+                <div class="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assessed Performance Target</span>
+                        <span class="font-bold text-slate-900 text-xs">${rec.goal_title}</span>
+                    </div>
+                    <div class="text-right sm:text-right">
+                        <span class="text-[10px] text-slate-400 font-mono">Target: <strong class="text-primary">${rec.target_metric}</strong></span>
+                    </div>
+                </div>
+
+                <!-- 4 Evidence Chips -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+                    <div class="p-2.5 bg-purple-50/70 rounded-xl border border-purple-100 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-purple-950 flex items-center space-x-1 text-[10px]">
+                                <i class="fas fa-user-check text-purple-600"></i>
+                                <span>Supervisor Notes (${ev.supervisor_notes_count || 0})</span>
+                            </span>
+                            ${(ev.sample_supervisor_note && ev.sample_supervisor_note.length <= 4) ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Brief</span>' : ''}
+                        </div>
+                        <p class="text-slate-600 italic line-clamp-2 text-[10px]">"${ev.sample_supervisor_note || 'Positive operational adherence'}"</p>
+                    </div>
+                    <div class="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-100 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-emerald-950 flex items-center space-x-1 text-[10px]">
+                                <i class="fas fa-lightbulb text-emerald-600"></i>
+                                <span>Learnings &amp; Reflections (${ev.employee_learnings_count || 0})</span>
+                            </span>
+                            ${(ev.sample_learning && ev.sample_learning.length <= 4) ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Minimal</span>' : ''}
+                        </div>
+                        <p class="text-slate-600 italic line-clamp-2 text-[10px]">"${ev.sample_learning || 'Completed all operational checklist items'}"</p>
+                    </div>
+                    <div class="p-2.5 bg-amber-50/70 rounded-xl border border-amber-100 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-amber-950 flex items-center space-x-1 text-[10px]">
+                                <i class="fas fa-flag text-amber-600"></i>
+                                <span>Shift Milestones (${ev.milestones_count || 0})</span>
+                            </span>
+                            ${(ev.sample_milestone && ev.sample_milestone.length <= 4) ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Brief</span>' : ''}
+                        </div>
+                        <p class="text-slate-600 line-clamp-2 text-[10px]">${ev.sample_milestone || 'Verified KPI shift deliverable'}</p>
+                    </div>
+                    <div class="p-2.5 bg-indigo-50/70 rounded-xl border border-indigo-100 space-y-1">
+                        <span class="font-bold text-indigo-950 flex items-center space-x-1 text-[10px]">
+                            <i class="fas fa-tasks text-indigo-600"></i>
+                            <span>Tasks Verified (${ev.completed_tasks_count || 0}/${ev.total_tasks_count || 0})</span>
+                        </span>
+                        <p class="text-slate-600 font-bold text-[10px] text-emerald-700">${ev.completed_tasks_count >= ev.total_tasks_count && ev.total_tasks_count > 0 ? '100% Checklist Done' : `${Math.round(((ev.completed_tasks_count || 0)/Math.max(1, ev.total_tasks_count || 1))*100)}% Complete`}</p>
+                    </div>
+                </div>
+
+                <!-- Criteria Scores Preview -->
+                <div class="space-y-1.5 pt-1">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recommended Multi-Factor Criteria Rubrics:</span>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        ${rec.criteria_scores.map((c, i) => `
+                            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1 text-xs">
+                                <div class="flex items-center justify-between font-semibold text-[11px]">
+                                    <span class="text-slate-800 line-clamp-1">${i + 1}. ${c.title}</span>
+                                    <span class="font-bold font-mono text-purple-700 shrink-0 ml-1">${c.rating.toFixed(1)} / 5.0</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500 leading-snug line-clamp-2">${c.rationale}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- AI Endorsement Note -->
+                <div class="p-2.5 bg-brand-canvas rounded-xl border border-brand-border text-xs text-slate-700 leading-relaxed italic">
+                    <strong class="font-bold text-slate-900 not-italic mr-1"><i class="fas fa-sparkles text-amber-500 mr-1"></i>AI Recommendation Summary:</strong>
+                    "${rec.supervisor_notes}"
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleAllAIAppraisalSelections(isChecked) {
+    const recs = window.currentAIAppraisalRecommendations || [];
+    if (isChecked) {
+        window.selectedAIAppraisalEmpIds = new Set(recs.map(r => String(r.employee_id)));
+    } else {
+        window.selectedAIAppraisalEmpIds.clear();
+    }
+    renderAIAppraisalRecommendationsList();
+}
+window.toggleAllAIAppraisalSelections = toggleAllAIAppraisalSelections;
+
+function toggleAIAppraisalSelection(empId, isChecked) {
+    const sId = String(empId);
+    if (isChecked) {
+        window.selectedAIAppraisalEmpIds.add(sId);
+    } else {
+        window.selectedAIAppraisalEmpIds.delete(sId);
+    }
+    const selectedLabel = document.getElementById('ai-appraisal-selected-label');
+    const selectAllCb = document.getElementById('ai-appraisal-select-all');
+    const recs = window.currentAIAppraisalRecommendations || [];
+
+    if (selectedLabel) {
+        selectedLabel.textContent = `(${window.selectedAIAppraisalEmpIds.size} selected)`;
+    }
+    if (selectAllCb) {
+        selectAllCb.checked = recs.length > 0 && window.selectedAIAppraisalEmpIds.size === recs.length;
+    }
+    const card = document.getElementById(`ai-rec-card-${empId}`);
+    if (card) {
+        if (isChecked) {
+            card.classList.add('border-purple-300', 'ring-2', 'ring-purple-100');
+            card.classList.remove('border-slate-200');
+        } else {
+            card.classList.remove('border-purple-300', 'ring-2', 'ring-purple-100');
+            card.classList.add('border-slate-200');
+        }
+    }
+}
+window.toggleAIAppraisalSelection = toggleAIAppraisalSelection;
+
+async function applySingleAIAppraisalRecommendation(empId) {
+    const rec = (window.currentAIAppraisalRecommendations || []).find(r => isSameEmployee(r.employee_id, empId));
+    if (!rec) return;
+
+    const btn = document.getElementById(`btn-apply-rec-${empId}`);
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Applying...';
+    }
+
+    try {
+        const saved = await PerformanceAPI.submitAppraisal({
+            employee_id: rec.employee_id,
+            goal_id: rec.goal_id ? parseInt(rec.goal_id, 10) : undefined,
+            supervisor_rating: rec.recommended_score,
+            criteria_scores: rec.criteria_scores,
+            supervisor_notes: rec.supervisor_notes
+        });
+
+        const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, rec.employee_id));
+        if (emp) {
+            emp.evaluationStatus = 'Rated';
+            emp.supervisorRating = rec.recommended_score;
+            emp.managerRating = rec.recommended_score;
+            emp.tierLabel = saved?.tier_label || rec.tier_label;
+            emp.evaluationRecord = saved || rec;
+            emp.reviewStatus = 'Pending Calibration';
+        }
+
+        if (typeof updateDbEvaluationRecord === 'function' && saved) {
+            updateDbEvaluationRecord(saved);
+        }
+
+        // Remove from pending recommendation list
+        window.currentAIAppraisalRecommendations = (window.currentAIAppraisalRecommendations || []).filter(r => !isSameEmployee(r.employee_id, empId));
+        window.selectedAIAppraisalEmpIds.delete(String(empId));
+
+        // Update LocalStorage cache and minimized dock
+        setAIAppraisalCache(window.currentAIAppraisalRecommendations);
+        updateAIAppraisalMinimizedDock('ready', `${window.currentAIAppraisalRecommendations.length} recommendations remaining`, window.currentAIAppraisalRecommendations.length);
+
+        if (typeof showToast === 'function') {
+            showToast(`✓ Applied AI Appraisal for ${rec.employee_name} (${rec.recommended_score.toFixed(2)}/5.0 · ${rec.tier_label})!`, 'success', { duration: 6000 });
+        }
+
+        renderAIAppraisalRecommendationsList();
+        renderEvaluationRosterTable();
+        renderReviewRosterTable();
+        renderIDPRosterTable();
+        renderCycleRosterTable();
+        if (typeof updateAllPerfStepperBadges === 'function') updateAllPerfStepperBadges();
+    } catch (err) {
+        console.error('Error applying AI recommendation:', err);
+        if (typeof showToast === 'function') {
+            showToast(err.message || 'Failed to apply recommendation.', 'error');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+window.applySingleAIAppraisalRecommendation = applySingleAIAppraisalRecommendation;
+
+async function applySelectedAIAppraisalRecommendations() {
+    const selectedIds = Array.from(window.selectedAIAppraisalEmpIds || []);
+    if (selectedIds.length === 0) {
+        if (typeof showToast === 'function') {
+            showToast('Please select at least one candidate recommendation to apply.', 'info');
+        }
+        return;
+    }
+
+    const selectedRecs = (window.currentAIAppraisalRecommendations || []).filter(r => selectedIds.some(sId => isSameEmployee(r.employee_id, sId)));
+    if (selectedRecs.length === 0) return;
+
+    const btn = document.getElementById('btn-apply-selected-ai-appraisals');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Applying Selected...';
+    }
+
+    let appliedCount = 0;
+    for (const rec of selectedRecs) {
+        try {
+            const saved = await PerformanceAPI.submitAppraisal({
+                employee_id: rec.employee_id,
+                goal_id: rec.goal_id ? parseInt(rec.goal_id, 10) : undefined,
+                supervisor_rating: rec.recommended_score,
+                criteria_scores: rec.criteria_scores,
+                supervisor_notes: rec.supervisor_notes
+            });
+
+            const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, rec.employee_id));
+            if (emp) {
+                emp.evaluationStatus = 'Rated';
+                emp.supervisorRating = rec.recommended_score;
+                emp.managerRating = rec.recommended_score;
+                emp.tierLabel = saved?.tier_label || rec.tier_label;
+                emp.evaluationRecord = saved || rec;
+                emp.reviewStatus = 'Pending Calibration';
+            }
+
+            if (typeof updateDbEvaluationRecord === 'function' && saved) {
+                updateDbEvaluationRecord(saved);
+            }
+            appliedCount++;
+        } catch (err) {
+            console.error('Error applying recommendation for', rec.employee_name, err);
+        }
+    }
+
+    window.currentAIAppraisalRecommendations = (window.currentAIAppraisalRecommendations || []).filter(r => !selectedIds.some(sId => isSameEmployee(r.employee_id, sId)));
+    window.selectedAIAppraisalEmpIds.clear();
+
+    // Update LocalStorage cache and minimized dock
+    setAIAppraisalCache(window.currentAIAppraisalRecommendations);
+    updateAIAppraisalMinimizedDock('ready', `${window.currentAIAppraisalRecommendations.length} recommendations remaining`, window.currentAIAppraisalRecommendations.length);
+
+    if (typeof showToast === 'function') {
+        showToast(`✓ Successfully applied AI Appraisal Recommendations for ${appliedCount} associate(s)!`, 'success', { duration: 6000 });
+    }
+
+    closeModal('modal-ai-appraisal-recommendations');
+    renderEvaluationRosterTable();
+    renderReviewRosterTable();
+    renderIDPRosterTable();
+    renderCycleRosterTable();
+    if (typeof updateAllPerfStepperBadges === 'function') updateAllPerfStepperBadges();
+
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+window.applySelectedAIAppraisalRecommendations = applySelectedAIAppraisalRecommendations;
+
+async function applyAllAIAppraisalRecommendations() {
+    const recs = window.currentAIAppraisalRecommendations || [];
+    if (recs.length === 0) {
+        if (typeof showToast === 'function') {
+            showToast('No pending AI appraisal recommendations to apply.', 'info');
+        }
+        return;
+    }
+
+    const btn = document.getElementById('btn-apply-all-ai-appraisals');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Applying All Recommendations...';
+    }
+
+    let appliedCount = 0;
+    for (const rec of recs) {
+        try {
+            const saved = await PerformanceAPI.submitAppraisal({
+                employee_id: rec.employee_id,
+                goal_id: rec.goal_id ? parseInt(rec.goal_id, 10) : undefined,
+                supervisor_rating: rec.recommended_score,
+                criteria_scores: rec.criteria_scores,
+                supervisor_notes: rec.supervisor_notes
+            });
+
+            const emp = (window.perfRoster || []).find(e => isSameEmployee(e.id, rec.employee_id));
+            if (emp) {
+                emp.evaluationStatus = 'Rated';
+                emp.supervisorRating = rec.recommended_score;
+                emp.managerRating = rec.recommended_score;
+                emp.tierLabel = saved?.tier_label || rec.tier_label;
+                emp.evaluationRecord = saved || rec;
+                emp.reviewStatus = 'Pending Calibration';
+            }
+
+            if (typeof updateDbEvaluationRecord === 'function' && saved) {
+                updateDbEvaluationRecord(saved);
+            }
+            appliedCount++;
+        } catch (err) {
+            console.error('Error applying recommendation for', rec.employee_name, err);
+        }
+    }
+
+    window.currentAIAppraisalRecommendations = [];
+    window.selectedAIAppraisalEmpIds.clear();
+
+    // Clear LocalStorage cache
+    setAIAppraisalCache([]);
+    updateAIAppraisalMinimizedDock('ready', '0 recommendations remaining', 0);
+
+    if (typeof showToast === 'function') {
+        showToast(`✓ Successfully applied AI Appraisal Recommendations for all ${appliedCount} associate(s)!`, 'success', { duration: 6000 });
+    }
+
+    closeModal('modal-ai-appraisal-recommendations');
+    renderEvaluationRosterTable();
+    renderReviewRosterTable();
+    renderIDPRosterTable();
+    renderCycleRosterTable();
+    if (typeof updateAllPerfStepperBadges === 'function') updateAllPerfStepperBadges();
+
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+window.applyAllAIAppraisalRecommendations = applyAllAIAppraisalRecommendations;

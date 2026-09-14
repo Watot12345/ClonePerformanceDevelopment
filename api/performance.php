@@ -170,6 +170,11 @@ try {
             $response = $controller->submitAppraisal($payload);
             break;
 
+        case 'generate_appraisal_recommendations':
+        case 'get_appraisal_recommendations':
+            $response = $controller->generateAppraisalRecommendations($payload);
+            break;
+
         case 'submit_self_assessment':
             $response = $controller->submitSelfAssessment($payload);
             break;

@@ -53,8 +53,8 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
         <script>
             window._toastQueue = [];
             window._activeToastIds = [];
-            const MAX_VISIBLE_TOASTS = 3;
-            const TOAST_DURATION = 2500;
+            const MAX_VISIBLE_TOASTS = 4;
+            const TOAST_DURATION = 5000;
 
             window.showToast = function(msg, type = 'info', customOptions = {}) {
                 if (window.toast) {
@@ -66,7 +66,7 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                     }
                     const isDurationSpecified = typeof customOptions.duration === 'number';
                     const duration = isDurationSpecified ? customOptions.duration : (type === 'loading' ? 10000 : TOAST_DURATION);
-                    const options = { duration, ...customOptions };
+                    const options = { duration, closeButton: true, ...customOptions };
                     let id;
                     if (type === 'success') id = window.toast.success(msg, options);
                     else if (type === 'error') id = window.toast.error(msg, options);

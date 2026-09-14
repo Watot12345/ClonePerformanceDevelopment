@@ -728,15 +728,26 @@ let associatesCompetencyData = {
 window.associatesCompetencyData = associatesCompetencyData;
 
 // State Variables
-let activeCompetencyEmpKey = 'emp-101';
+let activeCompetencyEmpKey = '';
 let activeRoleProfileKey = 'front_office';
 let competencyViewMode = 'single'; // 'single' | 'team_deck' | 'compare'
-let comparedEmployeeKeys = ['emp-101', 'emp-102'];
+let comparedEmployeeKeys = [];
 
 // ========================================================
 // 3. INITIALIZATION & RENDERING CONTROLLERS
 // ========================================================
 function initCompetencyModule() {
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || sessionUser.role || '').toLowerCase().trim();
+    const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
+    const currentUserId = window.currentUser?.id || sessionUser.id || '';
+
+    if (isAssociate && currentUserId) {
+        activeCompetencyEmpKey = currentUserId;
+    } else if (!activeCompetencyEmpKey && currentUserId) {
+        activeCompetencyEmpKey = currentUserId;
+    }
+
     loadDepartmentDropdowns();
     fetchDynamicCompetencyMatrix();
     renderRoleProfileSelector();
@@ -753,13 +764,36 @@ function initCompetencyModule() {
 // 3.1 Render Staff Dropdown Options (From Supabase Employees Database)
 function renderEmployeeSelectOptions() {
     const select = document.getElementById('comp-emp-select');
+    const switchContainer = document.getElementById('comp-switch-associate-container') || select?.parentElement;
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || sessionUser.role || '').toLowerCase().trim();
+    const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
+
+    if (switchContainer) {
+        if (isAssociate) {
+            switchContainer.classList.add('hidden');
+            switchContainer.style.display = 'none';
+        } else {
+            switchContainer.classList.remove('hidden');
+            switchContainer.style.display = 'flex';
+        }
+    }
+
     if (!select) return;
 
-    const employees = window.dynamicCompetencyState.employees || [];
-    if (employees.length > 0) {
-        select.innerHTML = employees.map(emp => {
-            return `<option value="${emp.id}" ${emp.id === activeCompetencyEmpKey ? 'selected' : ''}>${emp.full_name} (${emp.title} · ${emp.department} · ${emp.overall_formatted})</option>`;
-        }).join('');
+    if (isAssociate) {
+        const currentUserId = window.currentUser?.id || sessionUser.id || '';
+        const currentUserName = window.currentUser?.full_name || window.currentUser?.name || sessionUser.full_name || sessionUser.name || 'My Assessment';
+        select.innerHTML = `<option value="${currentUserId}" selected>${currentUserName}</option>`;
+        select.disabled = true;
+    } else {
+        const employees = window.dynamicCompetencyState.employees || [];
+        if (employees.length > 0) {
+            select.innerHTML = employees.map(emp => {
+                return `<option value="${emp.id}" ${isSameEmployee(emp.id, activeCompetencyEmpKey) ? 'selected' : ''}>${emp.full_name} (${emp.title} · ${emp.department} · ${emp.overall_formatted})</option>`;
+            }).join('');
+        }
+        select.disabled = false;
     }
     updateCompetencyTabTitles();
 }
@@ -1115,17 +1149,18 @@ function renderRoleCompetencyFramework() {
 
 // 3.11 Select Associate for Single Deep-Dive (Navigates to 360° Assessment & Skills Gap)
 function selectCompetencyAssociate(empKey) {
-    const roleName = String(window.currentUser?.role || window.activePersonaRole || '').toLowerCase().trim();
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || sessionUser.role || '').toLowerCase().trim();
     const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
     if (isAssociate) {
-        empKey = window.currentUser?.id || 'emp-101';
+        empKey = window.currentUser?.id || sessionUser.id || '';
     }
 
     const dynEmps = window.dynamicCompetencyState.employees || [];
-    let emp = dynEmps.find(e => e.id === empKey);
+    let emp = dynEmps.find(e => isSameEmployee(e.id, empKey));
     if (!emp && associatesCompetencyData[empKey]) {
         emp = associatesCompetencyData[empKey];
-    } else if (!emp && dynEmps.length > 0) {
+    } else if (!emp && !isAssociate && dynEmps.length > 0) {
         emp = dynEmps[0];
     }
     if (!emp) return;
@@ -1186,17 +1221,18 @@ window.switchEmployeeView = switchEmployeeView;
 function updateCompetencyTabTitles(empName) {
     const btnAssessment = document.getElementById('subtab-btn-comp-assessment');
     const btnDevelopment = document.getElementById('subtab-btn-comp-development');
-    const roleName = String(window.currentUser?.role || window.activePersonaRole || '').toLowerCase().trim();
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || sessionUser.role || '').toLowerCase().trim();
     const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
 
     if (!empName) {
         const dynEmps = window.dynamicCompetencyState?.employees || [];
-        const activeKey = activeCompetencyEmpKey || window.activeCompetencyEmpKey || window.selectedEvalEmpId || 'emp-101';
-        let emp = dynEmps.find(e => e.id === activeKey);
+        const activeKey = activeCompetencyEmpKey || window.activeCompetencyEmpKey || window.selectedEvalEmpId || (window.currentUser?.id || sessionUser.id || '');
+        let emp = dynEmps.find(e => isSameEmployee(e.id, activeKey));
         if (!emp && typeof associatesCompetencyData !== 'undefined' && associatesCompetencyData[activeKey]) {
             emp = associatesCompetencyData[activeKey];
         }
-        empName = emp?.full_name || emp?.name || 'Associate';
+        empName = emp?.full_name || emp?.name || (isAssociate ? (window.currentUser?.full_name || sessionUser.full_name || 'My') : 'Associate');
     }
 
     const possessiveName = (empName.endsWith('s') || empName.endsWith('S')) ? `${empName}'` : `${empName}'s`;
@@ -2004,9 +2040,18 @@ window.syncCompetencyWithPerformance = syncCompetencyWithPerformance;
 window.findCompetencyKeyByEmployeeId = findCompetencyKeyByEmployeeId;
 
 function resolveCompetencyActiveEmployee() {
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const roleName = String(window.currentUser?.role || window.activePersonaRole || sessionUser.role || '').toLowerCase().trim();
+    const isAssociate = (roleName === 'associate' || roleName === 'employee' || roleName === 'staff');
+    const currentUserId = window.currentUser?.id || sessionUser.id || '';
+
+    if (isAssociate && currentUserId) {
+        activeCompetencyEmpKey = currentUserId;
+    }
+
     const dynEmps = window.dynamicCompetencyState?.employees || [];
-    let emp = dynEmps.find(e => e.id === activeCompetencyEmpKey);
-    if (!emp && dynEmps.length > 0) {
+    let emp = dynEmps.find(e => isSameEmployee(e.id, activeCompetencyEmpKey));
+    if (!emp && !isAssociate && dynEmps.length > 0) {
         emp = dynEmps[0];
     }
     if (emp) {
@@ -2014,14 +2059,18 @@ function resolveCompetencyActiveEmployee() {
         emp.role = emp.title || emp.role;
         emp.dept = emp.department || emp.dept;
     }
+    const curName = window.currentUser?.full_name || window.currentUser?.name || sessionUser.full_name || sessionUser.name || 'Associate';
+    const curTitle = window.currentUser?.title || window.currentUser?.position || sessionUser.title || 'Staff';
+    const curDept = window.currentUser?.department || sessionUser.department || 'Hotel Operations';
+
     return emp || {
-        id: 'emp-101',
-        full_name: 'Maria Santos',
-        name: 'Maria Santos',
-        title: 'Front Desk Host',
-        role: 'Front Desk Host',
-        department: 'Front Office',
-        dept: 'Front Office',
+        id: currentUserId,
+        full_name: curName,
+        name: curName,
+        title: curTitle,
+        role: curTitle,
+        department: curDept,
+        dept: curDept,
         overall_formatted: 'Not Assessed',
         overall_score: null,
         scores: {}
@@ -4102,7 +4151,11 @@ window.handleBulkDeleteCompetencies = handleBulkDeleteCompetencies;
 // Auto-run on load
 window.addEventListener('DOMContentLoaded', () => {
     const activePillar = localStorage.getItem('oxford_active_pillar') || 'dashboard';
-    renderEmployeeOverviewCompetencies(window.selectedEvalEmpId || 'emp-101');
+    const sessionUser = JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+    const autoEmpId = window.selectedEvalEmpId || window.currentUser?.id || sessionUser.id || '';
+    if (autoEmpId) {
+        renderEmployeeOverviewCompetencies(autoEmpId);
+    }
     if (activePillar === 'pillar-comp') {
         initCompetencyModule();
     } else {

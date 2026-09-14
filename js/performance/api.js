@@ -196,6 +196,10 @@ const PerformanceAPI = {
         return this.request('submit_appraisal', 'POST', data);
     },
 
+    generateAppraisalRecommendations(data = {}) {
+        return this.request('generate_appraisal_recommendations', 'POST', data);
+    },
+
     submitSelfAssessment(data) {
         return this.request('submit_self_assessment', 'POST', data);
     },
@@ -696,29 +700,38 @@ function isSameEmployee(idA, idB) {
     const b = idB.toString().toLowerCase().trim();
     if (a === b) return true;
 
-    // Check active session user alias matching: only match if BOTH a and b are valid aliases of current user
+    // Check active session user: match only if BOTH a and b are valid identifiers of the CURRENT user
     try {
         const userObj = window.currentUser || JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
-        const myIds = [userObj.id, userObj.employee_code, userObj.emp_id, userObj.empId].filter(Boolean).map(x => x.toString().toLowerCase().trim());
-        if (myIds.includes(a) && myIds.includes(b)) return true;
+        const myIds = [userObj.id, userObj.employee_code, userObj.emp_id, userObj.empId, userObj.email]
+            .filter(Boolean)
+            .map(x => x.toString().toLowerCase().trim());
+        if (myIds.length > 0 && myIds.includes(a) && myIds.includes(b)) {
+            return true;
+        }
     } catch (e) {}
 
-    // Check roster in window
+    // Check roster in window: match only if BOTH a and b resolve to the EXACT SAME employee entity
     try {
         const roster = window.perfRoster || window.dbEmployees || [];
-        const empA = roster.find(u => (u.id && u.id.toString().toLowerCase() === a) || (u.employee_code && u.employee_code.toString().toLowerCase() === a) || (u.empId && u.empId.toString().toLowerCase() === a));
-        const empB = roster.find(u => (u.id && u.id.toString().toLowerCase() === b) || (u.employee_code && u.employee_code.toString().toLowerCase() === b) || (u.empId && u.empId.toString().toLowerCase() === b));
-        if (empA && empB && (empA.id === empB.id || (empA.employee_code && empA.employee_code === empB.employee_code))) return true;
+        const empA = roster.find(u => 
+            (u.id && u.id.toString().toLowerCase().trim() === a) || 
+            (u.employee_code && u.employee_code.toString().toLowerCase().trim() === a) || 
+            (u.empId && u.empId.toString().toLowerCase().trim() === a) ||
+            (u.email && u.email.toString().toLowerCase().trim() === a)
+        );
+        const empB = roster.find(u => 
+            (u.id && u.id.toString().toLowerCase().trim() === b) || 
+            (u.employee_code && u.employee_code.toString().toLowerCase().trim() === b) || 
+            (u.empId && u.empId.toString().toLowerCase().trim() === b) ||
+            (u.email && u.email.toString().toLowerCase().trim() === b)
+        );
+        if (empA && empB) {
+            const idMatch = empA.id && empB.id && empA.id.toString().toLowerCase().trim() === empB.id.toString().toLowerCase().trim();
+            const codeMatch = empA.employee_code && empB.employee_code && empA.employee_code.toString().toLowerCase().trim() === empB.employee_code.toString().toLowerCase().trim();
+            if (empA === empB || idMatch || codeMatch) return true;
+        }
     } catch (e) {}
-
-    // Check known persona ID aliases for associate and supervisor personas
-    const isA_Associate = a === 'emp-101' || a === 'emp-1' || a === 'oxf-emp-1001' || a === 'emp-001' || a === '3a52667f-53cf-412a-b048-ef96eb407707';
-    const isB_Associate = b === 'emp-101' || b === 'emp-1' || b === 'oxf-emp-1001' || b === 'emp-001' || b === '3a52667f-53cf-412a-b048-ef96eb407707';
-    if (isA_Associate && isB_Associate) return true;
-
-    const isA_Supervisor = a === 'emp-102' || a === 'emp-2' || a === 'oxf-sup-2001' || a === 'sup-003' || a === '3bb792e6-b25e-460e-a8fa-712c65c3b2e2';
-    const isB_Supervisor = b === 'emp-102' || b === 'emp-2' || b === 'oxf-sup-2001' || b === 'sup-003' || b === '3bb792e6-b25e-460e-a8fa-712c65c3b2e2';
-    if (isA_Supervisor && isB_Supervisor) return true;
 
     return false;
 }

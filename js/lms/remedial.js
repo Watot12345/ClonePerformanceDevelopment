@@ -8,7 +8,7 @@
 // ========================================================
 window.prescribedBooksPerAssociate = window.prescribedBooksPerAssociate || {};
 
-let currentRemedialEmpId = 'emp-101';
+let currentRemedialEmpId = '';
 
 // Load initial prescribed cache from sessionStorage for 0ms lookup
 try {
@@ -28,21 +28,8 @@ try {
 } catch (e) {}
 
 function resolveRemedialEmployee(empKeyOrId) {
-    let targetId = empKeyOrId || window.selectedEvalEmpId || window.selectedEmployeeContext?.id;
-    if (!targetId) {
-        if (window.perfRoster && window.perfRoster.length > 0) {
-            targetId = window.perfRoster[0].id;
-        } else {
-            targetId = 'emp-101';
-        }
-    }
-
-    // Normalize aliases
-    const k = targetId.toString().toLowerCase().trim();
-    if (k === 'maria' || k === 'emp-1') targetId = 'emp-101';
-    else if (k === 'antonio' || k === 'emp-2') targetId = 'emp-102';
-    else if (k === 'lucas' || k === 'emp-3') targetId = 'emp-103';
-    else if (k === 'chloe' || k === 'emp-4') targetId = 'emp-104';
+    let targetId = empKeyOrId || window.selectedEvalEmpId || window.selectedEmployeeContext?.id || window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '';
+    if (!targetId) return null;
 
     const emp = (window.perfRoster || []).find(e => typeof isSameEmployee === 'function' ? isSameEmployee(e.id, targetId) : e.id === targetId) ||
                 (window.dbEmployees || []).find(e => typeof isSameEmployee === 'function' ? isSameEmployee(e.id, targetId) : e.id === targetId) ||
@@ -292,7 +279,7 @@ function renderRemedialBooksList() {
 window.renderRemedialBooksList = renderRemedialBooksList;
 
 function assignBookToIdp(bookId, goalId = null) {
-    const empId = currentRemedialEmpId || window.selectedEvalEmpId || 'emp-101';
+    const empId = currentRemedialEmpId || window.selectedEvalEmpId || (window.currentUser?.id || JSON.parse(localStorage.getItem('oxford_session_user') || '{}').id || '');
     const book = (window.dynamicLmsState.documents || []).find(d => String(d.id) === String(bookId)) || { id: bookId, title: 'LMS Handbook' };
 
     let targetGoalId = goalId;

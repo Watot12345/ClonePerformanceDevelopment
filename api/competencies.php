@@ -52,7 +52,7 @@ try {
 
         // 4.1 Get Employee-Specific Competency Matrix (Applicable Role Competencies + Assessments)
         case 'get_employee_competencies':
-            $empIdParam = $payload['employee_id'] ?? ($payload['emp_id'] ?? 'emp-101');
+            $empIdParam = $payload['employee_id'] ?? ($payload['emp_id'] ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? '')));
             $response = $controller->getEmployeeCompetencies($empIdParam);
             break;
 

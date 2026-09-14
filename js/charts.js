@@ -521,33 +521,46 @@ function getOrCreateDeptProgressChart(labels, goalsData, lmsData, succData) {
         chartInst = Chart.getChart(canvas);
     }
 
-    if (!chartInst) {
-        let initLabels = labels || ['Front Office', 'Food & Beverage', 'Kitchen & Culinary', 'Banquet & Events', 'Housekeeping'];
-        let initGoals = goalsData || [0, 0, 0, 0, 0];
-        let initLms = lmsData || [0, 0, 0, 0, 0];
-        let initSucc = succData || [0, 0, 0, 0, 0];
+    // Determine dataset values
+    let finalLabels = labels;
+    let finalGoals = goalsData;
+    let finalLms = lmsData;
+    let finalSucc = succData;
 
-        if (!labels && Array.isArray(window.initialDeptMatrixData) && window.initialDeptMatrixData.length > 0) {
-            initLabels = window.initialDeptMatrixData.map(r => r.department || '');
-            initGoals = window.initialDeptMatrixData.map(r => parseFloat(r.goals_approved_pct || 0));
-            initLms = window.initialDeptMatrixData.map(r => parseFloat(r.lms_rate_pct || 0));
-            initSucc = window.initialDeptMatrixData.map(r => parseFloat(r.succession_ready_pct || 0));
+    if (!finalLabels || !finalGoals || !finalLms || !finalSucc) {
+        const sourceData = (window._cachedDeptMatrix && Array.isArray(window._cachedDeptMatrix) && window._cachedDeptMatrix.length > 0)
+            ? window._cachedDeptMatrix
+            : (Array.isArray(window.initialDeptMatrixData) && window.initialDeptMatrixData.length > 0 ? window.initialDeptMatrixData : null);
+
+        if (sourceData) {
+            finalLabels = sourceData.map(r => r.department || '');
+            finalGoals = sourceData.map(r => parseFloat(r.goals_approved_pct || 0));
+            finalLms = sourceData.map(r => parseFloat(r.lms_rate_pct || 0));
+            finalSucc = sourceData.map(r => parseFloat(r.succession_ready_pct || 0));
+        } else {
+            finalLabels = ['Front Office', 'Food & Beverage', 'Kitchen & Culinary', 'Banquet & Events', 'Housekeeping'];
+            finalGoals = [0, 0, 0, 0, 0];
+            finalLms = [0, 0, 0, 0, 0];
+            finalSucc = [0, 0, 0, 0, 0];
         }
+    }
 
+    if (!chartInst) {
         try {
             chartInst = new Chart(canvas, {
                 type: 'bar',
                 data: {
-                    labels: initLabels,
+                    labels: finalLabels,
                     datasets: [
-                        { label: 'Goals Approved (%)', data: initGoals, backgroundColor: '#7A9A7E', borderRadius: 4 },
-                        { label: 'LMS Completion (%)', data: initLms, backgroundColor: '#9E1B20', borderRadius: 4 },
-                        { label: 'Succession Ready (%)', data: initSucc, backgroundColor: '#6B8FA3', borderRadius: 4 }
+                        { label: 'Goals Approved (%)', data: finalGoals, backgroundColor: '#7A9A7E', borderRadius: 4 },
+                        { label: 'LMS Completion (%)', data: finalLms, backgroundColor: '#9E1B20', borderRadius: 4 },
+                        { label: 'Succession Ready (%)', data: finalSucc, backgroundColor: '#6B8FA3', borderRadius: 4 }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: { duration: 400 },
                     plugins: {
                         legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10, family: 'Inter' } } }
                     },
@@ -571,12 +584,13 @@ function getOrCreateDeptProgressChart(labels, goalsData, lmsData, succData) {
                 chartInst = Chart.getChart(canvas);
             }
         }
-    } else if (labels && goalsData && lmsData && succData) {
-        chartInst.data.labels = labels;
-        chartInst.data.datasets[0].data = goalsData;
-        chartInst.data.datasets[1].data = lmsData;
-        chartInst.data.datasets[2].data = succData;
+    } else {
+        chartInst.data.labels = finalLabels;
+        chartInst.data.datasets[0].data = finalGoals;
+        chartInst.data.datasets[1].data = finalLms;
+        chartInst.data.datasets[2].data = finalSucc;
         chartInst.update();
+        try { chartInst.resize(); } catch (e) {}
     }
 
     if (chartInst) {

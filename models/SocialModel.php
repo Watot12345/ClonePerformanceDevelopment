@@ -120,33 +120,22 @@ class SocialModel extends BaseModel
      */
     public function createRecognition(array $data): bool
     {
-        $senderName = $data['sender_name'] ?? ($_SESSION['full_name'] ?? 'Chef Marco Rossi');
-        if (stripos($senderName, 'Elena Vance') !== false) {
-            $senderName = $_SESSION['full_name'] ?? 'Chef Marco Rossi';
-        }
-
-        $senderRole = $data['sender_role'] ?? 'Supervisor';
-        if (stripos($senderRole, 'HR Director') !== false) {
-            $senderRole = 'Supervisor';
-        }
-
-        $senderId = $data['sender_id'] ?? ($_SESSION['user_id'] ?? 'emp-102');
-        if ($senderId === 'emp-105') {
-            $senderId = $_SESSION['user_id'] ?? 'emp-102';
-        }
+        $senderName = $data['sender_name'] ?? ($_SESSION['full_name'] ?? 'Colleague');
+        $senderRole = $data['sender_role'] ?? ($_SESSION['role'] ?? 'Staff');
+        $senderId = $data['sender_id'] ?? ($_SESSION['user_id'] ?? ($_SESSION['employee_id'] ?? ''));
 
         $cleanData = [
             'id'             => $data['id'] ?? ('post-' . time() . '-' . rand(100, 999)),
             'sender_id'      => $senderId,
             'sender_name'    => $senderName,
             'sender_role'    => $senderRole,
-            'sender_type'    => $data['sender_type'] ?? 'Supervisor',
-            'sender_avatar'  => $data['sender_avatar'] ?? 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=150&auto=format&fit=crop&q=80',
-            'receiver_id'    => $data['receiver_id'] ?? 'emp-101',
-            'receiver_name'  => $data['receiver_name'] ?? 'Maria Santos',
-            'receiver_role'  => $data['receiver_role'] ?? 'Front Desk Host',
-            'receiver_dept'  => $data['receiver_dept'] ?? 'Front Office',
-            'receiver_avatar'=> $data['receiver_avatar'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            'sender_type'    => $data['sender_type'] ?? 'Staff',
+            'sender_avatar'  => $data['sender_avatar'] ?? '',
+            'receiver_id'    => $data['receiver_id'] ?? '',
+            'receiver_name'  => $data['receiver_name'] ?? 'Associate',
+            'receiver_role'  => $data['receiver_role'] ?? 'Associate',
+            'receiver_dept'  => $data['receiver_dept'] ?? 'General',
+            'receiver_avatar'=> $data['receiver_avatar'] ?? '',
             'category_key'   => $data['category_key'] ?? 'guest_service',
             'category_label' => $data['category_label'] ?? 'Great Guest Service',
             'points_awarded' => (int)($data['points_awarded'] ?? 50),
@@ -304,7 +293,7 @@ class SocialModel extends BaseModel
             $reactionType = 'clap';
         }
 
-        $userId = !empty($userId) ? trim($userId) : ($_SESSION['user']['id'] ?? 'emp-101');
+        $userId = !empty($userId) ? trim($userId) : ($_SESSION['user_id'] ?? ($_SESSION['employee_id'] ?? ''));
 
         // Fetch latest post reactions from database
         $post = null;
@@ -568,7 +557,7 @@ class SocialModel extends BaseModel
     {
         $clean = [
             'id'             => (!empty($data['id']) ? $data['id'] : ('sent-' . time() . '-' . rand(100, 999))),
-            'employee_id'    => $data['employee_id']   ?? ($data['employeeId']   ?? 'emp-101'),
+            'employee_id'    => $data['employee_id']   ?? ($data['employeeId']   ?? ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))),
             'employee_name'  => $data['employee_name'] ?? ($data['employeeName'] ?? 'Associate'),
             'sentiment_score'=> (int)($data['sentiment_score'] ?? ($data['sentimentScore'] ?? 4)),
             'shift_period'   => $data['shift_period']  ?? ($data['shiftPeriod']  ?? 'Peak Rush Window'),
@@ -1045,7 +1034,7 @@ class SocialModel extends BaseModel
         }
 
         $standingPayload = [
-            'employee_id'      => $targetStanding['employee_id'] ?? ($employeeId ?: 'emp-101'),
+            'employee_id'      => $targetStanding['employee_id'] ?? ($employeeId ?: ($_SESSION['employee_id'] ?? ($_SESSION['user_id'] ?? ''))),
             'name'             => $targetStanding['name'] ?? 'Associate',
             'role'             => $targetStanding['role'] ?? 'Staff',
             'department'       => $targetStanding['department'] ?? 'Front Office',

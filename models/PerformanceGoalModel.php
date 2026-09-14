@@ -37,18 +37,35 @@ class PerformanceGoalModel extends BaseModel
     }
 
     /**
-     * Get goals for a specific employee ID with alias matching
+     * Get goals for a specific employee ID with strict identity matching
      */
     public function getGoalsByEmployee(string $empId): array
     {
         $all = $this->getGoals();
         $normalizedId = strtolower(trim($empId));
-        return array_values(array_filter($all, function ($g) use ($normalizedId) {
+        if (empty($normalizedId)) {
+            return [];
+        }
+
+        // Find aliases belonging only to this specific employee (e.g. UUID, employee_code, demo ID)
+        $selfAliases = [$normalizedId];
+        $empCheck = supabaseRequest("employees?or=(id.eq." . urlencode($empId) . ",employee_code.ilike." . urlencode($empId) . ")&limit=1", 'GET', null, true);
+        if (!empty($empCheck['data'][0])) {
+            $e = $empCheck['data'][0];
+            if (!empty($e['id'])) $selfAliases[] = strtolower(trim($e['id']));
+            if (!empty($e['employee_code'])) $selfAliases[] = strtolower(trim($e['employee_code']));
+        }
+        $usrCheck = supabaseRequest("users?or=(id.eq." . urlencode($empId) . ",employee_code.ilike." . urlencode($empId) . ")&limit=1", 'GET', null, true);
+        if (!empty($usrCheck['data'][0])) {
+            $u = $usrCheck['data'][0];
+            if (!empty($u['id'])) $selfAliases[] = strtolower(trim($u['id']));
+            if (!empty($u['employee_code'])) $selfAliases[] = strtolower(trim($u['employee_code']));
+        }
+        $selfAliases = array_unique(array_filter($selfAliases));
+
+        return array_values(array_filter($all, function ($g) use ($selfAliases) {
             $gEmp = strtolower(trim($g['employee_id'] ?? ''));
-            if ($gEmp === $normalizedId) return true;
-            if (in_array($normalizedId, ['emp-101', 'emp-1', 'oxf-emp-1001', 'emp-001']) && in_array($gEmp, ['emp-101', 'emp-1', 'oxf-emp-1001', 'emp-001'])) return true;
-            if (in_array($normalizedId, ['emp-102', 'emp-2', 'oxf-sup-2001', 'sup-003']) && in_array($gEmp, ['emp-102', 'emp-2', 'oxf-sup-2001', 'sup-003'])) return true;
-            return false;
+            return in_array($gEmp, $selfAliases, true);
         }));
     }
 
@@ -59,12 +76,7 @@ class PerformanceGoalModel extends BaseModel
     {
         $inputEmpId = trim((string)$inputEmpId);
         if (empty($inputEmpId)) {
-            $roleFilter = strtolower($role) === 'supervisor' ? 'role=ilike.*Supervisor*' : 'role=ilike.*Employee*';
-            $fallback = supabaseRequest("users?{$roleFilter}&limit=1", 'GET', null, true);
-            if (!empty($fallback['data']) && is_array($fallback['data']) && isset($fallback['data'][0]['id'])) {
-                return $fallback['data'][0]['id'];
-            }
-            return 'emp-101';
+            return '';
         }
 
         // 1. Direct match by id in users table (works for string IDs, UUIDs, numeric IDs)
@@ -73,15 +85,15 @@ class PerformanceGoalModel extends BaseModel
             return $userCheck['data'][0]['id'];
         }
 
-        // 2. Check by employee_code (e.g. OXF-EMP-1001, EMP-002, OXF-SUP-2001, SUP-003)
+        // 2. Check by employee_code (e.g. OXF-EMP-1001, EMP-001, EMP-002, OXF-SUP-2001, SUP-003)
         $codeCheck = supabaseRequest("users?employee_code=ilike." . urlencode($inputEmpId) . "&limit=1", 'GET', null, true);
         if (!empty($codeCheck['data']) && is_array($codeCheck['data']) && isset($codeCheck['data'][0]['id'])) {
             return $codeCheck['data'][0]['id'];
         }
 
-        // 3. Check known aliases for demo/seed personas
+        // 3. Check known aliases for demo seed personas (isolated per individual)
         $norm = strtolower($inputEmpId);
-        if (in_array($norm, ['emp-101', 'emp-1', 'oxf-emp-1001', 'emp-001'])) {
+        if (in_array($norm, ['emp-101', 'emp-1', 'oxf-emp-1001'])) {
             $aliasCheck = supabaseRequest("users?id=in.(emp-101,emp-1,oxf-emp-1001)&limit=1", 'GET', null, true);
             if (!empty($aliasCheck['data'][0]['id'])) {
                 return $aliasCheck['data'][0]['id'];
@@ -91,7 +103,7 @@ class PerformanceGoalModel extends BaseModel
                 return $aliasCode['data'][0]['id'];
             }
         }
-        if (in_array($norm, ['emp-102', 'emp-2', 'oxf-sup-2001', 'sup-003'])) {
+        if (in_array($norm, ['emp-102', 'emp-2', 'oxf-sup-2001'])) {
             $aliasCheck = supabaseRequest("users?id=in.(emp-102,emp-2,oxf-sup-2001)&limit=1", 'GET', null, true);
             if (!empty($aliasCheck['data'][0]['id'])) {
                 return $aliasCheck['data'][0]['id'];
