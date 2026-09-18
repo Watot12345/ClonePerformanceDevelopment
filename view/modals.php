@@ -500,27 +500,30 @@
     <div class="flex flex-col h-full overflow-hidden">
 
         <!-- Frosted Liquid Glass Header -->
-        <div class="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-linear-to-r from-amber-500/5 via-rose-500/5 to-purple-500/5 backdrop-blur-xs shrink-0">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-purple-500/10 via-rose-500/5 to-amber-500/10 backdrop-blur-xs shrink-0">
             <div class="flex items-center space-x-3">
-                <img src="assets/images/ai_copilot_avatar.jpg" alt="AI Copilot" class="w-10 h-10 rounded-2xl object-cover shadow-2xs border border-slate-200">
+                <div class="w-10 h-10 rounded-2xl bg-white/90 border border-purple-200/90 shadow-sm flex items-center justify-center p-1 shrink-0">
+                    <img src="assets/images/ai_copilot_avatar.png" alt="Gemini AI Copilot" class="w-full h-full object-contain drop-shadow-xs">
+                </div>
                 <div>
                     <div class="flex items-center space-x-2">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-primary/10 text-primary border border-primary/20">
-                            ✦ Gemini AI
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs">
+                            ✦ Gemini AI Copilot
                         </span>
-                        <span id="ai-rate-limit-badge" class="text-[10px] font-bold text-slate-400">
+                        <span id="ai-rate-limit-badge" class="text-[10px] font-bold text-slate-500">
                             ⚡ 20/20 req left
                         </span>
                     </div>
+                    <p class="text-[10px] text-slate-500 font-medium mt-0.5">Hotel Performance &amp; Reflection Assistant</p>
                 </div>
             </div>
             <div class="flex items-center space-x-1.5">
                 <button onclick="AIRefiner.clearHistory()" title="Reset / Clear Chat History" aria-label="Clear chat history"
-                    class="w-8 h-8 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-400 hover:text-rose-600 flex items-center justify-center transition">
+                    class="w-8 h-8 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-400 hover:text-rose-600 flex items-center justify-center transition cursor-pointer">
                     <i class="fas fa-trash-can text-xs"></i>
                 </button>
                 <button onclick="closeModal('modal-ai-feedback')" aria-label="Close modal"
-                    class="w-8 h-8 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition hover:rotate-90">
+                    class="w-8 h-8 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition hover:rotate-90 cursor-pointer">
                     <i class="fas fa-times text-xs"></i>
                 </button>
             </div>
@@ -5072,9 +5075,63 @@
         </div>
 
         <!-- ======================================================== -->
+        <!-- INACTIVITY WARNING & COUNTDOWN MODAL                     -->
+        <!-- ======================================================== -->
+        <div id="modal-inactivity-warning" class="fixed inset-0 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md transition-all duration-300 p-4 select-none" style="z-index: 999999 !important;">
+            <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 text-center space-y-5 animate-scaleUp relative overflow-hidden">
+                <!-- Top Accent Line -->
+                <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-amber-500"></div>
+
+                <!-- Animated Icon & Countdown Badge -->
+                <div class="relative w-20 h-20 mx-auto flex items-center justify-center mt-2">
+                    <div class="absolute inset-0 rounded-full bg-rose-500/10 animate-ping opacity-75"></div>
+                    <div class="w-18 h-18 rounded-full bg-rose-50 border-2 border-rose-200/80 flex items-center justify-center text-rose-600 shadow-inner">
+                        <i class="fas fa-clock-rotate-left text-2xl animate-pulse"></i>
+                    </div>
+                </div>
+
+                <!-- Text Headings -->
+                <div class="space-y-2">
+                    <div class="inline-flex items-center space-x-1.5 px-3 py-1 bg-rose-50 border border-rose-200/70 rounded-full text-rose-700 text-xs font-bold font-mono tracking-wide uppercase">
+                        <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping mr-0.5"></span>
+                        <span>Inactivity Alert</span>
+                    </div>
+                    <h3 class="font-heading text-xl font-bold text-slate-900 tracking-tight">Are you still there?</h3>
+                    <p class="text-xs text-slate-500 leading-relaxed px-2">
+                        You have been inactive for at least 1 minute. To safeguard your account, your session will automatically terminate in:
+                    </p>
+                </div>
+
+                <!-- Big Countdown Box -->
+                <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2.5">
+                    <div class="flex items-center justify-center space-x-2">
+                        <span id="inactivity-countdown-timer" class="text-4xl font-extrabold text-rose-600 font-mono tracking-tight transition-all transform scale-100">10</span>
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">seconds remaining</span>
+                    </div>
+                    <!-- Animated Linear Progress Bar -->
+                    <div class="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
+                        <div id="inactivity-countdown-bar" class="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 rounded-full transition-all duration-1000 ease-linear w-full"></div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+                    <button type="button" id="btn-inactivity-stay" onclick="stayLoggedIn()" class="w-full sm:flex-1 py-3 px-4 rounded-xl bg-primary hover:bg-primary-dark text-white font-bold text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 cursor-pointer">
+                        <i class="fas fa-hand-wave text-amber-300"></i>
+                        <span>I'm Still Here (Stay Logged In)</span>
+                    </button>
+                    <button type="button" onclick="logOutToAuth('inactivity')" class="w-full sm:w-auto py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer">
+                        <i class="fas fa-right-from-bracket"></i>
+                        <span>Log Out</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================================== -->
         <!-- FULLSCREEN BLOCKING LOGOUT LOADING OVERLAY                -->
         <!-- ======================================================== -->
-        <div id="logout-loading-overlay" class="fixed inset-0 z-99999 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md transition-opacity duration-300 pointer-events-auto select-none" style="cursor: wait;">
+        <div id="logout-loading-overlay" class="fixed inset-0 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md transition-opacity duration-300 pointer-events-auto select-none" style="cursor: wait; z-index: 999999 !important;">
             <div class="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl border border-slate-100 text-center space-y-5 animate-scaleUp">
                 <div class="relative w-20 h-20 mx-auto flex items-center justify-center">
                     <!-- Ambient Glow -->

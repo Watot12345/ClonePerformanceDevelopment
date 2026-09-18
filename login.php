@@ -105,6 +105,12 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                 window._toastQueue.forEach(t => window.showToast(t.msg, t.type, t.customOptions));
                 window._toastQueue = [];
             }
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('reason') === 'inactivity') {
+                    window.showToast('You were automatically logged out due to 1 minute of inactivity.', 'warning', { duration: 6000 });
+                }
+            } catch (e) {}
         </script>
 
 

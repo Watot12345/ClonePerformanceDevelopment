@@ -1,7 +1,7 @@
 {
-    "livePropertyXp": 150,
+    "livePropertyXp": 750,
     "liveKudosSent": 7,
-    "liveBadgesCount": 2,
+    "liveBadgesCount": 6,
     "liveActiveStaffCount": 5,
     "liveTotalGoals": 3,
     "liveApprovedGoals": 2,
@@ -163,5 +163,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789369574
+    "cached_at": 1789722316
 }

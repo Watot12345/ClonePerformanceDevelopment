@@ -6,11 +6,11 @@
         </div>
 
         <!-- ===== AI COPILOT FLOATING ACTION BUTTON (FAB) ===== -->
-        <button onclick="openAIFeedbackModal()" class="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 via-primary to-purple-600 p-0.5 flex items-center justify-center shadow-[0_8px_30px_rgba(15,23,42,0.2)] hover:shadow-[0_10px_40px_rgba(15,23,42,0.3)] hover:-translate-y-1 transition-all z-40 group border border-white/20">
-            <img src="assets/images/ai_copilot_avatar.jpg" alt="Gemini AI" class="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform">
+        <button onclick="openAIFeedbackModal()" title="Gemini AI Copilot &amp; Reflection Coach" class="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 w-14 h-14 rounded-2xl bg-gradient-to-br from-white/95 via-purple-50/90 to-amber-50/90 backdrop-blur-md p-2.5 flex items-center justify-center shadow-[0_10px_30px_rgba(147,51,234,0.25)] hover:shadow-[0_15px_40px_rgba(147,51,234,0.4)] hover:-translate-y-1 hover:scale-105 transition-all duration-300 z-40 group border border-purple-200/90 cursor-pointer">
+            <img src="assets/images/ai_copilot_avatar.png" alt="Gemini AI Copilot" class="w-full h-full object-contain group-hover:rotate-12 group-hover:scale-110 transition-all duration-300 drop-shadow-md">
             <span class="absolute -top-1 -right-1 flex h-4 w-4 z-50">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-4 w-4 bg-amber-500 border-2 border-white"></span>
+                <span class="relative inline-flex rounded-full h-4 w-4 bg-gradient-to-tr from-amber-500 to-rose-500 border-2 border-white shadow-xs"></span>
             </span>
         </button>
 

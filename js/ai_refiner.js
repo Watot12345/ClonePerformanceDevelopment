@@ -334,7 +334,9 @@ const AIRefiner = {
             `;
         } else {
             bubble.innerHTML = `
-                <img src="assets/images/ai_copilot_avatar.jpg" alt="AI Copilot" class="w-8 h-8 rounded-xl object-cover shrink-0 shadow-2xs border border-slate-200 mt-1">
+                <div class="w-8 h-8 rounded-xl bg-purple-50 border border-purple-200/90 shadow-2xs flex items-center justify-center p-1 shrink-0 mt-1">
+                    <img src="assets/images/ai_copilot_avatar.png" alt="AI Copilot" class="w-full h-full object-contain drop-shadow-xs">
+                </div>
                 <div class="flex-1 bg-white p-3.5 rounded-2xl rounded-tl-sm border border-slate-200/60 shadow-2xs text-slate-700 leading-relaxed space-y-2 text-xs">
                     ${formattedText}
                 </div>
@@ -353,7 +355,9 @@ const AIRefiner = {
         bubble.id = 'ai-typing-indicator';
         bubble.className = `flex items-start space-x-3 w-full max-w-lg`;
         bubble.innerHTML = `
-            <img src="assets/images/ai_copilot_avatar.jpg" alt="AI Copilot" class="w-8 h-8 rounded-xl object-cover shrink-0 shadow-2xs border border-slate-200 mt-1 opacity-70">
+            <div class="w-8 h-8 rounded-xl bg-purple-50 border border-purple-200/90 shadow-2xs flex items-center justify-center p-1 shrink-0 mt-1 opacity-85">
+                <img src="assets/images/ai_copilot_avatar.png" alt="AI Copilot" class="w-full h-full object-contain drop-shadow-xs">
+            </div>
             <div class="flex-1 bg-white p-3.5 rounded-2xl rounded-tl-sm border border-slate-200/60 shadow-2xs text-slate-700 leading-relaxed space-y-2 text-xs flex items-center space-x-1.5 h-10 w-16">
                 <span class="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce" style="animation-delay: 0ms;"></span>
                 <span class="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce" style="animation-delay: 150ms;"></span>
