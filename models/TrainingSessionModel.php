@@ -74,6 +74,7 @@ class TrainingSessionModel extends BaseModel
             'capacity'       => (int)($data['capacity'] ?? 20),
             'status'         => $data['status'] ?? 'Scheduled',
             'roster'         => $roster,
+            'linked_need_id' => $data['linkedNeedId'] ?? ($data['linked_need_id'] ?? null),
             'created_at'     => date('c')
         ];
 

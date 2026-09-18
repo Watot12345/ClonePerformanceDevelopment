@@ -300,7 +300,7 @@ function normalizeTrainingProgram(prog) {
         duration: prog.duration || '3 Hours',
         format: prog.format || 'Workshop',
         trainerType: prog.trainerType || prog.trainer_type || 'Internal Master Trainer',
-        passingScore: prog.passingScore ?? prog.passing_score ?? 80,
+        passingScore: prog.passingScore ?? prog.passing_score ?? 8,
         xpAward: prog.xpAward ?? prog.xp_award ?? 150,
         icon: prog.icon || 'fa-award',
         badgeColor: prog.badgeColor || prog.badge_color || 'primary',
@@ -325,7 +325,8 @@ function normalizeTrainingSession(sess) {
         date: sess.date || sess.session_date || 'Aug 26, 2026',
         time: sess.time || sess.time_slot || '14:00 - 17:00',
         status: sess.status || 'Scheduled',
-        roster: Array.isArray(sess.roster) ? sess.roster : []
+        roster: Array.isArray(sess.roster) ? sess.roster : [],
+        linkedNeedId: sess.linkedNeedId || sess.linked_need_id || null
     };
 }
 
@@ -346,8 +347,8 @@ function normalizeTrainingResult(res) {
         trainerName: res.trainerName || res.trainer_name || 'Trainer',
         completionDate: res.completionDate || res.completion_date || 'Aug 24, 2026',
         attendanceRate: res.attendanceRate || res.attendance_rate || '100%',
-        quizScore: res.quizScore ?? res.quiz_score ?? 95,
-        passingThreshold: res.passingThreshold ?? res.passing_threshold ?? 80,
+        quizScore: res.quizScore ?? res.quiz_score ?? 9,
+        passingThreshold: res.passingThreshold ?? res.passing_threshold ?? 8,
         resultStatus: res.resultStatus || res.result_status || 'Passed & Certified',
         feedbackRating: res.feedbackRating ?? res.feedback_rating ?? 5.0,
         certificateReference: res.certificateReference || res.certificate_reference || null,
@@ -546,7 +547,7 @@ function getAggregatedCertificates() {
                 certificateReference: ref,
                 completionDate: r.completionDate || r.completion_date || 'Aug 29, 2026',
                 trainerName: r.trainerName || r.trainer_name || 'Lead Master Trainer',
-                quizScore: r.quizScore || r.quiz_score || 96,
+                quizScore: r.quizScore || r.quiz_score || 9,
                 employeeId: r.associateId || r.associate_id,
                 dept: r.dept || 'General'
             });
@@ -575,7 +576,7 @@ function getAggregatedCertificates() {
                 certificateReference: ref,
                 completionDate: c.issueDate || c.issue_date || 'Aug 29, 2026',
                 trainerName: 'Lead Master Trainer',
-                quizScore: c.score || 96,
+                quizScore: c.score || 9,
                 employeeId: cEmpId,
                 dept: cDept || 'General'
             });
@@ -604,7 +605,7 @@ function getAggregatedCertificates() {
                     certificateReference: ref,
                     completionDate: n.dateIdentified || 'Aug 29, 2026',
                     trainerName: 'Lead Master Trainer',
-                    quizScore: 96,
+                    quizScore: 9,
                     employeeId: n.employeeId || n.employee_id,
                     dept: n.dept || 'General'
                 });
@@ -624,10 +625,16 @@ function updateTrainingStats() {
     let results = trainingResultsState;
     let certs = getAggregatedCertificates();
 
+    const isSupervisor = (window.activePersonaRole === 'Supervisor' || window.activePersonaRole === 'Manager' || window.activePersonaKey === 'supervisor');
+    const currentUserDept = window.currentUser?.department || window.currentUser?.dept;
+
     if (isAssociate && currentEmpId) {
         needs = needs.filter(n => n.employeeId === currentEmpId);
         results = results.filter(r => r.associateId === currentEmpId);
         certs = certs.filter(c => c.employeeId === currentEmpId || (window.currentUser?.name && String(c.associateName).toLowerCase().includes(String(window.currentUser.name).toLowerCase())));
+    } else if (isSupervisor && currentUserDept && !window.trainingSupervisorShowAll) {
+        needs = needs.filter(n => typeof matchesDepartment === 'function' ? matchesDepartment(n.dept, currentUserDept) : true);
+        // We don't necessarily filter results/certs for supervisors in the top stats unless requested, but we align needs
     }
 
     const identifiedCount = needs.filter(n => n.status !== 'Resolved' && n.status !== 'Completed').length;
@@ -644,6 +651,23 @@ function updateTrainingStats() {
     if (elPrograms) elPrograms.textContent = programsCount;
     if (elSessions) elSessions.textContent = activeSessionsCount;
     if (elCertified) elCertified.textContent = certifiedCount;
+
+    const elNeedsSub = document.getElementById('stat-training-needs-sub');
+    if (elNeedsSub) {
+        if (identifiedCount === 0) {
+            elNeedsSub.textContent = 'All Benchmarks Met';
+        } else {
+            const defCount = needs.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !n.isPerformanceGoal).length;
+            const refCount = needs.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && n.isPerformanceGoal).length;
+            if (defCount > 0 && refCount > 0) {
+                elNeedsSub.textContent = `${defCount} Gaps · ${refCount} Referral${refCount === 1 ? '' : 's'}`;
+            } else if (refCount > 0) {
+                elNeedsSub.textContent = `${refCount} Goal Referral${refCount === 1 ? '' : 's'}`;
+            } else {
+                elNeedsSub.textContent = `${defCount} Skill Gap${defCount === 1 ? '' : 's'}`;
+            }
+        }
+    }
 }
 
 let needsActiveFilterTab = 'active';
@@ -741,6 +765,24 @@ function renderTrainingNeeds() {
     const resolvedCount = allNormalized.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
     const allCount = allNormalized.length;
 
+    // Detect urgency across active referrals
+    const activeReferralsList = perfItems.filter(n => n.status !== 'Resolved' && n.status !== 'Completed');
+    const hasCriticalReferral = activeReferralsList.some(n => String(n.urgency || '').toLowerCase() === 'critical');
+    const hasHighReferral = activeReferralsList.some(n => String(n.urgency || '').toLowerCase() === 'high');
+
+    let perfBadgePillClass = 'bg-slate-200 text-slate-700';
+    if (needsActiveFilterTab === 'performance') {
+        perfBadgePillClass = 'bg-white/20 text-white';
+    } else if (referralsCount > 0) {
+        if (hasCriticalReferral) {
+            perfBadgePillClass = 'bg-rose-600 text-white font-black animate-pulse shadow-xs';
+        } else if (hasHighReferral) {
+            perfBadgePillClass = 'bg-amber-500 text-white font-bold shadow-xs';
+        } else {
+            perfBadgePillClass = 'bg-indigo-600 text-white font-bold shadow-xs';
+        }
+    }
+
     // Personalize Header and Filters for Associate vs Supervisor
     const headTitle = document.getElementById('training-needs-header-title');
     const headDesc = document.getElementById('training-needs-header-desc');
@@ -755,7 +797,7 @@ function renderTrainingNeeds() {
         if (headDesc) headDesc.textContent = 'Personalized learning assignments and mandatory compliance requirements to close skill gaps';
         if (headBadge) headBadge.innerHTML = '<i class="fas fa-user-graduate mr-1"></i> My Learning Plan';
         if (btnActive) btnActive.innerHTML = `<i class="fas fa-bolt mr-1 text-amber-300"></i> My Active Needs <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'active' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${activeNeedsCount}</span>`;
-        if (btnPerf) btnPerf.innerHTML = `<i class="fas fa-bullseye mr-1 text-indigo-600"></i> My Goal Referrals <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'performance' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${referralsCount}</span>`;
+        if (btnPerf) btnPerf.innerHTML = `<i class="fas fa-bullseye mr-1 text-indigo-600"></i> My Goal Referrals <span class="ml-1 px-1.5 py-0.5 rounded-full ${perfBadgePillClass} text-[10px] font-bold">${referralsCount}</span>`;
         if (btnResolved) btnResolved.innerHTML = `<i class="fas fa-check-circle mr-1 text-emerald-600"></i> My Completed &amp; Certs <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${resolvedCount}</span>`;
         if (btnAll) btnAll.innerHTML = `All My Training <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${allCount}</span>`;
     } else {
@@ -763,16 +805,16 @@ function renderTrainingNeeds() {
         if (headDesc) headDesc.textContent = 'Direct triggers identifying which associate requires training and linking to syllabus';
         if (headBadge) headBadge.innerHTML = '<i class="fas fa-bolt mr-1"></i> Live Needs Queue';
         if (btnActive) btnActive.innerHTML = `<i class="fas fa-bolt mr-1 text-amber-300"></i> Active Deficits <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'active' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${activeNeedsCount}</span>`;
-        if (btnPerf) btnPerf.innerHTML = `<i class="fas fa-share-from-square mr-1 text-indigo-600"></i> Referrals <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'performance' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${referralsCount}</span>`;
+        if (btnPerf) btnPerf.innerHTML = `<i class="fas fa-share-from-square mr-1 ${hasCriticalReferral && referralsCount > 0 ? 'text-rose-600 animate-pulse' : 'text-indigo-600'}"></i> Referrals <span class="ml-1 px-1.5 py-0.5 rounded-full ${perfBadgePillClass} text-[10px] font-bold">${referralsCount}</span>`;
         if (btnResolved) btnResolved.innerHTML = `<i class="fas fa-check-circle mr-1 text-emerald-600"></i> Resolved History <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${resolvedCount}</span>`;
         if (btnAll) btnAll.innerHTML = `All Audit Triggers <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${allCount}</span>`;
     }
 
     if (filteredNeeds.length === 0) {
-        // Auto-expand: if supervisor's dept has 0 deficits but other depts do, show property-wide automatically
+        // Auto-expand: if supervisor's dept has 0 deficits & 0 referrals but other depts do, show property-wide automatically
         if (isSupervisor && !window.trainingSupervisorShowAll && needsActiveFilterTab === 'active') {
-            const otherDeptDeficitsCount = propertyNeeds.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !n.isPerformanceGoal && !matchesDepartment(n.dept, currentUserDept)).length;
-            if (otherDeptDeficitsCount > 0) {
+            const otherDeptNeedsCount = propertyNeeds.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !matchesDepartment(n.dept, currentUserDept)).length;
+            if (otherDeptNeedsCount > 0 && referralsCount === 0) {
                 window.trainingSupervisorShowAll = true;
                 renderTrainingNeeds();
                 return;
@@ -803,7 +845,7 @@ function renderTrainingNeeds() {
             <div class="col-span-full mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs shadow-sm">
                 <div class="flex items-center space-x-2 text-amber-900 font-bold">
                     <i class="fas fa-hotel text-amber-600"></i>
-                    <span>Viewing Property-Wide Deficits (All Hotel Departments)</span>
+                    <span>Viewing Property-Wide Deficits &amp; Referrals (All Hotel Departments)</span>
                 </div>
                 <button type="button" onclick="window.trainingSupervisorShowAll = false; renderTrainingNeeds();" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition shadow-xs">
                     <i class="fas fa-filter mr-1"></i> Return to My Department Only (${currentUserDept || 'Assigned Department'})
@@ -824,7 +866,7 @@ function renderTrainingNeeds() {
         const prog = trainingProgramsState.find(p => p.id === need.linkedProgramId) || null;
         const programTitle = prog ? prog.title : (need.linkedProgramTitle || need.category || 'Hospitality Mastery Program');
         const programDuration = prog ? prog.duration : (need.programDuration || '3.5 Hours (Workshop)');
-        const programPassingScore = prog ? prog.passingScore : (need.programPassingScore || 80);
+        const programPassingScore = prog ? prog.passingScore : (need.programPassingScore || 8);
         const programFormat = prog ? prog.format : 'In-Person Workshop & Roleplay';
 
         // Calculate progress percentage on 5.0 scale
@@ -850,7 +892,7 @@ function renderTrainingNeeds() {
                 : `<span class="badge-terracotta font-bold"><i class="fas fa-bolt mr-1"></i> Deficit Active (< 3.8 TNA)</span>`;
 
         const performanceGoalSnippet = need.targetGoalId ? `
-            <div class="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div class="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 text-xs">
                 <div class="space-y-0.5">
                     <div class="flex items-center space-x-2 text-indigo-950 font-bold text-[11px]">
                         <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white">
@@ -862,7 +904,7 @@ function renderTrainingNeeds() {
                         Target Metric: <strong class="text-indigo-900">${need.linkedGoalMetric || 'Benchmark Met'}</strong> · Weight: <strong class="text-slate-700">${need.linkedGoalWeight || 'Standard'}</strong>
                     </p>
                 </div>
-                <div class="flex items-center space-x-2 flex-shrink-0">
+                <div class="flex flex-wrap items-center gap-2 flex-shrink-0 mt-2 sm:mt-0">
                     <span class="badge-sage text-[10px] font-bold"><i class="fas fa-link mr-1"></i> IDP Synced</span>
                 </div>
             </div>
@@ -871,7 +913,7 @@ function renderTrainingNeeds() {
         return `
             <div class="card-clean p-5 hover:shadow-md transition space-y-4 border ${isResolved ? 'bg-emerald-50/20 border-emerald-200' : 'bg-white border-[#E8DEDC]'}">
                 <!-- Top Row: Associate & Need Status -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                     <div class="flex items-center space-x-3.5">
                         <img src="${need.associateAvatar}" alt="${need.associateName}" class="w-11 h-11 rounded-full object-cover border border-[#E8DEDC] shadow-sm flex-shrink-0">
                         <div>
@@ -933,10 +975,10 @@ function renderTrainingNeeds() {
 
                 <!-- Training Curriculum Resolution Banner -->
                 ${prog ? `
-                    <div class="p-3.5 bg-primary/5 rounded-xl border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div class="p-3.5 bg-primary/5 rounded-xl border border-primary/20 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
                         <div class="space-y-1">
-                            <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-primary text-white">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-primary text-white whitespace-nowrap">
                                     <i class="fas fa-graduation-cap mr-1"></i> Assigned Curriculum
                                 </span>
                                 <span class="font-bold text-slate-900">${prog.title}</span>
@@ -954,31 +996,38 @@ function renderTrainingNeeds() {
 
                         <div class="flex-shrink-0">
                             ${isResolved ? `
-                                <div class="flex items-center space-x-2">
+                                <div class="flex flex-wrap items-center gap-2">
                                     <span class="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold">
                                         <i class="fas fa-award mr-1.5 text-emerald-600"></i>
                                         <span>Deficit Resolved · Score 4.8 Master Level</span>
                                     </span>
-                                    <button onclick="switchTrainingStage('certs')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1">
+                                    <button onclick="switchTrainingStage('results')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1">
                                         <i class="fas fa-certificate text-primary mr-1"></i>
                                         <span>View License</span>
                                     </button>
                                 </div>
                             ` : isAlreadyScheduled ? `
-                                <div class="flex items-center space-x-2">
-                                    <span class="badge-sage text-xs font-bold py-1.5 px-3">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="badge-sage text-xs font-bold py-1.5 px-3 whitespace-nowrap">
                                         <i class="fas fa-calendar-check mr-1.5"></i> Session Scheduled (${existingSession ? existingSession.date : 'Upcoming'})
                                     </span>
                                     ${isAssociate && existingSession ? `
                                         <span class="text-xs text-slate-500 font-medium px-2 py-1.5 bg-white border border-[#E8DEDC] rounded-lg shadow-2xs">
                                             <i class="fas fa-clock mr-1 text-slate-400"></i> ${existingSession.time} &middot; <i class="fas fa-location-dot ml-1 mr-1 text-slate-400"></i> ${existingSession.location}
                                         </span>
-                                    ` : isAssociate ? `
-                                        <span class="text-xs text-slate-500 font-medium px-2 py-1.5 bg-white border border-[#E8DEDC] rounded-lg">Pending final time slot</span>
-                                    ` : `
+                                        <button onclick="switchTrainingStage('attendance')" class="btn-primary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
+                                            <i class="fas fa-calendar-check mr-1"></i>
+                                            <span>Open Schedule &rarr;</span>
+                                        </button>
+                                    ` : existingSession ? `
                                         <button onclick="switchTrainingStage('schedules')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
                                             <i class="fas fa-calendar mr-1"></i>
                                             <span>View Cohort Roster &rarr;</span>
+                                        </button>
+                                    ` : `
+                                        <button onclick="viewAssignmentDetails('${need.id}')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
+                                            <i class="fas fa-search mr-1"></i>
+                                            <span>View Assignment &rarr;</span>
                                         </button>
                                     `}
                                 </div>
@@ -992,10 +1041,24 @@ function renderTrainingNeeds() {
                             `}
                         </div>
                     </div>
-                ` : `
-                    <div class="p-3.5 ${isAssociate ? 'bg-slate-50 border border-slate-200' : 'bg-amber-50/90 border border-amber-200'} rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                ` : isResolved ? `
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
                         <div class="space-y-1">
-                            <div class="flex items-center space-x-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-500 text-white">
+                                    <i class="fas fa-check-circle mr-1"></i> Resolved (Manually Cleared)
+                                </span>
+                                <span class="font-bold text-slate-900">Training Requirement Waived / Cleared</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px]">
+                                <i class="fas fa-circle-info mr-1 text-slate-400"></i> This deficit was manually resolved or cleared without going through a formal training program assignment.
+                            </p>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="p-3.5 ${isAssociate ? 'bg-slate-50 border border-slate-200' : 'bg-amber-50/90 border border-amber-200'} rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+                        <div class="space-y-1">
+                            <div class="flex flex-wrap items-center gap-2">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isAssociate ? 'bg-slate-500' : 'bg-amber-600'} text-white">
                                     ${isAssociate ? '<i class="fas fa-hourglass-half mr-1"></i> Pending Assignment' : '<i class="fas fa-user-gear mr-1"></i> Supervisor Action Required'}
                                 </span>
@@ -1006,15 +1069,25 @@ function renderTrainingNeeds() {
                             </p>
                         </div>
 
-                        <div class="flex items-center space-x-2 flex-shrink-0">
+                        <div class="flex flex-wrap items-center gap-2 flex-shrink-0 mt-2 sm:mt-0">
                             ${isAlreadyScheduled ? `
-                                <span class="badge-sage text-xs font-bold py-1.5 px-3">
+                                <span class="badge-sage text-xs font-bold py-1.5 px-3 whitespace-nowrap">
                                     <i class="fas fa-calendar-check mr-1.5"></i> Training Scheduled
                                 </span>
-                                ${isAssociate ? '' : `
+                                ${isAssociate && existingSession ? `
+                                    <button onclick="switchTrainingStage('attendance')" class="btn-primary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
+                                        <i class="fas fa-calendar-check mr-1"></i>
+                                        <span>Open Schedule &rarr;</span>
+                                    </button>
+                                ` : existingSession ? `
                                     <button onclick="switchTrainingStage('schedules')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
                                         <i class="fas fa-calendar mr-1"></i>
                                         <span>View Cohort &rarr;</span>
+                                    </button>
+                                ` : `
+                                    <button onclick="viewAssignmentDetails('${need.id}')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
+                                        <i class="fas fa-search mr-1"></i>
+                                        <span>View Assignment &rarr;</span>
                                     </button>
                                 `}
                             ` : isAssociate ? `
@@ -1089,7 +1162,7 @@ function renderTrainingPrograms() {
                         </div>
                         <div class="flex justify-between">
                             <span class="text-slate-400 text-[11px]">Passing Requirement:</span>
-                            <span class="font-bold text-primary text-[11px]">&ge; ${prog.passingScore}% + ${prog.xpAward} XP</span>
+                            <span class="font-bold text-primary text-[11px]">&ge; ${prog.passingScore}/10 + ${prog.xpAward} XP</span>
                         </div>
                     </div>
                 </div>
@@ -1128,10 +1201,14 @@ function renderTrainingSessions() {
     let sessionsToRender = trainingSessionsState;
     if (isAssociate && currentEmpId) {
         sessionsToRender = trainingSessionsState.filter(s => s.roster && s.roster.some(r => r.associateId === currentEmpId || (window.currentUser?.name && String(r.name).toLowerCase().includes(String(window.currentUser.name).toLowerCase()))));
-    } else if (isSupervisor && currentUserDept) {
+    } else if (isSupervisor && currentUserDept && !window.trainingSupervisorShowAll) {
         sessionsToRender = trainingSessionsState.filter(s => {
             const sessDept = (s.dept || '').toLowerCase();
-            return matchesDepartment(sessDept, currentUserDept) || sessDept === '';
+            if (matchesDepartment(sessDept, currentUserDept) || sessDept === '') return true;
+            if (s.roster && Array.isArray(s.roster)) {
+                return s.roster.some(r => matchesDepartment(r.dept || '', currentUserDept));
+            }
+            return false;
         });
     }
 
@@ -1163,7 +1240,7 @@ function renderTrainingSessions() {
             <div class="card-clean p-6 hover:shadow-md transition space-y-4 border ${isLive ? 'border-terracotta/40 bg-terracotta-50/10' : isCompleted ? 'border-emerald-200/80 bg-emerald-50/10' : 'border-[#E8DEDC] bg-white'}">
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div class="space-y-1.5">
-                        <div class="flex items-center space-x-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             ${statusBadge}
                             <span class="badge-sage text-[10px]">Dept: ${sess.dept}</span>
                         </div>
@@ -1185,8 +1262,8 @@ function renderTrainingSessions() {
                     </div>
                 </div>
 
-                <div class="p-3 bg-[#FAF8F7] rounded-xl border border-[#E8DEDC] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div class="flex items-center space-x-2">
+                <div class="p-3 bg-[#FAF8F7] rounded-xl border border-[#E8DEDC] flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="font-bold text-slate-700">Registered Participants (${sess.roster.length}):</span>
                         <div class="flex -space-x-2 overflow-hidden">
                             ${sess.roster.map(r => `
@@ -1195,7 +1272,7 @@ function renderTrainingSessions() {
                         </div>
                     </div>
 
-                    <div class="flex items-center space-x-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <button onclick="openAttendanceForSession('${sess.id}')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1.5">
                             <i class="fas ${isCompleted ? 'fa-eye text-primary' : 'fa-user-check text-sage-dark'}"></i>
                             <span>${isCompleted ? 'View Cohort (Completed)' : 'Track Attendance'}</span>
@@ -1232,7 +1309,11 @@ function renderAttendanceConsole() {
     } else if (isSupervisor && currentUserDept) {
         filteredSessions = trainingSessionsState.filter(s => {
             const sessDept = (s.dept || '').toLowerCase();
-            return matchesDepartment(sessDept, currentUserDept) || sessDept === '';
+            if (matchesDepartment(sessDept, currentUserDept) || sessDept === '') return true;
+            if (s.roster && Array.isArray(s.roster)) {
+                return s.roster.some(r => matchesDepartment(r.dept || '', currentUserDept));
+            }
+            return false;
         });
     }
 
@@ -1294,20 +1375,23 @@ function renderAttendanceConsole() {
 
     tbody.innerHTML = sessionRoster.map(member => {
         const assocResult = trainingResultsState.find(r => r.associateId === member.associateId && r.sessionId === session.id);
-        const hasPassed = assocResult && (assocResult.resultStatus.includes('Passed') || assocResult.resultStatus === 'Completed');
+        const hasPassed = assocResult && (String(assocResult.resultStatus || '').includes('Passed') || assocResult.resultStatus === 'Completed');
         const hasCert = assocResult && assocResult.certificateReference;
+        const needsRetest = assocResult && !hasPassed;
 
         const isAttended = member.attendanceStatus === 'Attended';
         const isAbsent = member.attendanceStatus === 'Absent';
-        const isCompleted = member.attendanceStatus === 'Completed' || hasPassed;
+        const isCompleted = (member.attendanceStatus === 'Completed' || hasPassed) && !needsRetest;
 
-        const statusBadge = isCompleted
+        const statusBadge = hasPassed
             ? `<span class="badge-sage font-bold"><i class="fas fa-check-double mr-1"></i> Completed (100%)</span>`
-            : isAttended
-                ? `<span class="badge-dusty"><i class="fas fa-user-check mr-1"></i> Attended (Pending Quiz)</span>`
-                : `<span class="badge-terracotta"><i class="fas fa-xmark mr-1"></i> Absent (0%)</span>`;
+            : needsRetest
+                ? `<span class="badge-terracotta font-bold inline-flex items-center"><i class="fas fa-rotate-right mr-1"></i> Needs Retest (${assocResult.quizScore}%)</span>`
+                : isAttended
+                    ? `<span class="badge-dusty"><i class="fas fa-user-check mr-1"></i> Attended (Pending Quiz)</span>`
+                    : `<span class="badge-terracotta"><i class="fas fa-xmark mr-1"></i> Absent (0%)</span>`;
 
-        const markAttendanceContent = isCompleted
+        const markAttendanceContent = hasPassed
             ? `<span class="badge-sage text-xs font-bold py-1 px-3 inline-flex items-center"><i class="fas fa-lock text-[10px] mr-1.5 opacity-70"></i> Attended (Completed)</span>`
             : isAssociate
             ? `
@@ -1328,11 +1412,11 @@ function renderAttendanceConsole() {
                 </div>
             `;
 
-        const actionContent = isCompleted
+        const actionContent = hasPassed
             ? `
                 <div class="flex items-center justify-end space-x-1.5">
                     <span class="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 py-1 px-2.5 rounded-lg inline-flex items-center">
-                        <i class="fas fa-certificate text-gold mr-1"></i> Completed · View Only
+                        <i class="fas fa-certificate text-gold mr-1"></i> Completed · Passed
                     </span>
                     ${hasCert ? `
                         <button onclick="viewTrainingCertificate('${assocResult.id}')" class="btn-secondary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1">
@@ -1342,6 +1426,23 @@ function renderAttendanceConsole() {
                     ` : ''}
                 </div>
             `
+            : needsRetest
+                ? `
+                    <div class="flex items-center justify-end space-x-1.5">
+                        ${isSupervisor ? `
+                            <button onclick="viewExamDetails('${assocResult.id}')" class="btn-secondary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs">
+                                <i class="fas fa-file-lines text-indigo-600"></i>
+                                <span>Exam Details</span>
+                            </button>
+                        ` : `
+                            <button onclick="startRetestEvaluation('${assocResult.id}')" 
+                                class="btn-primary px-3 py-1.5 text-[11px] font-bold inline-flex items-center space-x-1 shadow-xs bg-amber-600 hover:bg-amber-700 text-white">
+                                <i class="fas fa-rotate-right"></i>
+                                <span>Retake Exam &rarr;</span>
+                            </button>
+                        `}
+                    </div>
+                `
             : isAttended
                 ? `
                     ${isSupervisor ? `
@@ -1556,13 +1657,126 @@ function setKirkpatrickRating(type, stars) {
     }
 }
 
-async function submitTrainingEvaluation() {
-    const { sessionId, associateId, programId, answers, kirkpatrickFeedback } = currentEvaluationContext;
-    const session = trainingSessionsState.find(s => s.id === sessionId);
-    const member = session?.roster.find(r => r.associateId === associateId);
-    const program = trainingProgramsState.find(p => p.id === programId);
+function startRetestEvaluation(resultId) {
+    const isSupervisor = (window.activePersonaRole === 'Supervisor' || window.activePersonaRole === 'DeptHead' || window.activePersonaKey === 'manager' || window.activePersonaKey === 'supervisor' || window.activePersonaKey === 'depthead');
+    
+    // Find the result in results pools
+    const pool = (Array.isArray(window.propertyResultsState) && window.propertyResultsState.length > 0)
+        ? window.propertyResultsState
+        : trainingResultsState;
+    const result = pool.find(r => r.id === resultId) || trainingResultsState.find(r => r.id === resultId);
+    
+    if (!result) {
+        showToast('Evaluation record not found for re-test.', 'error');
+        return;
+    }
 
-    if (!session || !member || !program) {
+    if (String(result.resultStatus || '').includes('Passed')) {
+        showToast('This training evaluation has already been passed and certified.', 'info');
+        return;
+    }
+
+    if (isSupervisor) {
+        showToast(`Opening re-test evaluation for ${result.associateName}...`, 'info');
+    }
+
+    // Resolve session & program
+    let session = trainingSessionsState.find(s => s.id === result.sessionId);
+    let program = trainingProgramsState.find(p => p.id === result.programId);
+
+    // Fallbacks if not in state
+    if (!program && trainingProgramsState.length > 0) {
+        program = trainingProgramsState.find(p => p.title === result.programTitle) || trainingProgramsState[0];
+    }
+    const programTitle = program ? program.title : (result.programTitle || 'Training Program');
+    const programId = program ? program.id : (result.programId || 'prog-1');
+    const sessionId = session ? session.id : (result.sessionId || 'sess-101');
+    const trainerName = session ? session.trainerName : (result.trainerName || 'Assigned Trainer');
+
+    currentEvaluationContext = {
+        sessionId: sessionId,
+        associateId: result.associateId,
+        programId: programId,
+        previousResultId: result.id,
+        isRetest: true,
+        answers: {},
+        kirkpatrickFeedback: {
+            trainerRating: Math.round(Number(result.feedbackRating || 5)),
+            relevanceRating: 5,
+            comments: result.feedbackNotes || 'Re-test attempt for competency certification.'
+        }
+    };
+
+    const modalTitle = document.getElementById('eval-modal-title');
+    const modalSubtitle = document.getElementById('eval-modal-subtitle');
+    const questionsContainer = document.getElementById('eval-modal-questions-container');
+
+    if (modalTitle) {
+        modalTitle.innerHTML = `<span class="px-2 py-0.5 mr-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white"><i class="fas fa-rotate-right mr-1"></i> Re-test Attempt</span> ${programTitle}`;
+    }
+    if (modalSubtitle) {
+        modalSubtitle.textContent = `Associate: ${result.associateName} (${result.associateRole || 'Staff'}) · Trainer: ${trainerName} · Passing: ${result.passingThreshold || 80}%`;
+    }
+
+    if (questionsContainer) {
+        let questionsList = (program && (program.quizQuestions || program.quiz_questions)) || [];
+        if (typeof questionsList === 'string') {
+            try { questionsList = JSON.parse(questionsList); } catch (e) { questionsList = []; }
+        }
+        if (!Array.isArray(questionsList) || questionsList.length === 0) {
+            questionsList = [
+                {
+                    q: 'What is the benchmark standard response time for VIP guest requests?',
+                    options: ['Under 5 minutes with immediate confirmation', 'Under 30 minutes', 'Next business shift', 'Whenever staff is available'],
+                    correct: 0
+                },
+                {
+                    q: 'Which protocol must be followed when a guest escalates a service delay?',
+                    options: ['Listen, Apologize, Solve, and Thank (LAST method)', 'Direct guest to read hotel policy', 'Refer to general manager only', 'Offer no immediate feedback'],
+                    correct: 0
+                }
+            ];
+        }
+
+        questionsContainer.innerHTML = questionsList.map((q, qIndex) => {
+            const questionText = q.q || q.question || `Question ${qIndex + 1}`;
+            const options = Array.isArray(q.options) ? q.options : [];
+
+            return `
+                <div class="p-4 bg-[#FAF8F7] rounded-2xl border border-[#E8DEDC] space-y-3 text-xs">
+                    <p class="font-bold text-slate-900 leading-snug"><span class="text-primary font-bold">Q${qIndex + 1}:</span> ${questionText}</p>
+                    <div class="space-y-2">
+                        ${options.map((opt, optIndex) => `
+                            <label class="flex items-center space-x-2.5 p-2 rounded-xl border border-transparent hover:bg-white hover:border-[#E8DEDC] cursor-pointer transition">
+                                <input type="radio" name="eval_q_${qIndex}" value="${optIndex}" onchange="recordEvalAnswer(${qIndex}, ${optIndex})" class="text-primary focus:ring-primary h-4 w-4">
+                                <span class="text-slate-700 font-medium">${opt}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Reset star ratings
+    setKirkpatrickRating('trainer', 5);
+    setKirkpatrickRating('relevance', 5);
+
+    openModal('modal-training-evaluation');
+}
+window.startRetestEvaluation = startRetestEvaluation;
+
+
+async function submitTrainingEvaluation() {
+    const { sessionId, associateId, programId, answers, kirkpatrickFeedback, previousResultId, isRetest } = currentEvaluationContext;
+    const session = trainingSessionsState.find(s => s.id === sessionId);
+    const member = session?.roster ? session.roster.find(r => r.associateId === associateId) : null;
+    let program = trainingProgramsState.find(p => p.id === programId);
+    if (!program && trainingProgramsState.length > 0) {
+        program = trainingProgramsState[0];
+    }
+
+    if (!sessionId || !associateId || !programId) {
         showToast('Evaluation submission error: Session or Associate context missing', 'error');
         return;
     }
@@ -1575,7 +1789,10 @@ async function submitTrainingEvaluation() {
             programId: programId,
             associateId: associateId,
             answers: answers,
-            kirkpatrickFeedback: kirkpatrickFeedback
+            kirkpatrickFeedback: kirkpatrickFeedback,
+            previousResultId: previousResultId || undefined,
+            isRetest: !!isRetest,
+            role: 'Associate'
         };
 
         const res = await TrainingAPI.submitEvaluation(payload);
@@ -1583,19 +1800,38 @@ async function submitTrainingEvaluation() {
 
         if (resData && (resData.evaluation || resData.id)) {
             const evalRecord = resData.evaluation || resData;
-            trainingResultsState.unshift(normalizeTrainingResult(evalRecord));
+            const normalized = normalizeTrainingResult(evalRecord);
 
-            member.evaluationStatus = 'Completed';
-            member.attendanceStatus = 'Completed';
-            member.score = evalRecord.quizScore;
-            member.resultId = evalRecord.id;
+            // Update in-place if re-test, otherwise unshift
+            const existingIdx = trainingResultsState.findIndex(r => r.id === previousResultId || r.id === evalRecord.id);
+            if (existingIdx !== -1) {
+                trainingResultsState[existingIdx] = normalized;
+            } else {
+                trainingResultsState.unshift(normalized);
+            }
+
+            if (Array.isArray(window.propertyResultsState)) {
+                const propIdx = window.propertyResultsState.findIndex(r => r.id === previousResultId || r.id === evalRecord.id);
+                if (propIdx !== -1) {
+                    window.propertyResultsState[propIdx] = normalized;
+                } else {
+                    window.propertyResultsState.unshift(normalized);
+                }
+            }
+
+            if (member) {
+                member.evaluationStatus = 'Completed';
+                member.attendanceStatus = 'Completed';
+                member.score = evalRecord.quizScore;
+                member.resultId = evalRecord.id;
+            }
 
             if (resData.isPassed || evalRecord.resultStatus?.includes('Passed')) {
                 feedResultsIntoCompetency(evalRecord);
-                showToast(`Evaluation Passed (${evalRecord.quizScore}%)! Cert: ${resData.certificateNumber || evalRecord.certificateReference} generated & +150 XP awarded!`, 'success');
+                showToast(res.message || `Evaluation Passed (${evalRecord.quizScore}%)! Cert: ${resData.certificateNumber || evalRecord.certificateReference} generated & +150 XP awarded!`, 'success');
                 switchTrainingStage('results');
             } else {
-                showToast(`Evaluation Score: ${evalRecord.quizScore}% (Threshold: ${evalRecord.passingThreshold || 80}%). Remedial required.`, 'warning');
+                showToast(res.message || `Evaluation Score: ${evalRecord.quizScore}% (Threshold: ${evalRecord.passingThreshold || 80}%). Remedial required.`, 'warning');
                 switchTrainingStage('results');
             }
         } else if (res && !res.success) {
@@ -1657,7 +1893,7 @@ function feedResultsIntoCompetency(result) {
                     <span class="font-bold text-slate-900">Goal: Master Front Desk Shift Escalations</span>
                     <span class="badge-sage"><i class="fas fa-check-circle mr-1"></i> 100% Completed</span>
                 </div>
-                <p class="text-slate-600">Certified via: <strong>${result.programTitle}</strong> (${result.completionDate}) · Score: <strong>${result.quizScore}%</strong></p>
+                <p class="text-slate-600">Certified via: <strong>${result.programTitle}</strong> (${result.completionDate}) · Score: <strong>${result.quizScore}/10</strong></p>
                 <div class="w-full bg-white h-2 rounded-full overflow-hidden border border-emerald-200">
                     <div class="bg-emerald-600 h-2 rounded-full" style="width: 100%"></div>
                 </div>
@@ -1784,10 +2020,9 @@ function renderTrainingResults() {
                 <td class="px-5 py-3.5 text-slate-600 font-medium">${res.completionDate}</td>
                 <td class="px-5 py-3.5">
                     <div class="flex items-baseline space-x-1">
-                        <span class="font-extrabold text-sm ${isPassed ? 'text-emerald-700' : 'text-slate-700'}">${res.quizScore}%</span>
-                        <span class="text-[10px] text-slate-400 font-medium">/ 100</span>
+                        <span class="font-extrabold text-sm ${isPassed ? 'text-emerald-700' : 'text-slate-700'}">${res.quizScore}/10</span>
                     </div>
-                    <span class="text-[10px] text-slate-400">Passing: ${res.passingThreshold || 80}%</span>
+                    <span class="text-[10px] text-slate-400">Passing: ${res.passingThreshold || 8}/10</span>
                 </td>
                 <td class="px-5 py-3.5">
                     <span class="${isPassed ? 'badge-sage' : 'badge-terracotta'} font-bold inline-flex items-center space-x-1">
@@ -1804,6 +2039,12 @@ function renderTrainingResults() {
                             <i class="fas fa-file-lines text-indigo-600"></i>
                             <span>Exam Details</span>
                         </button>
+                        ${!isPassed ? `
+                            <button type="button" onclick="startRetestEvaluation('${res.id}')" class="btn-primary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs bg-amber-600 hover:bg-amber-700 text-white" title="Retake Evaluation Quiz (Re-test)">
+                                <i class="fas fa-rotate-right"></i>
+                                <span>Re-test</span>
+                            </button>
+                        ` : ''}
                         ${isPassed && res.certificateReference ? `
                             <button type="button" onclick="viewTrainingCertificate('${res.id}')" class="btn-primary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs" title="View Digital Certificate">
                                 <i class="fas fa-certificate text-amber-300"></i>
@@ -1843,6 +2084,7 @@ function viewExamDetails(resultId) {
     const elXp = document.getElementById('exam-detail-xp');
     const elCertRef = document.getElementById('exam-detail-cert-ref');
     const btnOpenCert = document.getElementById('btn-exam-detail-open-cert');
+    const btnRetest = document.getElementById('btn-exam-detail-retest');
 
     if (elName) elName.textContent = result.associateName;
     if (elAvatar) elAvatar.src = result.associateAvatar;
@@ -1866,6 +2108,18 @@ function viewExamDetails(resultId) {
     if (elStatusBadge) {
         elStatusBadge.textContent = result.resultStatus || 'Passed & Certified';
         elStatusBadge.className = isPassed ? 'badge-sage font-bold' : 'badge-terracotta font-bold';
+    }
+
+    if (btnRetest) {
+        if (!isPassed) {
+            btnRetest.classList.remove('hidden');
+            btnRetest.onclick = () => {
+                closeModal('modal-training-exam-details');
+                startRetestEvaluation(result.id);
+            };
+        } else {
+            btnRetest.classList.add('hidden');
+        }
     }
 
     if (btnOpenCert) {
@@ -1940,7 +2194,7 @@ function viewTrainingCertificate(resultId) {
     if (elCertId) elCertId.textContent = result.certificateReference || 'OXF-CERT-2026-0889';
     if (elCertDate) elCertDate.textContent = result.completionDate || 'Aug 29, 2026';
     if (elCertTrainer) elCertTrainer.textContent = result.trainerName || 'Lead Master Trainer';
-    if (elCertScore) elCertScore.textContent = `Score: ${result.quizScore || 96}% (Mastery Level)`;
+    if (elCertScore) elCertScore.textContent = `Score: ${result.quizScore || 9}/10 (Mastery Level)`;
 
     openModal('modal-training-certificate');
 }
@@ -2067,7 +2321,7 @@ function renderBasicTrainingReport() {
                 <td class="px-5 py-3.5 font-semibold text-slate-700">${prog.dept}</td>
                 <td class="px-5 py-3.5 font-bold text-slate-800">${totalEnrolled} associates</td>
                 <td class="px-5 py-3.5">
-                    <div class="flex items-center space-x-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="font-bold text-sage-dark">${attRate}%</span>
                         <div class="w-16 bg-slate-200 h-1.5 rounded-full overflow-hidden">
                             <div class="bg-sage h-1.5" style="width: ${attRate}%"></div>
@@ -2075,7 +2329,7 @@ function renderBasicTrainingReport() {
                     </div>
                 </td>
                 <td class="px-5 py-3.5">
-                    <div class="flex items-center space-x-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="font-bold text-primary">${compRate}%</span>
                         <div class="w-16 bg-slate-200 h-1.5 rounded-full overflow-hidden">
                             <div class="bg-primary h-1.5" style="width: ${compRate}%"></div>
@@ -2127,6 +2381,26 @@ function scheduleFromNeed(needId) {
 
     currentSchedulingNeedId = need.id;
     openScheduleModal(need.linkedProgramId, need.id);
+}
+
+window.viewAssignmentDetails = function(needId) {
+    const raw = findAnyTrainingNeed(needId);
+    if (!raw) {
+        if (typeof showToast === 'function') showToast('Could not load details for this training need.', 'error');
+        return;
+    }
+    const need = normalizeTrainingNeed(raw);
+    const prog = trainingProgramsState.find(p => p.id === need.linkedProgramId) || null;
+    const programTitle = prog ? prog.title : (need.linkedProgramTitle || need.category || 'Hospitality Mastery Program');
+    
+    const existingSession = trainingSessionsState.find(s =>
+        (s.linkedNeedId === need.id || ((s.roster || []).some(r => (r.associateId === need.employeeId || (r.name && need.associateName && r.name.toLowerCase() === need.associateName.toLowerCase())) && (s.programId === need.linkedProgramId || s.title?.includes(need.targetCompetency))))) &&
+        s.status !== 'Completed'
+    );
+    const dateStr = existingSession ? `${existingSession.date} at ${existingSession.time} (${existingSession.location})` : 'Pending Session';
+    
+    // Simple popup view as requested by the user, without re-triggering assignment/schedule
+    alert(`ASSIGNMENT DETAILS\n\nAssociate: ${need.associateName}\nProgram: ${programTitle}\nStatus: ${need.status}\nScheduled Date: ${dateStr}`);
 }
 
 function updateScheduleModalRosterCount() {
@@ -2301,7 +2575,8 @@ async function saveScheduledSession() {
         date: date,
         time: time,
         status: 'Scheduled',
-        roster: selectedRoster
+        roster: selectedRoster,
+        linkedNeedId: currentSchedulingNeedId || null
     };
 
     trainingSessionsState.unshift(normalizeTrainingSession(newSession));
@@ -2367,7 +2642,7 @@ async function saveNewTrainingProgram() {
         duration: duration,
         format: 'Workshop & Assessment',
         trainerType: 'Internal Master Trainer',
-        passingScore: 80,
+        passingScore: 8,
         xpAward: 150,
         icon: 'fa-award',
         badgeColor: 'primary',
@@ -2450,7 +2725,7 @@ function openAssignProgramModal(needId) {
                 <p class="text-[11px] text-slate-500 leading-relaxed">${p.description || 'Structured hospitality training syllabus.'}</p>
                 <div class="flex items-center space-x-3 text-[10px] text-slate-400 pt-0.5">
                     <span><i class="fas fa-clock mr-1"></i>${p.duration}</span>
-                    <span><i class="fas fa-award text-amber-500 mr-1"></i>Passing Threshold: &ge; ${p.passingScore || 80}%</span>
+                    <span><i class="fas fa-award text-amber-500 mr-1"></i>Passing Threshold: &ge; ${p.passingScore || 8}/10</span>
                 </div>
             </div>
         </label>

@@ -10,7 +10,7 @@
             <span class="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Identified Needs</span>
             <div class="flex items-baseline space-x-2">
                 <span id="stat-training-needs" class="text-xl font-heading font-extrabold text-slate-900">4</span>
-                <span class="text-[10px] font-bold text-terracotta-dark">Gaps &amp; Compliance</span>
+                <span id="stat-training-needs-sub" class="text-[10px] font-bold text-terracotta-dark">Gaps &amp; Compliance</span>
             </div>
         </div>
 

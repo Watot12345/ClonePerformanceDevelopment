@@ -252,6 +252,14 @@ class TrainingController
         }
         $created = $this->sessionModel->createSession($data);
 
+        // Fix: update linked training need status to Scheduled so cascade hook sets in_training=true
+        $linkedNeedId = $data['linkedNeedId'] ?? ($data['linked_need_id'] ?? null);
+        if (!empty($linkedNeedId)) {
+            require_once __DIR__ . "/../models/TrainingNeedModel.php";
+            $needModel = new TrainingNeedModel();
+            $needModel->updateStatus($linkedNeedId, "Scheduled");
+        }
+
         // Notify all rostered associates
         $roster = $created['roster'] ?? ($data['roster'] ?? []);
         if (is_string($roster)) {

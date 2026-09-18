@@ -319,11 +319,11 @@
         var rawUser = localStorage.getItem('oxford_session_user');
         var user = rawUser ? JSON.parse(rawUser) : null;
         var role = (localStorage.getItem('oxford_session_role') || 'associate').toLowerCase().trim();
-        var fallbackName = role === 'supervisor' ? 'Chef Marco Rossi' : (role === 'hradmin' ? 'Clara Higgins' : (role === 'generalmanager' ? 'Victoria Sterling' : 'Maria Santos'));
-        var fallbackRole = role === 'supervisor' ? 'Executive Sous Chef' : (role === 'hradmin' ? 'HR Director' : (role === 'generalmanager' ? 'General Manager' : 'Front Desk Host'));
-        var fallbackDept = role === 'supervisor' ? 'Culinary & Kitchen' : (role === 'hradmin' ? 'Human Resources' : (role === 'generalmanager' ? 'Executive Office' : 'Front Office'));
-        var fallbackTag = role === 'supervisor' ? 'Sup' : (role === 'hradmin' ? 'HR' : (role === 'generalmanager' ? 'GM' : 'Emp'));
-        var fallbackInitials = role === 'supervisor' ? 'MR' : (role === 'hradmin' ? 'CH' : (role === 'generalmanager' ? 'VS' : 'MS'));
+        var fallbackName = (role === 'supervisor_hk' || role === 'housekeeping_supervisor') ? 'Janzel' : (role === 'supervisor' ? 'Chef Marco Rossi' : (role === 'hradmin' ? 'Clara Higgins' : (role === 'generalmanager' ? 'Victoria Sterling' : 'Maria Santos')));
+        var fallbackRole = (role === 'supervisor_hk' || role === 'housekeeping_supervisor') ? 'Housekeeping Supervisor' : (role === 'supervisor' ? 'Executive Sous Chef' : (role === 'hradmin' ? 'HR Director' : (role === 'generalmanager' ? 'General Manager' : 'Front Desk Host')));
+        var fallbackDept = (role === 'supervisor_hk' || role === 'housekeeping_supervisor') ? 'Housekeeping' : (role === 'supervisor' ? 'Culinary & Kitchen' : (role === 'hradmin' ? 'Human Resources' : (role === 'generalmanager' ? 'Executive Office' : 'Front Office')));
+        var fallbackTag = (role === 'supervisor_hk' || role === 'housekeeping_supervisor') ? 'Sup' : (role === 'supervisor' ? 'Sup' : (role === 'hradmin' ? 'HR' : (role === 'generalmanager' ? 'GM' : 'Emp')));
+        var fallbackInitials = (role === 'supervisor_hk' || role === 'housekeeping_supervisor') ? 'JZ' : (role === 'supervisor' ? 'MR' : (role === 'hradmin' ? 'CH' : (role === 'generalmanager' ? 'VS' : 'MS')));
 
         var name = user?.name || user?.full_name || fallbackName;
         var roleTitle = user?.role_title || user?.role || fallbackRole;

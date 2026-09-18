@@ -268,7 +268,6 @@ class PerformanceGoalModel extends BaseModel
     {
         return $this->update((string)$goalId, [
             'retry_count'    => $count,
-            'needs_training' => ($count >= 3 && $count < 4),
             'updated_at'     => date('c')
         ]);
     }
@@ -332,7 +331,6 @@ class PerformanceGoalModel extends BaseModel
 
         return $this->update((string)$goalId, [
             'retry_count'    => $newCount,
-            'needs_training' => ($newCount >= 3 && $newCount < 4),
             'updated_at'     => date('c')
         ]);
     }

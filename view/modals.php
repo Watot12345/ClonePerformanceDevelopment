@@ -2910,7 +2910,7 @@
                         <div class="flex items-center justify-between">
                             <h4 class="font-heading font-bold text-sm text-slate-900 flex items-center space-x-1.5">
                                 <span class="w-2 h-2 rounded-full bg-primary"></span>
-                                <span>Part A: Practical Knowledge Assessment (5 Questions · 20 Points Each)</span>
+                                <span>Part A: Practical Knowledge Assessment (Max Score: 10)</span>
                             </h4>
                             <span class="badge-sage text-[10px]">Evaluation Form</span>
                         </div>
@@ -3193,6 +3193,10 @@
                     <span class="text-[11px] text-slate-500 font-medium">Auto-recorded &amp; synchronized across Hotel Systems</span>
                     <div class="flex items-center space-x-2">
                         <button type="button" onclick="closeModal('modal-training-exam-details')" class="btn-secondary px-4 py-2 text-xs font-bold">Close</button>
+                        <button type="button" id="btn-exam-detail-retest" onclick="" class="hidden px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center space-x-1.5 shadow-xs transition">
+                            <i class="fas fa-rotate-right"></i>
+                            <span>Retake Exam (Re-test)</span>
+                        </button>
                         <button type="button" id="btn-exam-detail-open-cert" onclick="" class="btn-primary px-4 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-xs">
                             <i class="fas fa-certificate text-amber-300"></i>
                             <span>View Digital Certificate</span>

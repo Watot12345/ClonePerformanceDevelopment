@@ -26,7 +26,7 @@ class TrainingProgramModel extends BaseModel
             $p['competencyKey'] = $p['competency_key'] ?? ($p['competencyKey'] ?? 'general');
             $p['categoryType'] = $p['category_type'] ?? ($p['categoryType'] ?? 'skill_gap');
             $p['trainerType'] = $p['trainer_type'] ?? ($p['trainerType'] ?? 'Internal Master Trainer');
-            $p['passingScore'] = (int)($p['passing_score'] ?? ($p['passingScore'] ?? 80));
+            $p['passingScore'] = (int)($p['passing_score'] ?? ($p['passingScore'] ?? 8));
             $p['xpAward'] = (int)($p['xp_award'] ?? ($p['xpAward'] ?? 150));
             $p['badgeColor'] = $p['badge_color'] ?? ($p['badgeColor'] ?? 'primary');
             if (is_string($p['modules'] ?? null)) {
@@ -56,7 +56,7 @@ class TrainingProgramModel extends BaseModel
         $prog['competencyKey'] = $prog['competency_key'] ?? ($prog['competencyKey'] ?? 'general');
         $prog['categoryType'] = $prog['category_type'] ?? ($prog['categoryType'] ?? 'skill_gap');
         $prog['trainerType'] = $prog['trainer_type'] ?? ($prog['trainerType'] ?? 'Internal Master Trainer');
-        $prog['passingScore'] = (int)($prog['passing_score'] ?? ($prog['passingScore'] ?? 80));
+        $prog['passingScore'] = (int)($prog['passing_score'] ?? ($prog['passingScore'] ?? 8));
         $prog['xpAward'] = (int)($prog['xp_award'] ?? ($prog['xpAward'] ?? 150));
         $prog['badgeColor'] = $prog['badge_color'] ?? ($prog['badgeColor'] ?? 'primary');
         if (is_string($prog['modules'] ?? null)) {
@@ -90,7 +90,7 @@ class TrainingProgramModel extends BaseModel
             'duration'          => $data['duration'] ?? '3.5 Hours',
             'format'            => $data['format'] ?? 'Workshop & Roleplay',
             'trainer_type'      => $data['trainer_type'] ?? ($data['trainerType'] ?? 'Internal Master Trainer'),
-            'passing_score'     => (int)($data['passing_score'] ?? ($data['passingScore'] ?? 80)),
+            'passing_score'     => (int)($data['passing_score'] ?? ($data['passingScore'] ?? 8)),
             'xp_award'          => (int)($data['xp_award'] ?? ($data['xpAward'] ?? 150)),
             'icon'              => $data['icon'] ?? 'fa-graduation-cap',
             'badge_color'       => $data['badge_color'] ?? ($data['badgeColor'] ?? 'primary'),
@@ -117,7 +117,7 @@ class TrainingProgramModel extends BaseModel
                 'duration' => '3.5 Hours (1 Day Workshop)',
                 'format' => 'In-Person Workshop & Roleplay',
                 'trainerType' => 'Internal Master Trainer',
-                'passingScore' => 80,
+                'passingScore' => 8,
                 'xpAward' => 150,
                 'icon' => 'fa-shield-halved',
                 'badgeColor' => 'primary',
@@ -139,7 +139,7 @@ class TrainingProgramModel extends BaseModel
                 'duration' => '4.0 Hours (Interactive Cohort)',
                 'format' => 'Cohort Workshop & Kitchen Lab',
                 'trainerType' => 'Certified Master Trainer',
-                'passingScore' => 85,
+                'passingScore' => 9,
                 'xpAward' => 200,
                 'icon' => 'fa-utensils',
                 'badgeColor' => 'emerald',
@@ -161,7 +161,7 @@ class TrainingProgramModel extends BaseModel
                 'duration' => '3.0 Hours (Tasting Workshop)',
                 'format' => 'Tasting Workshop & Tableside Service',
                 'trainerType' => 'Head Sommelier',
-                'passingScore' => 80,
+                'passingScore' => 8,
                 'xpAward' => 150,
                 'icon' => 'fa-wine-glass',
                 'badgeColor' => 'purple',

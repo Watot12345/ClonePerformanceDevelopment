@@ -7,6 +7,7 @@ require_once __DIR__ . '/../models/PerformanceEvaluationModel.php';
 require_once __DIR__ . '/../models/AuthModel.php';
 require_once __DIR__ . '/../models/NotificationModel.php';
 require_once __DIR__ . '/../models/PerformanceDevelopmentPlanModel.php';
+require_once __DIR__ . '/../services/GoalTrainingCascadeService.php';
 
 class PerformanceController
 {
@@ -292,6 +293,16 @@ class PerformanceController
                 );
             } catch (\Throwable $e) {
                 error_log('Task assignment error on approval: ' . $e->getMessage());
+            }
+        }
+
+        // Cascade: when goal fails, create a training need (if under retry cap)
+        if (strcasecmp($status, 'Failed') === 0) {
+            try {
+                $cascadeService = new GoalTrainingCascadeService();
+                $cascadeService->onGoalFailed((string)$id);
+            } catch (\Throwable $e) {
+                error_log('Cascade error on goal failure: ' . $e->getMessage());
             }
         }
 
@@ -1735,6 +1746,14 @@ class PerformanceController
         }
 
         // 2. Fetch employee details
+        $emp = $this->authModel->find($empId) ?: $this->authModel->findByEmployeeCode($empId);
+        if (!$emp) {
+            return ['success' => false, 'message' => 'Employee not found.'];
+        }
+        $empName = $emp['full_name'] ?? $emp['name'] ?? 'Unknown Associate';
+        $dept = $emp['department'] ?? $emp['dept'] ?? 'General';
+        $empRole = $emp['role'] ?? $emp['position'] ?? 'Associate';
+
         // 3. Resolve active goal if goalId is missing
         if (empty($goalId)) {
             $goals = $this->goalModel->getGoalsByEmployee($empId);
@@ -1835,8 +1854,31 @@ class PerformanceController
 
         if (!empty($goalId)) {
             $updated = $this->goalModel->markFailed((string)$goalId);
+
+            // Cascade: markFailed sets retry_count=4 (terminal), so onGoalFailed
+            // will hit the cap guard and be a no-op — but we call it for consistency
+            // so the cascade service is the single source of truth for this logic.
+            try {
+                $cascadeService = new GoalTrainingCascadeService();
+                $cascadeService->onGoalFailed((string)$goalId);
+            } catch (\Throwable $e) {
+                error_log('Cascade error on markGoalFailed: ' . $e->getMessage());
+            }
         } elseif (!empty($empId)) {
             $updated = $this->goalModel->markEmployeeGoalsFailed($empId);
+
+            // Cascade each failed goal individually
+            try {
+                $cascadeService = new GoalTrainingCascadeService();
+                $failedGoals = is_array($updated) ? $updated : [];
+                foreach ($failedGoals as $g) {
+                    if (!empty($g['id'])) {
+                        $cascadeService->onGoalFailed((string)$g['id']);
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('Cascade error on markEmployeeGoalsFailed: ' . $e->getMessage());
+            }
         } else {
             return [
                 'success' => false,

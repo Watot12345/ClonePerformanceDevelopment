@@ -69,4 +69,42 @@ class EvaluationModel extends BaseModel
         ];
         return $this->create($clean);
     }
+
+    public function updateEvaluation(string $id, array $data): ?array
+    {
+        $clean = [];
+        if (isset($data['quiz_score']) || isset($data['quizScore'])) {
+            $clean['quiz_score'] = (int)($data['quiz_score'] ?? $data['quizScore']);
+        }
+        if (isset($data['result_status']) || isset($data['resultStatus'])) {
+            $clean['result_status'] = $data['result_status'] ?? $data['resultStatus'];
+        }
+        if (isset($data['completion_date']) || isset($data['completionDate'])) {
+            $clean['completion_date'] = $data['completion_date'] ?? $data['completionDate'];
+        }
+        if (isset($data['feedback_rating']) || isset($data['feedbackRating'])) {
+            $clean['feedback_rating'] = (float)($data['feedback_rating'] ?? $data['feedbackRating']);
+        }
+        if (isset($data['feedback_notes']) || isset($data['feedbackNotes'])) {
+            $clean['feedback_notes'] = $data['feedback_notes'] ?? $data['feedbackNotes'];
+        }
+        if (array_key_exists('certificate_reference', $data) || array_key_exists('certificateReference', $data)) {
+            $clean['certificate_reference'] = $data['certificate_reference'] ?? ($data['certificateReference'] ?? null);
+        }
+        if (isset($data['xp_awarded']) || isset($data['xpAwarded'])) {
+            $clean['xp_awarded'] = (int)($data['xp_awarded'] ?? $data['xpAwarded']);
+        }
+        if (isset($data['competency_score_before']) || isset($data['competencyScoreBefore'])) {
+            $clean['competency_score_before'] = (float)($data['competency_score_before'] ?? $data['competencyScoreBefore']);
+        }
+        if (isset($data['competency_score_after']) || isset($data['competencyScoreAfter'])) {
+            $clean['competency_score_after'] = (float)($data['competency_score_after'] ?? $data['competencyScoreAfter']);
+        }
+        if (isset($data['synced_to_profile']) || isset($data['syncedToProfile'])) {
+            $clean['synced_to_profile'] = (bool)($data['synced_to_profile'] ?? $data['syncedToProfile']);
+        }
+
+        return $this->update($id, $clean);
+    }
 }
+
