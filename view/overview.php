@@ -76,12 +76,12 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                 class="subnav-track flex items-center justify-between gap-2 p-1.5 overflow-x-auto custom-scrollbar">
                                 <div class="flex items-center space-x-1.5 flex-nowrap">
                                     <button onclick="switchSubTab('dashboard', 'pulse')"
-                                        class="subnav-pill subnav-dashboard <?= $pulseTabClass ?> whitespace-nowrap" data-sub="pulse">
+                                        class="subnav-pill subnav-dashboard <?= $pulseTabClass ?> whitespace-nowrap <?= !$isAssociate ? 'hidden' : '' ?>" data-sub="pulse">
                                         <i class="fas fa-user-clock mr-1.5 text-primary"></i>
                                         <span>1. Shift Focus &amp; My Pulse</span>
                                     </button>
                                     <button onclick="switchSubTab('dashboard', 'system')"
-                                        class="subnav-pill subnav-dashboard <?= $systemTabClass ?> whitespace-nowrap" data-sub="system">
+                                        class="subnav-pill subnav-dashboard <?= $systemTabClass ?> whitespace-nowrap <?= $isAssociate ? 'hidden' : '' ?>" data-sub="system">
                                         <i class="fas fa-chart-line mr-1.5 text-dusty-dark"></i>
                                         <span>2. System &amp; Property Analytics</span>
                                     </button>

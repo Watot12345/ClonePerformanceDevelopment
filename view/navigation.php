@@ -96,13 +96,15 @@
                             <span class="nav-alert-badge hidden bg-primary text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shadow-xs min-w-[18px] text-center">0</span>
                         </a>
                         <a href="#" onclick="if (typeof openAIFeedbackModal === 'function') openAIFeedbackModal(window.selectedEmployeeContext?.id, window.selectedEmployeeContext?.name, window.selectedEmployeeContext?.dept); toggleMobileSidebar(false); return false;"
-                            class="nav-item flex items-center justify-between text-primary font-bold bg-primary/5 border border-primary/15 my-1"
-                            title="AI Feedback &amp; Reflection Copilot">
-                            <div class="flex items-center">
-                                <i class="fas fa-wand-magic-sparkles w-5 text-center text-sm text-primary"></i>
-                                <span class="ml-3 font-extrabold text-primary">Gemini AI Coach</span>
+                            class="nav-item flex items-center justify-between text-slate-800 font-bold bg-gradient-to-r from-purple-50 via-rose-50 to-amber-50 border border-purple-200/80 my-1 rounded-xl p-2 shadow-2xs group hover:border-purple-300 transition"
+                            title="AI Feedback & Reflection Copilot">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-6 h-6 shrink-0 flex items-center justify-center">
+                                    <img src="assets/images/ai_copilot_avatar.png" alt="Gemini AI" class="w-full h-full object-contain group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 drop-shadow-xs">
+                                </div>
+                                <span class="text-xs font-bold text-slate-900">Gemini AI Coach</span>
                             </div>
-                            <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-primary text-white shadow-2xs">Flash</span>
+                            <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-2xs">✦ AI</span>
                         </a>
                         <a href="#" onclick="switchPillar('pillar-reports'); toggleMobileSidebar(false); return false;"
                             class="nav-item"
@@ -294,9 +296,11 @@
 
                         <!-- Gemini AI Trigger -->
                         <button onclick="if (typeof openAIFeedbackModal === 'function') openAIFeedbackModal(window.selectedEmployeeContext?.id, window.selectedEmployeeContext?.name, window.selectedEmployeeContext?.dept);" title="Open Gemini AI Feedback Coach"
-                            class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200/80 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition text-xs shadow-2xs">
-                            <i class="fas fa-wand-magic-sparkles text-primary"></i>
-                            <span>Gemini AI</span>
+                            class="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-gradient-to-r from-purple-50 via-rose-50/60 to-amber-50 border border-purple-200/80 text-slate-800 rounded-xl font-bold hover:border-purple-300 hover:shadow-xs transition text-xs shadow-2xs group cursor-pointer">
+                            <div class="w-5 h-5 shrink-0 flex items-center justify-center">
+                                <img src="assets/images/ai_copilot_avatar.png" alt="Gemini AI" class="w-full h-full object-contain group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 drop-shadow-xs">
+                            </div>
+                            <span class="font-bold text-slate-800 tracking-tight">Gemini AI</span>
                         </button>
 
                         <!-- Notifications Bell -->

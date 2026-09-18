@@ -722,15 +722,34 @@ function applyRoleVisibility(userRole) {
     // For Supervisor / Manager / HR / GM (not employee): Hide "1. Shift Focus & My Pulse", Show "2. System & Property Analytics"
     const pulseSubTabBtn = document.querySelector('button[data-sub="pulse"]');
     const systemSubTabBtn = document.querySelector('button[data-sub="system"]');
+    const subPulsePanel = document.getElementById('sub-dashboard-pulse');
+    const subSystemPanel = document.getElementById('sub-dashboard-system');
+
     if (isAssociate) {
         if (pulseSubTabBtn) pulseSubTabBtn.classList.remove('hidden');
         if (systemSubTabBtn) systemSubTabBtn.classList.add('hidden');
+        if (subSystemPanel) {
+            subSystemPanel.classList.add('hidden');
+            subSystemPanel.classList.remove('active');
+        }
+        if (subPulsePanel) {
+            subPulsePanel.classList.remove('hidden');
+            subPulsePanel.classList.add('active');
+        }
         if (typeof switchSubTab === 'function') {
             switchSubTab('dashboard', 'pulse');
         }
     } else {
         if (pulseSubTabBtn) pulseSubTabBtn.classList.add('hidden');
         if (systemSubTabBtn) systemSubTabBtn.classList.remove('hidden');
+        if (subPulsePanel) {
+            subPulsePanel.classList.add('hidden');
+            subPulsePanel.classList.remove('active');
+        }
+        if (subSystemPanel) {
+            subSystemPanel.classList.remove('hidden');
+            subSystemPanel.classList.add('active');
+        }
         if (typeof switchSubTab === 'function') {
             switchSubTab('dashboard', 'system');
         }
@@ -896,7 +915,12 @@ function applyRoleVisibility(userRole) {
     }
 }
 
-async function logOutToAuth() {
+async function logOutToAuth(reason = null) {
+    // 0. Hide inactivity modal if open
+    if (window.InactivityTracker && typeof window.InactivityTracker.hideWarningModal === 'function') {
+        window.InactivityTracker.hideWarningModal();
+    }
+
     // 1. Instantly display fullscreen blocking loading overlay
     const overlay = document.getElementById('logout-loading-overlay');
     if (overlay) {
@@ -934,10 +958,188 @@ async function logOutToAuth() {
 
     // 5. Smooth transition & redirect to login page
     setTimeout(() => {
-        window.location.replace('login.php?logout=1');
+        const query = reason ? `login.php?logout=1&reason=${encodeURIComponent(reason)}` : 'login.php?logout=1';
+        window.location.replace(query);
     }, 700);
 }
 window.logOutToAuth = logOutToAuth;
+
+// =========================================================================
+// INACTIVITY AUTO-LOGOUT CONTROLLER (1 MINUTE INACTIVITY + 10S COUNTDOWN)
+// =========================================================================
+const InactivityTracker = {
+    INACTIVITY_LIMIT_MS: 60 * 1000,    // 1 minute (60 seconds) of inactivity
+    COUNTDOWN_DURATION_SEC: 10,       // 10 seconds warning countdown
+    
+    lastActivityTimestamp: Date.now(),
+    inactivityTimeoutId: null,
+    countdownIntervalId: null,
+    isWarningModalVisible: false,
+    remainingSeconds: 10,
+    hasInitialized: false,
+
+    init() {
+        if (this.hasInitialized) return;
+        this.hasInitialized = true;
+        this.lastActivityTimestamp = Date.now();
+
+        // Listen for user interaction events across window/document
+        const events = ['mousemove', 'mousedown', 'click', 'keydown', 'keypress', 'scroll', 'wheel', 'touchstart', 'touchmove', 'pointerdown'];
+        
+        let throttleTimer = null;
+        const onUserActivity = () => {
+            if (this.isWarningModalVisible) {
+                return;
+            }
+            if (!throttleTimer) {
+                throttleTimer = setTimeout(() => {
+                    throttleTimer = null;
+                    this.recordActivity();
+                }, 300);
+            }
+        };
+
+        events.forEach(eventName => {
+            window.addEventListener(eventName, onUserActivity, { passive: true });
+        });
+
+        // Handle tab switching / visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                this.checkInactivityOnWake();
+            }
+        });
+
+        // Start initial inactivity timer
+        this.startInactivityTimer();
+    },
+
+    recordActivity() {
+        this.lastActivityTimestamp = Date.now();
+        this.startInactivityTimer();
+    },
+
+    startInactivityTimer() {
+        if (this.inactivityTimeoutId) {
+            clearTimeout(this.inactivityTimeoutId);
+        }
+        this.inactivityTimeoutId = setTimeout(() => {
+            this.triggerWarning();
+        }, this.INACTIVITY_LIMIT_MS);
+    },
+
+    triggerWarning() {
+        const isAuth = localStorage.getItem('oxford_session_auth');
+        if (isAuth !== 'true') return;
+
+        this.isWarningModalVisible = true;
+        this.remainingSeconds = this.COUNTDOWN_DURATION_SEC;
+        
+        const modal = document.getElementById('modal-inactivity-warning');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.style.setProperty('z-index', '999999', 'important');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        this.updateCountdownUI(this.remainingSeconds);
+
+        if (this.countdownIntervalId) {
+            clearInterval(this.countdownIntervalId);
+        }
+
+        this.countdownIntervalId = setInterval(() => {
+            this.remainingSeconds -= 1;
+            if (this.remainingSeconds <= 0) {
+                clearInterval(this.countdownIntervalId);
+                this.countdownIntervalId = null;
+                this.updateCountdownUI(0);
+                this.hideWarningModal();
+                logOutToAuth('inactivity');
+            } else {
+                this.updateCountdownUI(this.remainingSeconds);
+            }
+        }, 1000);
+    },
+
+    updateCountdownUI(seconds) {
+        const timerEl = document.getElementById('inactivity-countdown-timer');
+        const barEl = document.getElementById('inactivity-countdown-bar');
+        
+        if (timerEl) {
+            timerEl.textContent = seconds;
+            timerEl.classList.add('scale-125');
+            setTimeout(() => timerEl.classList.remove('scale-125'), 200);
+        }
+
+        if (barEl) {
+            const pct = Math.max(0, Math.min(100, (seconds / this.COUNTDOWN_DURATION_SEC) * 100));
+            barEl.style.width = `${pct}%`;
+            if (seconds <= 3) {
+                barEl.className = 'h-full bg-rose-600 rounded-full transition-all duration-1000 ease-linear w-full';
+            } else {
+                barEl.className = 'h-full bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 rounded-full transition-all duration-1000 ease-linear w-full';
+            }
+        }
+    },
+
+    hideWarningModal() {
+        this.isWarningModalVisible = false;
+        const modal = document.getElementById('modal-inactivity-warning');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        if (!window.activeModalStack || window.activeModalStack.length === 0) {
+            document.body.classList.remove('overflow-hidden');
+        }
+        if (this.countdownIntervalId) {
+            clearInterval(this.countdownIntervalId);
+            this.countdownIntervalId = null;
+        }
+    },
+
+    stayLoggedIn() {
+        this.hideWarningModal();
+        this.recordActivity();
+        if (typeof window.showToast === 'function') {
+            window.showToast('Session extended. Welcome back!', 'success', { duration: 3000 });
+        }
+    },
+
+    checkInactivityOnWake() {
+        const isAuth = localStorage.getItem('oxford_session_auth');
+        if (isAuth !== 'true') return;
+
+        const elapsed = Date.now() - this.lastActivityTimestamp;
+        const totalThreshold = this.INACTIVITY_LIMIT_MS + (this.COUNTDOWN_DURATION_SEC * 1000);
+
+        if (elapsed >= totalThreshold) {
+            this.hideWarningModal();
+            logOutToAuth('inactivity');
+        } else if (elapsed >= this.INACTIVITY_LIMIT_MS) {
+            const rem = Math.max(1, Math.ceil((totalThreshold - elapsed) / 1000));
+            this.remainingSeconds = rem;
+            if (!this.isWarningModalVisible) {
+                this.triggerWarning();
+            }
+        } else {
+            if (this.inactivityTimeoutId) {
+                clearTimeout(this.inactivityTimeoutId);
+            }
+            const remainingInactiveTime = this.INACTIVITY_LIMIT_MS - elapsed;
+            this.inactivityTimeoutId = setTimeout(() => {
+                this.triggerWarning();
+            }, remainingInactiveTime);
+        }
+    }
+};
+
+window.InactivityTracker = InactivityTracker;
+window.stayLoggedIn = function() {
+    InactivityTracker.stayLoggedIn();
+};
 
 // Restore user session on refresh
 document.addEventListener('DOMContentLoaded', () => {
@@ -946,6 +1148,9 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.replace('login.php');
         return;
     }
+
+    // Initialize Inactivity Tracker for active session
+    InactivityTracker.init();
     const savedRole = localStorage.getItem('oxford_session_role') || 'associate';
     if (typeof switchRole === 'function') {
         switchRole(savedRole, true);

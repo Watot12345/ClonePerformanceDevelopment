@@ -167,7 +167,14 @@
             html.role-associate #comp-conduct-eval-box,
             html.role-associate #comp-tna-skills-gap-card,
             html.role-associate #subtab-btn-comp-profiles,
-            html.role-associate [data-sub="schedules"].subnav-training {
+            html.role-associate [data-sub="schedules"].subnav-training,
+            html.role-associate [data-sub="system"],
+            html.role-associate #sub-dashboard-system {
+                display: none !important;
+            }
+
+            html.role-management [data-sub="pulse"],
+            html.role-management #sub-dashboard-pulse {
                 display: none !important;
             }
 
