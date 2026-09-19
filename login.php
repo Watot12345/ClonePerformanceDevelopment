@@ -704,21 +704,30 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                 baseUrl: 'api/auth.php',
                 async request(action, method = 'GET', payload = null) {
                     const url = `${this.baseUrl}?action=${action}`;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+
                     const options = {
                         method: method,
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
-                        }
+                        },
+                        signal: controller.signal
                     };
                     if (payload && method !== 'GET') {
                         options.body = JSON.stringify(payload);
                     }
                     try {
                         const res = await fetch(url, options);
+                        clearTimeout(timeoutId);
                         return await res.json();
                     } catch (e) {
+                        clearTimeout(timeoutId);
                         console.error('[AuthAPI Error]:', e);
+                        if (e.name === 'AbortError') {
+                            return { success: false, message: 'Server request timed out. Please try again.' };
+                        }
                         return { success: false, message: 'Server communication error.' };
                     }
                 },
