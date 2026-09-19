@@ -108,7 +108,7 @@ class TrainingNeedModel extends BaseModel
                 $need['programDuration'] = $matchedProg['duration'] ?? '3 Hours';
                 $need['programPassingScore'] = $matchedProg['passingScore'] ?? ($matchedProg['passing_score'] ?? 80);
                 $need['programFormat'] = $matchedProg['format'] ?? 'Workshop';
-                if (empty($need['status']) || $need['status'] === 'Identified') {
+                if ((empty($need['status']) || $need['status'] === 'Identified') && $need['status'] !== 'Resolved' && $need['status'] !== 'Completed') {
                     $need['status'] = 'Program Linked';
                 }
             } else {
@@ -258,7 +258,7 @@ class TrainingNeedModel extends BaseModel
                 $need['programDuration'] = $matchedProg['duration'] ?? '3 Hours';
                 $need['programPassingScore'] = $matchedProg['passingScore'] ?? ($matchedProg['passing_score'] ?? 80);
                 $need['programFormat'] = $matchedProg['format'] ?? 'Workshop';
-                if (empty($need['status']) || $need['status'] === 'Identified') {
+                if ((empty($need['status']) || $need['status'] === 'Identified') && $need['status'] !== 'Resolved' && $need['status'] !== 'Completed') {
                     $need['status'] = 'Program Linked';
                 }
             } else {

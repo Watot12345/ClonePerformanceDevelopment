@@ -91,7 +91,11 @@ class BaseModel
      */
     public function update(string $id, array $data): ?array
     {
-        $data['updated_at'] = date('c');
+        // Only set updated_at if the table schema supports it
+        $tablesWithoutUpdatedAt = ['training_evaluations', 'certificates'];
+        if (!in_array($this->table, $tablesWithoutUpdatedAt, true)) {
+            $data['updated_at'] = date('c');
+        }
         $supabasePayload = $this->toSnakeCaseKeys($data);
         $res = supabaseRequest($this->table . '?id=eq.' . urlencode($id), 'PATCH', $supabasePayload, true);
         if ($res['status'] >= 200 && $res['status'] < 300 && !empty($res['data'])) {

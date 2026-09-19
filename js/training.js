@@ -1607,24 +1607,38 @@ function startSessionEvaluation(sessionId, associateId) {
             try { questionsList = JSON.parse(questionsList); } catch (e) { questionsList = []; }
         }
 
-        questionsContainer.innerHTML = questionsList.map((q, qIndex) => {
-            const questionText = q.q || q.question || `Question ${qIndex + 1}`;
-            const options = Array.isArray(q.options) ? q.options : [];
+        const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+        questionsContainer.innerHTML = `
+            <div class="max-h-[50vh] overflow-y-auto pr-2 space-y-3.5 custom-scrollbar">
+                ${questionsList.map((q, qIndex) => {
+                    const questionText = q.q || q.question || `Question ${qIndex + 1}`;
+                    const options = Array.isArray(q.options) ? q.options : [];
 
-            return `
-                <div class="p-4 bg-[#FAF8F7] rounded-2xl border border-[#E8DEDC] space-y-3 text-xs">
-                    <p class="font-bold text-slate-900 leading-snug"><span class="text-primary font-bold">Q${qIndex + 1}:</span> ${questionText}</p>
-                    <div class="space-y-2">
-                        ${options.map((opt, optIndex) => `
-                            <label class="flex items-center space-x-2.5 p-2 rounded-xl border border-transparent hover:bg-white hover:border-[#E8DEDC] cursor-pointer transition">
-                                <input type="radio" name="eval_q_${qIndex}" value="${optIndex}" onchange="recordEvalAnswer(${qIndex}, ${optIndex})" class="text-primary focus:ring-primary h-4 w-4">
-                                <span class="text-slate-700 font-medium">${opt}</span>
-                            </label>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }).join('');
+                    return `
+                        <div class="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs space-y-3 text-xs">
+                            <div class="flex items-start space-x-2">
+                                <span class="px-2 py-0.5 rounded-lg bg-primary/10 text-primary font-bold text-[11px] shrink-0">Q${qIndex + 1}</span>
+                                <p class="font-bold text-slate-900 leading-snug pt-0.5">${questionText}</p>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                ${options.map((opt, optIndex) => {
+                                    const letter = letters[optIndex] || `${optIndex + 1}`;
+                                    return `
+                                    <label class="flex items-center space-x-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-primary/40 hover:bg-slate-50/80 cursor-pointer transition select-none group">
+                                        <input type="radio" name="eval_q_${qIndex}" value="${optIndex}" onchange="recordEvalAnswer(${qIndex}, ${optIndex})" class="accent-primary h-4 w-4">
+                                        <span class="w-5 h-5 rounded-md bg-slate-100 group-hover:bg-primary/10 group-hover:text-primary text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 transition">
+                                            ${letter}
+                                        </span>
+                                        <span class="text-slate-700 font-medium text-xs leading-tight">${opt}</span>
+                                    </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
     }
 
     openModal('modal-training-evaluation');
@@ -1738,24 +1752,38 @@ function startRetestEvaluation(resultId) {
             ];
         }
 
-        questionsContainer.innerHTML = questionsList.map((q, qIndex) => {
-            const questionText = q.q || q.question || `Question ${qIndex + 1}`;
-            const options = Array.isArray(q.options) ? q.options : [];
+        const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+        questionsContainer.innerHTML = `
+            <div class="max-h-[50vh] overflow-y-auto pr-2 space-y-3.5 custom-scrollbar">
+                ${questionsList.map((q, qIndex) => {
+                    const questionText = q.q || q.question || `Question ${qIndex + 1}`;
+                    const options = Array.isArray(q.options) ? q.options : [];
 
-            return `
-                <div class="p-4 bg-[#FAF8F7] rounded-2xl border border-[#E8DEDC] space-y-3 text-xs">
-                    <p class="font-bold text-slate-900 leading-snug"><span class="text-primary font-bold">Q${qIndex + 1}:</span> ${questionText}</p>
-                    <div class="space-y-2">
-                        ${options.map((opt, optIndex) => `
-                            <label class="flex items-center space-x-2.5 p-2 rounded-xl border border-transparent hover:bg-white hover:border-[#E8DEDC] cursor-pointer transition">
-                                <input type="radio" name="eval_q_${qIndex}" value="${optIndex}" onchange="recordEvalAnswer(${qIndex}, ${optIndex})" class="text-primary focus:ring-primary h-4 w-4">
-                                <span class="text-slate-700 font-medium">${opt}</span>
-                            </label>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }).join('');
+                    return `
+                        <div class="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs space-y-3 text-xs">
+                            <div class="flex items-start space-x-2">
+                                <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-700 font-bold text-[11px] shrink-0">Q${qIndex + 1}</span>
+                                <p class="font-bold text-slate-900 leading-snug pt-0.5">${questionText}</p>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                ${options.map((opt, optIndex) => {
+                                    const letter = letters[optIndex] || `${optIndex + 1}`;
+                                    return `
+                                    <label class="flex items-center space-x-2.5 p-2.5 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-slate-50/80 cursor-pointer transition select-none group">
+                                        <input type="radio" name="eval_q_${qIndex}" value="${optIndex}" onchange="recordEvalAnswer(${qIndex}, ${optIndex})" class="accent-amber-600 h-4 w-4">
+                                        <span class="w-5 h-5 rounded-md bg-slate-100 group-hover:bg-amber-100 group-hover:text-amber-800 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 transition">
+                                            ${letter}
+                                        </span>
+                                        <span class="text-slate-700 font-medium text-xs leading-tight">${opt}</span>
+                                    </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
     }
 
     // Reset star ratings
@@ -1850,15 +1878,28 @@ async function submitTrainingEvaluation() {
 }
 
 function feedResultsIntoCompetency(result) {
-    const matchingNeed = trainingNeedsState.find(n =>
-        (n.associateName && result.associateName && n.associateName.includes(result.associateName)) ||
-        (n.employeeId && result.associateId && n.employeeId === result.associateId) ||
-        (n.targetCompetency && result.competencyTarget && n.targetCompetency === result.competencyTarget)
-    );
-    if (matchingNeed) {
-        matchingNeed.status = 'Resolved';
-        matchingNeed.currentScore = result.competencyScoreAfter || 4.8;
-        matchingNeed.gap = 0;
+    const resolveNeed = (n) => {
+        const matchesAssociate = (n.associateName && result.associateName && n.associateName.includes(result.associateName)) ||
+            (n.employeeId && result.associateId && n.employeeId === result.associateId);
+        const matchesProgramOrComp = (n.linkedProgramId && result.programId && n.linkedProgramId === result.programId) ||
+            (n.targetCompetency && result.competencyTarget && n.targetCompetency === result.competencyTarget) ||
+            (n.competencyKey && result.competencyKey && n.competencyKey === result.competencyKey);
+        
+        if (matchesAssociate && matchesProgramOrComp) {
+            n.status = 'Resolved';
+            n.currentScore = result.competencyScoreAfter || 4.8;
+            n.gap = 0;
+            if (result.certificateReference) {
+                n.certificateReference = result.certificateReference;
+            }
+        }
+    };
+
+    if (Array.isArray(trainingNeedsState)) {
+        trainingNeedsState.forEach(resolveNeed);
+    }
+    if (Array.isArray(window.propertyNeedsState)) {
+        window.propertyNeedsState.forEach(resolveNeed);
     }
 
     if (typeof currentXP !== 'undefined' && result.xpAwarded) {
@@ -2654,16 +2695,16 @@ async function saveNewTrainingProgram() {
             '4. Post-Training Evaluation Quiz'
         ],
         quizQuestions: [
-            {
-                q: 'What is the benchmark standard response time for VIP guest requests?',
-                options: ['Within 5 minutes', 'Within 30 minutes', 'By end of shift', 'Next morning'],
-                correct: 0
-            },
-            {
-                q: 'Which protocol must be followed when a guest escalates a service delay?',
-                options: ['Listen and execute immediate service recovery voucher', 'Escalate immediately to GM without apology', 'Ask guest to wait in the lounge', 'Ignore the delay'],
-                correct: 0
-            }
+            { q: 'What is the benchmark standard response time for VIP guest requests?', options: ['Within 5 minutes', 'Within 30 minutes', 'By end of shift', 'Next morning'], correct: 0 },
+            { q: 'Which protocol must be followed when a guest escalates a service delay?', options: ['Listen and execute immediate service recovery voucher', 'Escalate immediately to GM without apology', 'Ask guest to wait in the lounge', 'Ignore the delay'], correct: 0 },
+            { q: 'What does the "A" in the LAST hospitality recovery framework represent?', options: ['Argue company policies firmly', 'Apologize sincerely with empathy without assigning blame', 'Ask the security team to intervene', 'Assess financial liability immediately'], correct: 1 },
+            { q: 'When a guest raises their voice in the lobby, the recommended verbal cadence is:', options: ['Speak louder than the guest to assert authority', 'Lower your tone, speak 15% slower, and maintain open body posture', 'Remain completely silent until the guest walks away', 'Immediately retreat to the back office without answering'], correct: 1 },
+            { q: 'What is the maximum instant amenity voucher a Front Desk Host may authorize without GM signoff?', options: ['₱500 Dining Credit', '₱2,500 F&B or Spa Voucher + Category Upgrade', 'Free Weekend Stay Voucher', '₱10,000 Cash Refund'], correct: 1 },
+            { q: 'During de-escalation, which phrase should ALWAYS be avoided?', options: ['"I understand your frustration and will personally ensure this is resolved."', '"That is strictly against our hotel policy and there is nothing I can do."', '"Allow me to check what alternatives I can arrange right away."', '"Thank you for bringing this issue to our attention immediately."'], correct: 1 },
+            { q: 'When handling a room cleanliness complaint, what is the immediate first action?', options: ['Blame the housekeeping contractor on duty', 'Validate the guest distress and offer an immediate room relocation inspection', 'Offer a discount voucher for the next stay next year', 'Request the guest to clean the surface themselves'], correct: 1 },
+            { q: 'In service recovery, what does "closing the loop" require?', options: ['Archiving the incident ticket quietly', 'Personal follow-up call within 30 minutes to confirm guest satisfaction', 'Reporting the guest name to hotel security blacklist', 'Forwarding the bill to corporate without notes'], correct: 1 },
+            { q: 'How should a front desk associate handle an intoxicated and disruptive guest in the public foyer?', options: ['Engage in a heated argument in front of other guests', 'Guide the guest respectfully to a private area and notify Duty Manager/Security', 'Refuse all service loudly across the counter', 'Physically push the guest out of the lobby'], correct: 1 },
+            { q: 'What documentation is mandatory within 60 minutes of resolving a Tier-1 guest incident?', options: ['A personal diary entry', 'A formal Incident Recovery Log entry in the PMS guest profile', 'An anonymous message on social media', 'No record is needed once the guest smiles'], correct: 1 }
         ]
     };
 

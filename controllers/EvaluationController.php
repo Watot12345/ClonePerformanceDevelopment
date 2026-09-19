@@ -64,8 +64,16 @@ class EvaluationController
                 'competencyKey' => 'guest_complaint_handling',
                 'targetCompetency' => 'Guest Complaint Handling & VIP Protocol',
                 'quizQuestions' => [
-                    ['q' => 'What is the benchmark standard response time for VIP guest requests?', 'correct' => 0],
-                    ['q' => 'Which protocol must be followed when a guest escalates a service delay?', 'correct' => 0]
+                    ['q' => 'What is the benchmark standard response time for VIP guest requests?', 'options' => ['Within 5 minutes', 'Within 30 minutes', 'By end of shift', 'Next morning'], 'correct' => 0],
+                    ['q' => 'Which protocol must be followed when a guest escalates a service delay?', 'options' => ['Listen and execute immediate service recovery voucher', 'Escalate immediately to GM without apology', 'Ask guest to wait in the lounge', 'Ignore the delay'], 'correct' => 0],
+                    ['q' => 'What does the "A" in the LAST hospitality recovery framework represent?', 'options' => ['Argue company policies firmly', 'Apologize sincerely with empathy without assigning blame', 'Ask the security team to intervene', 'Assess financial liability immediately'], 'correct' => 1],
+                    ['q' => 'When a guest raises their voice in the lobby, the recommended verbal cadence is:', 'options' => ['Speak louder than the guest to assert authority', 'Lower your tone, speak 15% slower, and maintain open body posture', 'Remain completely silent until the guest walks away', 'Immediately retreat to the back office without answering'], 'correct' => 1],
+                    ['q' => 'What is the maximum instant amenity voucher a Front Desk Host may authorize without GM signoff?', 'options' => ['₱500 Dining Credit', '₱2,500 F&B or Spa Voucher + Category Upgrade', 'Free Weekend Stay Voucher', '₱10,000 Cash Refund'], 'correct' => 1],
+                    ['q' => 'During de-escalation, which phrase should ALWAYS be avoided?', 'options' => ['"I understand your frustration and will personally ensure this is resolved."', '"That is strictly against our hotel policy and there is nothing I can do."', '"Allow me to check what alternatives I can arrange right away."', '"Thank you for bringing this issue to our attention immediately."'], 'correct' => 1],
+                    ['q' => 'When handling a room cleanliness complaint, what is the immediate first action?', 'options' => ['Blame the housekeeping contractor on duty', 'Validate the guest distress and offer an immediate room relocation inspection', 'Offer a discount voucher for the next stay next year', 'Request the guest to clean the surface themselves'], 'correct' => 1],
+                    ['q' => 'In service recovery, what does "closing the loop" require?', 'options' => ['Archiving the incident ticket quietly', 'Personal follow-up call within 30 minutes to confirm guest satisfaction', 'Reporting the guest name to hotel security blacklist', 'Forwarding the bill to corporate without notes'], 'correct' => 1],
+                    ['q' => 'How should a front desk associate handle an intoxicated and disruptive guest in the public foyer?', 'options' => ['Engage in a heated argument in front of other guests', 'Guide the guest respectfully to a private area and notify Duty Manager/Security', 'Refuse all service loudly across the counter', 'Physically push the guest out of the lobby'], 'correct' => 1],
+                    ['q' => 'What documentation is mandatory within 60 minutes of resolving a Tier-1 guest incident?', 'options' => ['A personal diary entry', 'A formal Incident Recovery Log entry in the PMS guest profile', 'An anonymous message on social media', 'No record is needed once the guest smiles'], 'correct' => 1]
                 ]
             ];
         }
@@ -125,7 +133,8 @@ class EvaluationController
             $calculatedScore = 9; // Default score if no quiz questions attached (out of 10)
         }
 
-        $passingThreshold = (int)($program['passingScore'] ?? 8);
+        $rawThreshold = (int)($program['passingScore'] ?? 8);
+        $passingThreshold = ($rawThreshold > 10) ? (int)round($rawThreshold / 10) : $rawThreshold;
         $isPassed = $calculatedScore >= $passingThreshold;
         $resultStatus = $isPassed ? 'Passed & Certified' : 'Needs Retest';
 
