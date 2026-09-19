@@ -159,6 +159,29 @@ class GoalTrainingCascadeService
             $this->goalModel->setInTraining($goalId, false);
             $this->goalModel->setNeedsTraining($goalId, false);
             $this->goalModel->updateStatus($goalId, 'Done');
+            $this->goalModel->updateFinalRating($goalId, 4.00);
+
+            // Also synchronize and upgrade linked performance evaluation if exists
+            $goal = $this->goalModel->find($goalId);
+            $empId = $goal['employee_id'] ?? ($need['employee_id'] ?? ($need['employeeId'] ?? null));
+            if (!empty($empId)) {
+                $evalRes = supabaseRequest('performance_evaluations?employee_id=eq.' . urlencode($empId), 'GET', null, true);
+                $evals = (isset($evalRes['data']) && is_array($evalRes['data'])) ? $evalRes['data'] : [];
+                foreach ($evals as $ev) {
+                    $evId = $ev['id'] ?? null;
+                    if ($evId) {
+                        supabaseRequest('performance_evaluations?id=eq.' . urlencode($evId), 'PATCH', [
+                            'new_calibrated_score' => 4.00,
+                            'calibrated_score'     => 4.00,
+                            'final_rating'         => 4.00,
+                            'supervisor_rating'    => 4.00,
+                            'tier_label'           => 'Master Tier (Passed & Certified)',
+                            'status'               => 'Calibrated',
+                            'updated_at'           => date('c')
+                        ], true);
+                    }
+                }
+            }
             return;
         }
 

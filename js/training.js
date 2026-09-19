@@ -727,13 +727,17 @@ function renderTrainingNeeds() {
         ? window.propertyNeedsState
         : trainingNeedsState.map(normalizeTrainingNeed);
 
-    let allNormalized = (window.trainingSupervisorShowAll && propertyNeeds.length > 0)
+    // Determine if current tab/view should show property-wide for supervisor
+    const isPropertyWideTab = (needsActiveFilterTab === 'resolved' || needsActiveFilterTab === 'all');
+    const showPropertyWide = isSupervisor && (window.trainingSupervisorShowAll || (isPropertyWideTab && !window.trainingSupervisorDeptOnly));
+
+    let allNormalized = (showPropertyWide && propertyNeeds.length > 0)
         ? propertyNeeds
         : trainingNeedsState.map(normalizeTrainingNeed);
 
     if (isAssociate && currentEmpId) {
         allNormalized = allNormalized.filter(n => n.employeeId === currentEmpId);
-    } else if (isSupervisor && currentUserDept && !window.trainingSupervisorShowAll) {
+    } else if (isSupervisor && currentUserDept && !showPropertyWide) {
         allNormalized = allNormalized.filter(n => matchesDepartment(n.dept, currentUserDept));
     }
     
@@ -760,10 +764,27 @@ function renderTrainingNeeds() {
     }
 
     // Tab button count badges
-    const activeNeedsCount = allNormalized.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !n.isPerformanceGoal).length;
-    const referralsCount = perfItems.filter(n => n.status !== 'Resolved' && n.status !== 'Completed').length;
-    const resolvedCount = allNormalized.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
-    const allCount = allNormalized.length;
+    const deptNeeds = (isSupervisor && currentUserDept)
+        ? propertyNeeds.filter(n => matchesDepartment(n.dept, currentUserDept))
+        : (isAssociate && currentEmpId ? propertyNeeds.filter(n => n.employeeId === currentEmpId) : propertyNeeds);
+
+    const activeNeedsCount = isAssociate
+        ? allNormalized.filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !n.isPerformanceGoal).length
+        : (window.trainingSupervisorShowAll ? propertyNeeds : deptNeeds).filter(n => n.status !== 'Resolved' && n.status !== 'Completed' && !n.isPerformanceGoal).length;
+
+    const referralsCount = isAssociate
+        ? perfItems.filter(n => n.status !== 'Resolved' && n.status !== 'Completed').length
+        : (window.trainingSupervisorShowAll ? propertyNeeds : deptNeeds).filter(n => n.isPerformanceGoal && n.status !== 'Resolved' && n.status !== 'Completed').length;
+
+    const deptResolvedCount = deptNeeds.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
+    const propResolvedCount = propertyNeeds.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
+    const resolvedCount = isAssociate
+        ? allNormalized.filter(n => n.status === 'Resolved' || n.status === 'Completed').length
+        : (window.trainingSupervisorDeptOnly ? deptResolvedCount : (deptResolvedCount > 0 ? deptResolvedCount : propResolvedCount));
+
+    const allCount = isAssociate
+        ? allNormalized.length
+        : (window.trainingSupervisorDeptOnly ? deptNeeds : propertyNeeds).length;
 
     // Detect urgency across active referrals
     const activeReferralsList = perfItems.filter(n => n.status !== 'Resolved' && n.status !== 'Completed');
@@ -810,6 +831,47 @@ function renderTrainingNeeds() {
         if (btnAll) btnAll.innerHTML = `All Audit Triggers <span class="ml-1 px-1.5 py-0.5 rounded-full ${needsActiveFilterTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-bold">${allCount}</span>`;
     }
 
+    let supervisorBannerHtml = '';
+    if (isSupervisor) {
+        const isPropertyWideTab = (needsActiveFilterTab === 'resolved' || needsActiveFilterTab === 'all');
+        const isShowingPropertyWide = window.trainingSupervisorShowAll || (isPropertyWideTab && !window.trainingSupervisorDeptOnly);
+
+        if (isShowingPropertyWide) {
+            const scopeTitle = needsActiveFilterTab === 'resolved'
+                ? 'Viewing Property-Wide Resolved History (All Hotel Departments)'
+                : needsActiveFilterTab === 'all'
+                    ? 'Viewing Property-Wide Audit Triggers (All Hotel Departments)'
+                    : 'Viewing Property-Wide Deficits & Referrals (All Hotel Departments)';
+            const toggleAction = isPropertyWideTab
+                ? "window.trainingSupervisorDeptOnly = true; renderTrainingNeeds();"
+                : "window.trainingSupervisorShowAll = false; renderTrainingNeeds();";
+
+            supervisorBannerHtml = `
+                <div class="col-span-full mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs shadow-sm">
+                    <div class="flex items-center space-x-2 text-amber-900 font-bold">
+                        <i class="fas fa-hotel text-amber-600"></i>
+                        <span>${scopeTitle}</span>
+                    </div>
+                    <button type="button" onclick="${toggleAction}" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition shadow-xs">
+                        <i class="fas fa-filter mr-1"></i> Filter to My Department Only (${currentUserDept || 'Assigned Department'})
+                    </button>
+                </div>
+            `;
+        } else if (isPropertyWideTab && window.trainingSupervisorDeptOnly) {
+            supervisorBannerHtml = `
+                <div class="col-span-full mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shadow-sm">
+                    <div class="flex items-center space-x-2 text-slate-800 font-bold">
+                        <i class="fas fa-filter text-primary"></i>
+                        <span>Filtered to My Department Only: ${currentUserDept || 'Assigned Department'}</span>
+                    </div>
+                    <button type="button" onclick="window.trainingSupervisorDeptOnly = false; renderTrainingNeeds();" class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-300 transition shadow-xs">
+                        <i class="fas fa-hotel mr-1 text-amber-600"></i> View Property-Wide (${needsActiveFilterTab === 'resolved' ? 'All Resolved' : 'All Triggers'})
+                    </button>
+                </div>
+            `;
+        }
+    }
+
     if (filteredNeeds.length === 0) {
         // Auto-expand: if supervisor's dept has 0 deficits & 0 referrals but other depts do, show property-wide automatically
         if (isSupervisor && !window.trainingSupervisorShowAll && needsActiveFilterTab === 'active') {
@@ -827,7 +889,7 @@ function renderTrainingNeeds() {
                 ? (isAssociate ? 'No completed training certifications recorded on your profile yet.' : 'No resolved training history recorded yet.')
                 : (isAssociate ? 'Great job! You have no pending skill gaps or compliance deficits.' : 'No active skill gap deficits or compliance requirements pending in this view.');
 
-        container.innerHTML = `
+        container.innerHTML = supervisorBannerHtml + `
             <div class="card-clean p-8 bg-white border border-[#E8DEDC] text-center space-y-3">
                 <div class="w-12 h-12 rounded-full bg-[#FAF8F7] border border-[#E8DEDC] text-slate-400 flex items-center justify-center mx-auto">
                     <i class="fas fa-check-double text-lg text-emerald-600"></i>
@@ -837,21 +899,6 @@ function renderTrainingNeeds() {
             </div>
         `;
         return;
-    }
-
-    let supervisorBannerHtml = '';
-    if (isSupervisor && window.trainingSupervisorShowAll) {
-        supervisorBannerHtml = `
-            <div class="col-span-full mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs shadow-sm">
-                <div class="flex items-center space-x-2 text-amber-900 font-bold">
-                    <i class="fas fa-hotel text-amber-600"></i>
-                    <span>Viewing Property-Wide Deficits &amp; Referrals (All Hotel Departments)</span>
-                </div>
-                <button type="button" onclick="window.trainingSupervisorShowAll = false; renderTrainingNeeds();" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition shadow-xs">
-                    <i class="fas fa-filter mr-1"></i> Return to My Department Only (${currentUserDept || 'Assigned Department'})
-                </button>
-            </div>
-        `;
     }
 
     container.innerHTML = supervisorBannerHtml + filteredNeeds.map(need => {
