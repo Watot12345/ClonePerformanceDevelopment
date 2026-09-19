@@ -5,8 +5,9 @@ require_once __DIR__ . '/vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// 1. Read .env file
-$env = parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW);
+// 1. Read .env file or system environment
+require_once __DIR__ . '/config/config.php';
+$env = function_exists('loadEnv') ? loadEnv() : [];
 
 /**
  * Send Email function
