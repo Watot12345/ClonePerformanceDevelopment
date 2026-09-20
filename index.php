@@ -385,6 +385,7 @@
         <!-- External Modular JavaScript Scripts from js/ -->
         <!-- Supabase Client & Realtime WebSocket Engine -->
         <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        <script src="js/components.js?v=<?= time() ?>"></script>
         <script src="js/supabase.js"></script>
         <script src="js/charts.js"></script>
         <script src="js/overview.js?v=<?= time() ?>"></script>
