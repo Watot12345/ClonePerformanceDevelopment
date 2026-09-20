@@ -25,17 +25,37 @@ class AuthModel extends BaseModel
     }
 
     /**
-     * Get client IP address
+     * Get client IP address accurately, handling Cloudflare, Railway, and reverse proxies
      */
     public function getClientIp(): string
     {
-        $rawIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-        $ips = explode(',', $rawIp);
-        $ip = trim($ips[0]);
-        if ($ip === '::1' || $ip === '127.0.0.1') {
-            return $ip;
+        $candidates = [
+            $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null,
+            $_SERVER['HTTP_X_REAL_IP'] ?? null,
+            $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null,
+            $_SERVER['REMOTE_ADDR'] ?? null
+        ];
+
+        foreach ($candidates as $raw) {
+            if (!$raw) continue;
+            $parts = explode(',', $raw);
+            foreach ($parts as $ip) {
+                $ip = trim($ip);
+                // Strip IPv4/IPv6 port if attached by reverse proxy (e.g. 1.2.3.4:5678 or [::1]:80)
+                if (preg_match('/^\[?([a-f0-9:]+)\]?:[0-9]+$/i', $ip, $m)) {
+                    $ip = $m[1];
+                } elseif (preg_match('/^([0-9.]+):[0-9]+$/', $ip, $m)) {
+                    $ip = $m[1];
+                }
+                if ($ip === '::1' || $ip === '127.0.0.1') {
+                    return $ip;
+                }
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return $ip;
+                }
+            }
         }
-        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '127.0.0.1';
+        return '127.0.0.1';
     }
 
     /**
@@ -113,11 +133,13 @@ class AuthModel extends BaseModel
 
     /**
      * 2. Get Employee Directory filtered by Role with has_account and is_remembered flags
-     * An employee is remembered ONLY IF:
+     * An employee is remembered IF:
      * 1. Account exists in `users` table with password
-     * 2. Active remembered record exists in `sessions` table where email, user_agent AND ip_address all match exactly
+     * 2. Active remembered record exists in `sessions` table matching:
+     *    - Device session_token (from persistent cookie or localStorage device_token - priority), OR
+     *    - User-Agent + Client IP address (fallback)
      */
-    public function getEmployeesForRole(string $role): array
+    public function getEmployeesForRole(string $role, ?string $deviceToken = null): array
     {
         $isSupervisorTarget = (strcasecmp($role, 'Supervisor') === 0 || strcasecmp($role, 'manager') === 0);
 
@@ -136,29 +158,59 @@ class AuthModel extends BaseModel
             }
         }
 
-        // Fetch remembered sessions strictly matching current client user_agent AND ip_address AND unexpired remember_me
-        $currentAgent = $this->getClientUserAgent();
-        $currentIp = $this->getClientIp();
+        // Fetch remembered sessions:
+        // Priority 1: Exact session_token matching (from device cookie or localStorage payload) - 100% reliable across proxies & IP shifts
+        // Priority 2: Client User-Agent AND IP address fallback
+        $deviceToken = trim($deviceToken ?? $_COOKIE['oxford_remember_token'] ?? '');
         $pdo = getSupabaseDb();
         $sessionsMap = [];
 
         if ($pdo) {
             try {
-                $stmt = $pdo->prepare("
-                    SELECT LOWER(TRIM(email)) as email, session_token, remember_me, is_active, expires_at_remember, user_agent, host(ip_address) as ip_str
-                    FROM public.sessions
-                    WHERE remember_me = true 
-                      AND (expires_at_remember IS NULL OR expires_at_remember > NOW())
-                      AND user_agent = :user_agent
-                      AND (ip_address::text = :client_ip OR host(ip_address) = :client_ip OR ip_address = :client_ip::inet)
-                ");
-                $stmt->execute([
-                    ':user_agent' => $currentAgent,
-                    ':client_ip'  => $currentIp
-                ]);
-                while ($sRow = $stmt->fetch()) {
-                    if (!empty($sRow['email'])) {
-                        $sessionsMap[$sRow['email']] = $sRow;
+                if (!empty($deviceToken)) {
+                    $stmtToken = $pdo->prepare("
+                        SELECT LOWER(TRIM(email)) as email, session_token, remember_me, is_active, expires_at_remember
+                        FROM public.sessions
+                        WHERE session_token = :token
+                          AND remember_me = true 
+                          AND (expires_at_remember IS NULL OR expires_at_remember > NOW())
+                    ");
+                    $stmtToken->execute([':token' => $deviceToken]);
+                    while ($sRow = $stmtToken->fetch()) {
+                        if (!empty($sRow['email'])) {
+                            $sessionsMap[$sRow['email']] = $sRow;
+                        }
+                    }
+                }
+
+                // Fallback: Check by User-Agent and Client IP if no token or token not matched
+                if (empty($sessionsMap)) {
+                    $currentAgent = $this->getClientUserAgent();
+                    $currentIp = $this->getClientIp();
+                    $isValidIp = filter_var($currentIp, FILTER_VALIDATE_IP) !== false;
+
+                    $stmt = $pdo->prepare("
+                        SELECT LOWER(TRIM(email)) as email, session_token, remember_me, is_active, expires_at_remember, user_agent, host(ip_address) as ip_str
+                        FROM public.sessions
+                        WHERE remember_me = true 
+                          AND (expires_at_remember IS NULL OR expires_at_remember > NOW())
+                          AND user_agent = :user_agent
+                          AND (
+                            ip_address::text = :client_ip 
+                            OR host(ip_address) = :client_ip
+                            OR (:is_valid_ip = '1' AND ip_address = :client_ip_inet::inet)
+                          )
+                    ");
+                    $stmt->execute([
+                        ':user_agent'      => $currentAgent,
+                        ':client_ip'       => $currentIp,
+                        ':is_valid_ip'     => $isValidIp ? '1' : '0',
+                        ':client_ip_inet'  => $isValidIp ? $currentIp : '127.0.0.1'
+                    ]);
+                    while ($sRow = $stmt->fetch()) {
+                        if (!empty($sRow['email'])) {
+                            $sessionsMap[$sRow['email']] = $sRow;
+                        }
                     }
                 }
             } catch (\Throwable $e) {
@@ -168,13 +220,30 @@ class AuthModel extends BaseModel
 
         // Fallback to Supabase REST if PDO did not fetch
         if (empty($sessionsMap)) {
-            $sessRes = supabaseRequest('sessions?remember_me=eq.true&user_agent=eq.' . urlencode($currentAgent) . '&ip_address=eq.' . urlencode($currentIp) . '&select=email,remember_me,expires_at_remember,user_agent,ip_address', 'GET', null, true);
-            if ($sessRes['status'] === 200 && is_array($sessRes['data'])) {
-                foreach ($sessRes['data'] as $sRow) {
-                    if (!empty($sRow['email'])) {
-                        $expRem = !empty($sRow['expires_at_remember']) ? strtotime($sRow['expires_at_remember']) : null;
-                        if ($expRem === null || $expRem > time()) {
-                            $sessionsMap[strtolower(trim($sRow['email']))] = $sRow;
+            if (!empty($deviceToken)) {
+                $sessRes = supabaseRequest('sessions?remember_me=eq.true&session_token=eq.' . urlencode($deviceToken) . '&select=email,remember_me,expires_at_remember', 'GET', null, true);
+                if ($sessRes['status'] === 200 && is_array($sessRes['data'])) {
+                    foreach ($sessRes['data'] as $sRow) {
+                        if (!empty($sRow['email'])) {
+                            $expRem = !empty($sRow['expires_at_remember']) ? strtotime($sRow['expires_at_remember']) : null;
+                            if ($expRem === null || $expRem > time()) {
+                                $sessionsMap[strtolower(trim($sRow['email']))] = $sRow;
+                            }
+                        }
+                    }
+                }
+            }
+            if (empty($sessionsMap)) {
+                $currentAgent = $this->getClientUserAgent();
+                $currentIp = $this->getClientIp();
+                $sessRes = supabaseRequest('sessions?remember_me=eq.true&user_agent=eq.' . urlencode($currentAgent) . '&ip_address=eq.' . urlencode($currentIp) . '&select=email,remember_me,expires_at_remember,user_agent,ip_address', 'GET', null, true);
+                if ($sessRes['status'] === 200 && is_array($sessRes['data'])) {
+                    foreach ($sessRes['data'] as $sRow) {
+                        if (!empty($sRow['email'])) {
+                            $expRem = !empty($sRow['expires_at_remember']) ? strtotime($sRow['expires_at_remember']) : null;
+                            if ($expRem === null || $expRem > time()) {
+                                $sessionsMap[strtolower(trim($sRow['email']))] = $sRow;
+                            }
                         }
                     }
                 }
@@ -420,12 +489,13 @@ class AuthModel extends BaseModel
                         user_agent = EXCLUDED.user_agent,
                         updated_at = NOW()
                 ";
+                $validIp = filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([
                     ':user_id'          => $userId,
                     ':token'            => $token,
                     ':expires_at'       => $expiresAt,
-                    ':ip'               => $ip,
+                    ':ip'               => $validIp,
                     ':agent'            => $agent,
                     ':email'            => $email,
                     ':name'             => $employeeName,
@@ -434,7 +504,26 @@ class AuthModel extends BaseModel
                 ]);
             } catch (\Throwable $e) {
                 error_log("Failed to record session in DB: " . $e->getMessage());
+                $pdo = null;
             }
+        }
+
+        // Fallback to Supabase REST if PDO not available or encountered error
+        if (!$pdo) {
+            $payload = [
+                'user_id'             => $userId,
+                'session_token'       => $token,
+                'expires_at'          => date('c', strtotime($expiresAt)),
+                'ip_address'          => filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null,
+                'user_agent'          => $agent,
+                'is_active'           => true,
+                'email'               => $email,
+                'hr_employee_name'    => $employeeName,
+                'remember_me'         => (bool)$rememberMe,
+                'expires_at_remember' => $expiresRemember ? date('c', strtotime($expiresRemember)) : null,
+                'updated_at'          => date('c')
+            ];
+            supabaseRequest('sessions?on_conflict=email', 'POST', $payload, true);
         }
 
         return $token;
