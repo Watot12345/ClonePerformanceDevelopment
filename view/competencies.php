@@ -205,9 +205,23 @@
                         <span class="text-[11px] text-slate-500 font-medium">Target vs Self vs Calibrated</span>
                     </div>
                     <div id="radar-chart-canvas-container" class="h-64 sm:h-72 w-full flex items-center justify-center relative">
-                        <div id="radar-skeleton-overlay" class="absolute inset-0 flex flex-col items-center justify-center bg-[#FAF8F7]/90 backdrop-blur-xs z-10 rounded-2xl animate-pulse">
-                            <div class="w-16 h-16 rounded-full border-4 border-slate-200 border-t-primary animate-spin mb-2"></div>
-                            <span class="text-[11px] font-bold text-slate-600">Calculating Multi-Rater Geometry...</span>
+                        <div id="radar-skeleton-overlay" class="absolute inset-0 flex flex-col items-center justify-center bg-[#FAF8F7]/95 backdrop-blur-xs z-10 rounded-2xl transition-opacity duration-200 hidden opacity-0">
+                            <div class="w-12 h-12 rounded-full border-3 border-slate-200 border-t-primary animate-spin mb-2.5 shadow-xs"></div>
+                            <span class="text-[11px] font-bold text-slate-700 tracking-tight">Calculating Multi-Rater Geometry...</span>
+                            <span class="text-[10px] text-slate-400 font-medium">Synthesizing 360° Rater Dimensions</span>
+                        </div>
+                        <div id="radar-empty-state" class="absolute inset-0 flex flex-col items-center justify-center bg-[#FAF8F7] z-5 rounded-2xl p-6 text-center space-y-2.5 hidden">
+                            <div class="w-12 h-12 rounded-2xl bg-white border border-[#E8DEDC] flex items-center justify-center text-slate-300 text-xl shadow-2xs">
+                                <i class="fas fa-chart-radar"></i>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="font-heading font-bold text-xs text-slate-800">No Assessment Evaluations On File</p>
+                                <p class="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">This associate has not undergone a 360° rater or supervisor competency assessment yet.</p>
+                            </div>
+                            <button type="button" onclick="launchDynamicEvaluationModal(activeCompetencyEmpKey)" class="btn-primary px-3 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 shadow-2xs mt-1">
+                                <i class="fas fa-clipboard-check text-[10px]"></i>
+                                <span>+ Conduct Assessment</span>
+                            </button>
                         </div>
                         <canvas id="chart-competency-radar"></canvas>
                     </div>
@@ -350,14 +364,51 @@
         <!-- Active Performance Goals (From performance_goals) -->
         <div class="card-clean p-6 space-y-5">
             <div id="comp-goals-container">
-                <!-- Populated dynamically by renderGoalsView() with loading state -->
+                <div class="space-y-4 animate-pulse">
+                    <div>
+                        <div class="h-4 w-60 bg-slate-200 rounded mb-1.5"></div>
+                        <div class="h-3 w-80 bg-slate-100 rounded"></div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="p-5 bg-white rounded-2xl border border-brand-border space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="h-4 w-16 bg-slate-200 rounded-full"></div>
+                                        <div class="h-3 w-24 bg-slate-100 rounded"></div>
+                                    </div>
+                                    <div class="h-4 w-64 bg-slate-200 rounded"></div>
+                                    <div class="h-3 w-40 bg-slate-100 rounded"></div>
+                                </div>
+                                <div class="h-6 w-24 bg-slate-100 rounded-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Certifications & Licensure Registry (From public.certificates) -->
         <div class="card-clean p-6 space-y-5">
             <div id="comp-certs-container">
-                <!-- Populated dynamically by renderCertificationsRoster() with loading state -->
+                <div class="space-y-4 animate-pulse">
+                    <div>
+                        <div class="h-4 w-64 bg-slate-200 rounded mb-1.5"></div>
+                        <div class="h-3 w-72 bg-slate-100 rounded"></div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="p-5 bg-white rounded-2xl border border-brand-border flex items-center justify-between">
+                            <div class="flex items-center space-x-3.5">
+                                <div class="w-11 h-11 rounded-2xl bg-slate-100"></div>
+                                <div class="space-y-1.5">
+                                    <div class="h-4 w-48 bg-slate-200 rounded"></div>
+                                    <div class="h-3 w-36 bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+                            <div class="h-7 w-28 bg-slate-100 rounded-xl"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -1,17 +1,17 @@
 {
     "livePropertyXp": 750,
-    "liveKudosSent": 7,
+    "liveKudosSent": 19,
     "liveBadgesCount": 6,
     "liveActiveStaffCount": 5,
-    "liveTotalGoals": 3,
-    "liveApprovedGoals": 2,
+    "liveTotalGoals": 0,
+    "liveApprovedGoals": 0,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
-    "liveGoalsApprovalRate": 66.7,
-    "liveTotalPrescribed": 1,
-    "livePassedPrescribed": 1,
-    "liveLmsAvgScore": 100,
-    "liveLmsRate": 100,
+    "liveGoalsApprovalRate": 0,
+    "liveTotalPrescribed": 0,
+    "livePassedPrescribed": 0,
+    "liveLmsAvgScore": 0,
+    "liveLmsRate": 0,
     "totalRolesCount": 1,
     "coveredRolesCount": 1,
     "fastTrackCount": 1,
@@ -23,11 +23,11 @@
             "staff_ids": [
                 "emp-101"
             ],
-            "goals_total": 2,
-            "goals_approved": 1,
-            "lms_total": 1,
-            "lms_progress_sum": 100,
-            "lms_passed": 1,
+            "goals_total": 0,
+            "goals_approved": 0,
+            "lms_total": 0,
+            "lms_progress_sum": 0,
+            "lms_passed": 0,
             "succ_candidates": 1,
             "succ_ready": 1
         },
@@ -35,8 +35,8 @@
             "department": "Food & Beverage",
             "staff_count": 0,
             "staff_ids": [],
-            "goals_total": 1,
-            "goals_approved": 1,
+            "goals_total": 0,
+            "goals_approved": 0,
             "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
@@ -163,5 +163,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789722316
+    "cached_at": 1789910235
 }

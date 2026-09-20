@@ -7,21 +7,27 @@ async function loadAndRenderPlanningGoals(silent = false) {
     // 0. Instant Cache Pre-Hydration (0ms Latency on Page Refresh)
     if (!window.dbGoals || window.dbGoals.length === 0) {
         const cached = window.PerfCache ? window.PerfCache.get('planning_data') : null;
-        if (cached && Array.isArray(cached.goals) && cached.goals.length > 0) {
-            window.dbGoals = cached.goals;
+        if (cached && (Array.isArray(cached.goals) || cached.goals)) {
+            window._hasFetchedPlanningData = true;
+            window.dbGoals = cached.goals || [];
             window.dbGeneralTasks = cached.general_tasks || [];
             if (cached.draft_plans) window.dbDraftPlans = cached.draft_plans;
             if (cached.roster) window.perfRoster = cached.roster;
             if (cached.evaluations) window.dbEvaluations = cached.evaluations;
             if (cached.training_needs) window.dbTrainingNeeds = cached.training_needs;
 
-            renderEmployeePulseGoals(cached.goals);
+            renderEmployeePulseGoals(window.dbGoals);
             renderActiveStageTable();
             updateAllPerfStepperBadges();
         }
     }
 
-    if (!silent && (!window.dbGoals || window.dbGoals.length === 0)) {
+    const isAlreadyLoaded = window._hasFetchedPlanningData || (window.dbGoals !== undefined && window.dbGoals !== null);
+    if (isAlreadyLoaded) {
+        silent = true;
+    }
+
+    if (!silent && !isAlreadyLoaded) {
         renderPerformanceSkeletons();
         if (typeof showStage1TableLoading === 'function') showStage1TableLoading(true, 'Loading objectives...');
         if (typeof renderStage1TableSkeleton === 'function') renderStage1TableSkeleton(3);
@@ -43,6 +49,7 @@ async function loadAndRenderPlanningGoals(silent = false) {
         const generalTasks = data.general_tasks || [];
         window.dbGoals = goals;
         window.dbGeneralTasks = generalTasks;
+        window._hasFetchedPlanningData = true;
         if (data.draft_plans && typeof data.draft_plans === 'object') {
             window.dbDraftPlans = Object.assign(window.dbDraftPlans || {}, data.draft_plans);
         }
@@ -241,15 +248,14 @@ async function loadAndRenderPlanningGoals(silent = false) {
 
     } catch (err) {
         console.warn('Fallback to local state rendering:', err);
+        window._hasFetchedPlanningData = true;
         renderEmployeePulseGoals(window.dbGoals || []);
         renderActiveStageTable();
         updateAllPerfStepperBadges();
     } finally {
-        if (!silent) {
-            const gl = document.getElementById('kpi-goals-loading');
-            if (gl) gl.classList.add('hidden');
-            if (typeof showStage1TableLoading === 'function') showStage1TableLoading(false);
-        }
+        const gl = document.getElementById('kpi-goals-loading');
+        if (gl) gl.classList.add('hidden');
+        if (typeof showStage1TableLoading === 'function') showStage1TableLoading(false);
     }
 }
 

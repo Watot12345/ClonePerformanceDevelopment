@@ -276,22 +276,52 @@
             html += `</div>`;
         }
 
-        // 2. Interactive Chart Canvas Container (Rendered on demand!)
+        // 2. Interactive Chart Canvas Container (Rendered on demand with Empty State)
         if (payload.chart) {
-            html += `
-                <div class="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-xs text-slate-800 flex items-center space-x-1.5">
-                            <i class="fas fa-chart-simple text-primary text-xs"></i>
-                            <span>Telemetry Visual Distribution</span>
-                        </span>
-                        <span class="text-[10px] text-slate-400 font-medium">Interactive Chart</span>
+            const chartData = payload.chart.data || (payload.chart.datasets ? payload.chart.datasets.flatMap(d => d.data || []) : []);
+            const hasData = chartData.some(v => parseFloat(v) > 0);
+
+            if (!hasData) {
+                html += `
+                    <div class="p-6 rounded-2xl bg-white border border-slate-200 text-center space-y-3 shadow-2xs">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                            <span class="font-bold text-xs text-slate-800 flex items-center space-x-1.5">
+                                <i class="fas fa-chart-pie text-slate-400 text-xs"></i>
+                                <span>Objectives Distribution &amp; Status</span>
+                            </span>
+                            <span class="badge-dusty text-[10px]">No Data Recorded</span>
+                        </div>
+                        <div class="py-6 flex flex-col items-center justify-center space-y-2.5">
+                            <div class="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-300 text-xl shadow-2xs">
+                                <i class="fas fa-bullseye"></i>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="font-heading font-bold text-xs text-slate-800">No Performance Objectives Recorded</p>
+                                <p class="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">You currently do not have any active or approved Q3 SMART objectives in this cycle. Set an objective to track progress velocity.</p>
+                            </div>
+                            <button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof openModal==='function') openModal('modal-create-goal');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                                <i class="fas fa-plus text-[10px]"></i>
+                                <span>+ Set Q3 Objective</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="h-52 w-full relative">
-                        <canvas id="overview-modal-chart"></canvas>
+                `;
+            } else {
+                html += `
+                    <div class="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-xs text-slate-800 flex items-center space-x-1.5">
+                                <i class="fas fa-chart-simple text-primary text-xs"></i>
+                                <span>Telemetry Visual Distribution</span>
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-medium">Interactive Chart</span>
+                        </div>
+                        <div class="h-52 w-full relative">
+                            <canvas id="overview-modal-chart"></canvas>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
         }
 
         // 3. Department Breakdown (if available)
@@ -341,15 +371,29 @@
                     </div>
                 </div>
             `;
+        } else if (!payload.items || payload.items.length === 0) {
+            html += `
+                <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 text-center space-y-2">
+                    <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-300 text-sm mx-auto shadow-2xs">
+                        <i class="fas fa-list-check"></i>
+                    </div>
+                    <p class="font-heading font-bold text-xs text-slate-700">No Records Found</p>
+                    <p class="text-[11px] text-slate-400">There are no granular records matching this cycle filter.</p>
+                </div>
+            `;
         }
 
         bodyEl.innerHTML = html;
 
         // 5. Lazy-render Chart.js on the modal canvas AFTER DOM is visible!
         if (payload.chart) {
-            requestAnimationFrame(() => {
-                renderModalChart(payload.chart);
-            });
+            const chartData = payload.chart.data || (payload.chart.datasets ? payload.chart.datasets.flatMap(d => d.data || []) : []);
+            const hasData = chartData.some(v => parseFloat(v) > 0);
+            if (hasData) {
+                requestAnimationFrame(() => {
+                    renderModalChart(payload.chart);
+                });
+            }
         }
     }
 

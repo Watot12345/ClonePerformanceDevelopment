@@ -185,6 +185,9 @@ function switchPillar(pillarKey) {
     // Resize charts if visible & refresh dynamic data
     setTimeout(() => {
         if (pillarKey === 'dashboard' || pillarKey === 'pillar-dashboard') {
+            if (typeof renderEmployeePulseGoals === 'function' && window.dbGoals) {
+                renderEmployeePulseGoals(window.dbGoals);
+            }
             const pulsePanel = document.getElementById('sub-dashboard-pulse');
             const systemPanel = document.getElementById('sub-dashboard-system');
             if (pulsePanel && pulsePanel.classList.contains('active')) {
@@ -195,10 +198,10 @@ function switchPillar(pillarKey) {
                 if (chartSentimentDoughnutInstance) chartSentimentDoughnutInstance.resize();
                 if (chartSystemDeptProgressInstance) chartSystemDeptProgressInstance.resize();
             }
-            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
+            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals(true);
             if (typeof loadAndRenderTop5Champions === 'function') loadAndRenderTop5Champions();
         } else if (pillarKey === 'pillar-perf') {
-            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
+            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals(true);
             if (typeof loadAndRenderMonitoringData === 'function') loadAndRenderMonitoringData();
         } else if (pillarKey === 'pillar-comp') {
             if (chartCompetencyRadarInstance) chartCompetencyRadarInstance.resize();
@@ -264,8 +267,11 @@ function switchSubTab(pillarPrefix, subKey) {
 
     if (pillarPrefix === 'dashboard') {
         if (subKey === 'pulse') {
+            if (typeof renderEmployeePulseGoals === 'function' && window.dbGoals) {
+                renderEmployeePulseGoals(window.dbGoals);
+            }
             if (typeof renderPulseChartsOnDemand === 'function') renderPulseChartsOnDemand();
-            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
+            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals(true);
         } else if (subKey === 'system') {
             const loadingOverlay = document.getElementById('overview-tab2-loading');
             if (loadingOverlay) {
@@ -308,19 +314,22 @@ function switchSubTab(pillarPrefix, subKey) {
         }
 
         // Fetch in background if cache is completely empty
-        if (!window.dbGoals || window.dbGoals.length === 0) {
-            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals();
+        if (!window._hasFetchedPlanningData && (!window.dbGoals || window.dbGoals.length === 0)) {
+            if (typeof loadAndRenderPlanningGoals === 'function') loadAndRenderPlanningGoals(true);
         }
     } else if (pillarPrefix === 'comp') {
         if (subKey === 'profiles') {
-            if (typeof renderRoleCompetencyFramework === 'function') renderRoleCompetencyFramework();
-            if (typeof renderCompetencyMatrixTable === 'function') renderCompetencyMatrixTable();
+            if (typeof showCompetencyMatrixLoadingSkeleton === 'function') showCompetencyMatrixLoadingSkeleton();
+            setTimeout(() => {
+                if (typeof renderRoleCompetencyFramework === 'function') renderRoleCompetencyFramework();
+                if (typeof renderCompetencyMatrixTable === 'function') renderCompetencyMatrixTable();
+            }, 120);
         } else if (subKey === 'assessment') {
-            if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
-            if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
+            if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView(true);
+            if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis(null, null, null, true);
         } else if (subKey === 'development') {
-            if (typeof renderIDPView === 'function') renderIDPView();
-            if (typeof renderCertificationsRoster === 'function') renderCertificationsRoster();
+            if (typeof renderIDPView === 'function') renderIDPView(false, true);
+            if (typeof renderCertificationsRoster === 'function') renderCertificationsRoster(false, true);
         }
     } else if (pillarPrefix === 'lms' && subKey === 'tna') {
         if (typeof renderTnaEnrollments === 'function') renderTnaEnrollments();

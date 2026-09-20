@@ -313,13 +313,11 @@ class AuthModel extends BaseModel
         }
 
         if (!$emailSent) {
-            // In development, allow testing even if SMTP is delayed or throttled
             return [
-                'success'          => true,
+                'success'          => false,
                 'remaining_sends'  => $remainingSends,
-                'message'          => "OTP generated for {$email} (Email notice: {$mailError})",
-                'email_sent'       => false,
-                'dev_otp'          => $otp
+                'message'          => "Unable to send verification code to {$email}. Please verify your email or contact support. " . ($mailError ? "({$mailError})" : ""),
+                'email_sent'       => false
             ];
         }
 
@@ -331,8 +329,7 @@ class AuthModel extends BaseModel
             'success'          => true,
             'remaining_sends'  => $remainingSends,
             'message'          => "A 6-digit verification code has been sent to {$email}.{$remainingMsg}",
-            'email_sent'       => true,
-            'dev_otp'          => $otp
+            'email_sent'       => true
         ];
     }
 

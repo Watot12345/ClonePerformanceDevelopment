@@ -17,6 +17,31 @@ class CompetencyController
      */
     public function getDepartments(): array
     {
+        $cacheDir = __DIR__ . '/../cache';
+        $cacheFile = $cacheDir . '/departments_list.json';
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile) < 120)) {
+            $cached = json_decode(@file_get_contents($cacheFile), true);
+            if (is_array($cached) && !empty($cached['success'])) {
+                return $cached;
+            }
+        }
+
+        try {
+            $pdo = getSupabaseDb();
+            if ($pdo) {
+                $stmt = $pdo->query("SELECT id, name FROM public.departments ORDER BY name ASC");
+                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+                if (!empty($rows)) {
+                    $res = ['success' => true, 'data' => $rows];
+                    if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
+                    @file_put_contents($cacheFile, json_encode($res));
+                    return $res;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("CompetencyController::getDepartments PDO error: " . $e->getMessage());
+        }
+
         $res = supabaseRequest('departments?order=name.asc', 'GET', null, true);
         if ($res['status'] === 200 && is_array($res['data'])) {
             return [
@@ -49,6 +74,50 @@ class CompetencyController
     {
         $deptId = $params['department_id'] ?? $params['dept_id'] ?? null;
         $scope = $params['scope'] ?? null;
+
+        try {
+            $pdo = getSupabaseDb();
+            if ($pdo) {
+                $sql = "SELECT id, name, category, scope, department_id, position, benchmark_score, max_score, description 
+                        FROM public.competencies WHERE 1=1";
+                $bindings = [];
+                if (!empty($scope)) {
+                    $sql .= " AND scope = :scope";
+                    $bindings[':scope'] = $scope;
+                }
+                $sql .= " ORDER BY scope ASC, name ASC";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($bindings);
+                $all = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+                if (!empty($deptId) && $deptId !== 'all') {
+                    $resolvedDeptId = $deptId;
+                    $deptStmt = $pdo->query("SELECT id, name FROM public.departments");
+                    $departments = $deptStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+                    $cleanDept = str_replace('_', ' ', strtolower(trim($deptId)));
+                    foreach ($departments as $d) {
+                        if ($d['id'] === $deptId || strtolower(trim($d['name'])) === $cleanDept || strpos(strtolower($d['name']), $cleanDept) !== false || strpos($cleanDept, strtolower($d['name'])) !== false) {
+                            $resolvedDeptId = $d['id'];
+                            break;
+                        }
+                    }
+
+                    $filtered = [];
+                    foreach ($all as $c) {
+                        $cScope = $c['scope'] ?? 'General';
+                        $cDept = $c['department_id'] ?? null;
+                        if ($cScope === 'General' || $cDept === $resolvedDeptId || $cDept === $deptId) {
+                            $filtered[] = $c;
+                        }
+                    }
+                    return ['success' => true, 'data' => $filtered];
+                }
+
+                return ['success' => true, 'data' => $all];
+            }
+        } catch (\Throwable $e) {
+            error_log("CompetencyController::getCompetencies PDO error: " . $e->getMessage());
+        }
 
         $query = 'competencies?order=scope.asc,name.asc';
         if (!empty($scope)) {

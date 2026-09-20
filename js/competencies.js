@@ -1203,8 +1203,8 @@ function selectCompetencyAssociate(empKey) {
     const empSelect = document.getElementById('comp-emp-select');
     if (empSelect) empSelect.value = activeCompetencyEmpKey;
 
-    renderSelectedEmployeeRadarView();
-    renderSkillsGapAnalysis();
+    renderSelectedEmployeeRadarView(true);
+    renderSkillsGapAnalysis(null, null, null, true);
     renderIDPView();
     renderCertificationsRoster();
     renderPerformanceIntegrationSummary();
@@ -1254,10 +1254,16 @@ function updateCompetencyTabTitles(empName) {
 }
 window.updateCompetencyTabTitles = updateCompetencyTabTitles;
 
-// 3.12 Render Selected Employee Radar Profile View (100% Dynamic from Supabase Database)
-async function renderSelectedEmployeeRadarView() {
-    const dynEmps = window.dynamicCompetencyState.employees || [];
-    let emp = dynEmps.find(e => e.id === activeCompetencyEmpKey);
+// 3.12 Render Selected Employee Radar Profile View (Fast ~160ms Sleek Loading Effect + Instant Rendering)
+async function renderSelectedEmployeeRadarView(showLoading = true) {
+    const dynEmps = window.dynamicCompetencyState?.employees || [];
+    
+    // Resolve active employee key if empty
+    if (!activeCompetencyEmpKey && dynEmps.length > 0) {
+        activeCompetencyEmpKey = dynEmps[0].id;
+    }
+
+    let emp = dynEmps.find(e => isSameEmployee(e.id, activeCompetencyEmpKey));
     if (!emp && associatesCompetencyData[activeCompetencyEmpKey]) {
         const legacy = associatesCompetencyData[activeCompetencyEmpKey];
         emp = {
@@ -1268,39 +1274,53 @@ async function renderSelectedEmployeeRadarView() {
             overall_formatted: legacy.overallCompetencyScore ? legacy.overallCompetencyScore.toFixed(2) : 'Not Assessed',
             scores: {}
         };
+    } else if (!emp && dynEmps.length > 0) {
+        emp = dynEmps[0];
     }
-    if (!emp) return;
-
-    const radarOverlay = document.getElementById('radar-skeleton-overlay');
-    if (radarOverlay) radarOverlay.classList.remove('hidden');
+    
+    if (!emp) {
+        const radarOverlay = document.getElementById('radar-skeleton-overlay');
+        if (radarOverlay) {
+            radarOverlay.classList.add('hidden', 'opacity-0');
+            radarOverlay.classList.remove('opacity-100');
+        }
+        return;
+    }
 
     const nameEl = document.getElementById('comp-radar-emp-name');
-
     const roleEl = document.getElementById('comp-radar-emp-role');
     const scoreEl = document.getElementById('comp-radar-overall-score');
     const statusBadgeEl = document.getElementById('comp-radar-status-badge');
+    const barsContainer = document.getElementById('comp-radar-bars-container');
+    const radarOverlay = document.getElementById('radar-skeleton-overlay');
 
     if (nameEl) nameEl.innerText = emp.full_name || emp.name;
     if (roleEl) roleEl.innerText = `${emp.title || emp.role} · ${emp.department || emp.dept}`;
 
-    const barsContainer = document.getElementById('comp-radar-bars-container');
-    if (barsContainer) {
-        barsContainer.innerHTML = `
-            <div class="space-y-3 animate-pulse">
-                ${[1, 2, 3, 4, 5].map(() => `
-                    <div class="p-3 bg-brand-canvas rounded-xl border border-brand-border space-y-2">
-                        <div class="flex justify-between items-center">
-                            <div class="h-3.5 w-36 bg-slate-200 rounded"></div>
-                            <div class="h-3.5 w-10 bg-slate-200 rounded"></div>
+    // 1. Show Sleek Loading Effect (Micro-Loading ~160ms)
+    if (showLoading) {
+        if (radarOverlay) {
+            radarOverlay.classList.remove('hidden', 'opacity-0');
+            radarOverlay.classList.add('opacity-100');
+        }
+        if (barsContainer) {
+            barsContainer.innerHTML = `
+                <div class="space-y-3 animate-pulse">
+                    ${[1, 2, 3, 4, 5].map(() => `
+                        <div class="p-3 bg-brand-canvas rounded-xl border border-brand-border space-y-2">
+                            <div class="flex justify-between items-center">
+                                <div class="h-3.5 w-36 bg-slate-200 rounded"></div>
+                                <div class="h-3.5 w-10 bg-slate-200 rounded"></div>
+                            </div>
+                            <div class="h-2 w-full bg-slate-200 rounded-full"></div>
                         </div>
-                        <div class="h-2 w-full bg-slate-200 rounded-full"></div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
+                    `).join('')}
+                </div>
+            `;
+        }
     }
 
-    // 1. Fetch live assessments with 0ms caching
+    // 2. Assemble live assessments from memory, cache, or emp.scores
     const assessCacheKey = `comp_assess_${emp.id}`;
     let liveAssessMap = {};
     if (window.dynamicCompetencyState?.cache?.[assessCacheKey]) {
@@ -1310,76 +1330,70 @@ async function renderSelectedEmployeeRadarView() {
             const storedAssess = sessionStorage.getItem(assessCacheKey);
             if (storedAssess) {
                 liveAssessMap = JSON.parse(storedAssess);
-                window.dynamicCompetencyState.cache = window.dynamicCompetencyState.cache || {};
-                window.dynamicCompetencyState.cache[assessCacheKey] = liveAssessMap;
             }
         } catch (e) {}
     }
 
+    // Populate from emp.scores or legacy ratings if cache is empty
     if (Object.keys(liveAssessMap).length === 0) {
-        try {
-            const assessRes = await fetch(`api/competencies.php?action=get_assessments&employee_id=${encodeURIComponent(emp.id)}`);
-            const assessJson = await assessRes.json();
-            if (assessJson.success && Array.isArray(assessJson.data)) {
-                assessJson.data.forEach(a => {
-                    liveAssessMap[a.competency_id] = a;
-                });
-                window.dynamicCompetencyState.cache = window.dynamicCompetencyState.cache || {};
-                window.dynamicCompetencyState.cache[assessCacheKey] = liveAssessMap;
-                try {
-                    sessionStorage.setItem(assessCacheKey, JSON.stringify(liveAssessMap));
-                } catch (e) {}
-            }
-        } catch (err) {
-            console.error('Error fetching live assessments for radar view:', err);
+        if (emp.scores && typeof emp.scores === 'object') {
+            Object.keys(emp.scores).forEach(cId => {
+                const s = emp.scores[cId];
+                if (s && s.score !== null && s.score !== undefined) {
+                    liveAssessMap[cId] = {
+                        competency_id: cId,
+                        score: parseFloat(s.score),
+                        comments: s.comments || '',
+                        assessed_by: s.assessed_by || 'Supervisor'
+                    };
+                }
+            });
+        } else if (associatesCompetencyData[emp.id]?.ratings) {
+            const legacyRatings = associatesCompetencyData[emp.id].ratings;
+            Object.keys(legacyRatings).forEach(cId => {
+                liveAssessMap[cId] = {
+                    competency_id: cId,
+                    score: legacyRatings[cId].calibrated || legacyRatings[cId].supervisor || 4.0
+                };
+            });
         }
     }
 
-    // 2. Fetch applicable competencies with caching
-    const deptObj = (window.dynamicCompetencyState.departments || []).find(d => 
-        d.name.toLowerCase() === (emp.department || '').toLowerCase() || d.id === emp.department_id
-    );
-    const deptId = emp.department_id || (deptObj ? deptObj.id : null);
-    const compCacheKey = `comp_applicable_${deptId || 'all'}`;
+    // 3. Assemble applicable competencies
+    const allMatrixComps = window.dynamicCompetencyState?.competencies || [];
     let applicableComps = [];
+    const empTitle = (emp.title || emp.role || '').toLowerCase();
+    const empDeptId = emp.department_id;
 
-    if (window.dynamicCompetencyState?.cache?.[compCacheKey]) {
-        applicableComps = window.dynamicCompetencyState.cache[compCacheKey];
-    } else {
-        try {
-            const storedComps = sessionStorage.getItem(compCacheKey);
-            if (storedComps) {
-                applicableComps = JSON.parse(storedComps);
-                window.dynamicCompetencyState.cache = window.dynamicCompetencyState.cache || {};
-                window.dynamicCompetencyState.cache[compCacheKey] = applicableComps;
+    if (allMatrixComps.length > 0) {
+        applicableComps = allMatrixComps.filter(c => {
+            if ((c.scope || 'General') === 'General') return true;
+            if (empDeptId && c.department_id && c.department_id !== empDeptId) return false;
+            if (c.position && empTitle) {
+                const cPos = c.position.toLowerCase();
+                return empTitle === cPos || empTitle.includes(cPos) || cPos.includes(empTitle);
             }
-        } catch (e) {}
+            return true;
+        });
     }
 
     if (applicableComps.length === 0) {
-        try {
-            const res = await fetch(`api/competencies.php?action=get_competencies${deptId ? '&department_id=' + encodeURIComponent(deptId) : ''}`);
-            const json = await res.json();
-            const allComps = json.data || [];
-            applicableComps = allComps.filter(c => {
-                if (c.scope === 'General') return true;
-                if (c.scope === 'Specific' && c.position) {
-                    return (emp.title.toLowerCase() === c.position.toLowerCase() || emp.title.toLowerCase().includes(c.position.toLowerCase()));
-                }
-                return true;
-            });
-            window.dynamicCompetencyState.cache = window.dynamicCompetencyState.cache || {};
-            window.dynamicCompetencyState.cache[compCacheKey] = applicableComps;
+        const deptObj = (window.dynamicCompetencyState?.departments || []).find(d => 
+            d.name.toLowerCase() === (emp.department || '').toLowerCase() || d.id === emp.department_id
+        );
+        const deptId = emp.department_id || (deptObj ? deptObj.id : null);
+        const compCacheKey = `comp_applicable_${deptId || 'all'}`;
+        if (window.dynamicCompetencyState?.cache?.[compCacheKey]) {
+            applicableComps = window.dynamicCompetencyState.cache[compCacheKey];
+        } else {
             try {
-                sessionStorage.setItem(compCacheKey, JSON.stringify(applicableComps));
+                const storedComps = sessionStorage.getItem(compCacheKey);
+                if (storedComps) applicableComps = JSON.parse(storedComps);
             } catch (e) {}
-        } catch (e) {
-            console.error('Error fetching competencies for radar view:', e);
-            applicableComps = window.dynamicCompetencyState.competencies || [];
         }
     }
 
-    // Ensure all competencies present in liveAssessMap are included in applicableComps
+    // Merge evaluated competencies
     const compIdSet = new Set(applicableComps.map(c => c.id));
     Object.values(liveAssessMap).forEach(a => {
         if (!compIdSet.has(a.competency_id)) {
@@ -1394,94 +1408,178 @@ async function renderSelectedEmployeeRadarView() {
         }
     });
 
-
-    // 3. Compute live overall score across all assessed competencies
+    // 4. Compute overall score
     const allAssessedScores = Object.values(liveAssessMap).map(a => parseFloat(a.score)).filter(s => !isNaN(s));
     let numScore = 0;
     if (allAssessedScores.length > 0) {
         numScore = allAssessedScores.reduce((acc, v) => acc + v, 0) / allAssessedScores.length;
-        if (scoreEl) scoreEl.innerText = `${numScore.toFixed(2)} / 5.0`;
     } else {
         numScore = parseFloat(emp.overall_formatted || emp.overall_score || 0);
-        if (scoreEl) scoreEl.innerText = `${emp.overall_formatted || 'Not Assessed'} / 5.0`;
     }
 
-    if (statusBadgeEl) {
-        if (numScore >= 4.5) {
-            statusBadgeEl.className = 'badge-sage';
-            statusBadgeEl.innerText = 'Master Standard (4.5+)';
-        } else if (numScore >= 4.0) {
-            statusBadgeEl.className = 'badge-sage';
-            statusBadgeEl.innerText = 'Benchmark Met (4.0+)';
-        } else if (numScore >= 3.8) {
-            statusBadgeEl.className = 'badge-gold';
-            statusBadgeEl.innerText = 'Approaching Standard';
-        } else if (numScore > 0) {
-            statusBadgeEl.className = 'badge-terracotta';
-            statusBadgeEl.innerText = 'Priority TNA Required';
-        } else {
-            statusBadgeEl.className = 'bg-slate-100 text-slate-500 text-xs px-2.5 py-0.5 rounded-lg';
-            statusBadgeEl.innerText = 'Not Assessed';
+    const renderData = () => {
+        if (scoreEl) {
+            scoreEl.innerText = allAssessedScores.length > 0 ? `${numScore.toFixed(2)} / 5.0` : `${emp.overall_formatted || 'Not Assessed'} / 5.0`;
         }
-    }
 
-    // 4. Render Dimension Score Progress Bars
-    if (barsContainer) {
-
-        barsContainer.innerHTML = applicableComps.map(c => {
-            const assessRec = liveAssessMap[c.id];
-            const scoreData = (assessRec && assessRec.score !== null && assessRec.score !== undefined)
-                ? { score: parseFloat(assessRec.score) }
-                : (emp.scores ? emp.scores[c.id] : null);
-            const scoreVal = (scoreData && scoreData.score !== null && scoreData.score !== undefined) ? parseFloat(scoreData.score) : null;
-            const benchmark = c.benchmark_score ? parseFloat(c.benchmark_score) : 4.5;
-            const maxScore = c.max_score ? parseFloat(c.max_score) : 5.0;
-            const pct = scoreVal !== null ? Math.min(100, Math.round((scoreVal / maxScore) * 100)) : 0;
-
-            let barColor = 'bg-emerald-500';
-            let badgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-
-            if (scoreVal === null) {
-                barColor = 'bg-slate-300';
-                badgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
-            } else if (scoreVal < 3.8) {
-                barColor = 'bg-rose-500';
-                badgeClass = 'bg-rose-50 text-rose-800 border-rose-200';
-            } else if (scoreVal < benchmark) {
-                barColor = 'bg-amber-500';
-                badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+        if (statusBadgeEl) {
+            if (numScore >= 4.5) {
+                statusBadgeEl.className = 'badge-sage';
+                statusBadgeEl.innerText = 'Master Standard (4.5+)';
+            } else if (numScore >= 4.0) {
+                statusBadgeEl.className = 'badge-sage';
+                statusBadgeEl.innerText = 'Benchmark Met (4.0+)';
+            } else if (numScore >= 3.8) {
+                statusBadgeEl.className = 'badge-gold';
+                statusBadgeEl.innerText = 'Approaching Standard';
+            } else if (numScore > 0) {
+                statusBadgeEl.className = 'badge-terracotta';
+                statusBadgeEl.innerText = 'Priority TNA Required';
+            } else {
+                statusBadgeEl.className = 'bg-slate-100 text-slate-500 text-xs px-2.5 py-0.5 rounded-lg';
+                statusBadgeEl.innerText = 'Not Assessed';
             }
+        }
 
-            return `
-                <div class="space-y-1.5">
-                    <div class="flex justify-between items-center text-xs font-semibold text-slate-800">
-                        <div class="flex items-center space-x-1.5">
-                            <span class="truncate max-w-50" title="${c.name}">${c.name}</span>
-                            <span class="text-[9px] font-bold px-1 rounded bg-slate-100 text-slate-500">${c.scope}</span>
+        // Render Dimension Score Progress Bars
+        if (barsContainer) {
+            if (applicableComps.length === 0) {
+                barsContainer.innerHTML = `
+                    <div class="p-6 text-center bg-brand-canvas rounded-2xl border border-brand-border space-y-2">
+                        <div class="w-10 h-10 rounded-xl bg-white border border-brand-border flex items-center justify-center text-slate-300 mx-auto shadow-2xs">
+                            <i class="fas fa-sliders text-sm"></i>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-[10px] text-slate-400 font-normal">Target: ${benchmark.toFixed(1)}</span>
-                            <span class="px-2 py-0.5 rounded border text-[11px] font-bold ${badgeClass}">${scoreVal !== null ? scoreVal.toFixed(1) : '—'} / ${maxScore.toFixed(1)}</span>
+                        <p class="font-heading font-bold text-xs text-slate-700">No Evaluated Dimensions</p>
+                        <p class="text-[11px] text-slate-400">No competency dimensions are currently mapped for this position.</p>
+                    </div>
+                `;
+            } else {
+                barsContainer.innerHTML = applicableComps.map(c => {
+                    const assessRec = liveAssessMap[c.id];
+                    const scoreData = (assessRec && assessRec.score !== null && assessRec.score !== undefined)
+                        ? { score: parseFloat(assessRec.score) }
+                        : (emp.scores ? emp.scores[c.id] : null);
+                    const scoreVal = (scoreData && scoreData.score !== null && scoreData.score !== undefined) ? parseFloat(scoreData.score) : null;
+                    const benchmark = c.benchmark_score ? parseFloat(c.benchmark_score) : 4.5;
+                    const maxScore = c.max_score ? parseFloat(c.max_score) : 5.0;
+                    const pct = scoreVal !== null ? Math.min(100, Math.round((scoreVal / maxScore) * 100)) : 0;
+
+                    let barColor = 'bg-emerald-500';
+                    let badgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+
+                    if (scoreVal === null) {
+                        barColor = 'bg-slate-300';
+                        badgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
+                    } else if (scoreVal < 3.8) {
+                        barColor = 'bg-rose-500';
+                        badgeClass = 'bg-rose-50 text-rose-800 border-rose-200';
+                    } else if (scoreVal < benchmark) {
+                        barColor = 'bg-amber-500';
+                        badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                    }
+
+                    return `
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between items-center text-xs font-semibold text-slate-800">
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="truncate max-w-50" title="${c.name}">${c.name}</span>
+                                    <span class="text-[9px] font-bold px-1 rounded bg-slate-100 text-slate-500">${c.scope || 'General'}</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-[10px] text-slate-400 font-normal">Target: ${benchmark.toFixed(1)}</span>
+                                    <span class="px-2 py-0.5 rounded border text-[11px] font-bold ${badgeClass}">${scoreVal !== null ? scoreVal.toFixed(1) : '—'} / ${maxScore.toFixed(1)}</span>
+                                </div>
+                            </div>
+                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/80 relative">
+                                <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/80 relative">
-                        <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
-                    </div>
-                </div>
-            `;
-        }).join('');
+                    `;
+                }).join('');
+            }
+        }
+
+        // Render Dynamic Radar Chart
+        updateCompetencyRadarChart(emp, applicableComps, liveAssessMap);
+    };
+
+    if (showLoading) {
+        setTimeout(renderData, 160);
+    } else {
+        renderData();
     }
 
-    updateCompetencyRadarChart(emp, applicableComps, liveAssessMap);
+    // 5. Fast Background Sync (if state was empty)
+    const empIdToFetch = emp.id;
+    if (empIdToFetch && (!liveAssessMap || Object.keys(liveAssessMap).length === 0 || applicableComps.length === 0)) {
+        try {
+            fetch(`api/competencies.php?action=get_employee_competencies&employee_id=${encodeURIComponent(empIdToFetch)}`)
+                .then(r => r.json())
+                .then(json => {
+                    if (json.success && Array.isArray(json.items) && json.items.length > 0) {
+                        const newAssessMap = {};
+                        const newComps = json.items.map(item => {
+                            const hasScore = item.current_score !== null && item.current_score !== undefined;
+                            if (hasScore) {
+                                newAssessMap[item.id] = {
+                                    competency_id: item.id,
+                                    score: parseFloat(item.current_score)
+                                };
+                            }
+                            return {
+                                id: item.id,
+                                name: item.name,
+                                scope: item.scope || 'General',
+                                benchmark_score: parseFloat(item.benchmark_score || 4.5),
+                                max_score: parseFloat(item.max_score || 5.0)
+                            };
+                        });
+
+                        window.dynamicCompetencyState.cache = window.dynamicCompetencyState.cache || {};
+                        window.dynamicCompetencyState.cache[assessCacheKey] = newAssessMap;
+                        try {
+                            sessionStorage.setItem(assessCacheKey, JSON.stringify(newAssessMap));
+                        } catch (e) {}
+
+                        if (activeCompetencyEmpKey === empIdToFetch) {
+                            updateCompetencyRadarChart(emp, newComps, newAssessMap);
+                        }
+                    }
+                })
+                .catch(() => {});
+        } catch (e) {}
+    }
 }
 
-// 3.13 Update Dynamic Radar Chart
+// 3.13 Update Dynamic Radar Chart (Snappy Chart Render with Fade Transition & Empty State)
 function updateCompetencyRadarChart(emp, competencies, liveAssessMap = {}) {
     const ctx = document.getElementById('chart-competency-radar');
-    if (!ctx) return;
+    const radarOverlay = document.getElementById('radar-skeleton-overlay');
+    const radarEmptyState = document.getElementById('radar-empty-state');
 
-    const comps = competencies && competencies.length > 0 ? competencies : (window.dynamicCompetencyState.competencies || []);
-    if (comps.length === 0) return;
+    if (!ctx) {
+        if (radarOverlay) {
+            radarOverlay.classList.remove('opacity-100');
+            radarOverlay.classList.add('opacity-0');
+            setTimeout(() => radarOverlay.classList.add('hidden'), 200);
+        }
+        return;
+    }
+
+    const comps = competencies && competencies.length > 0 ? competencies : (window.dynamicCompetencyState?.competencies || []);
+    if (comps.length === 0) {
+        if (radarEmptyState) radarEmptyState.classList.remove('hidden');
+        if (ctx) ctx.classList.add('hidden');
+        if (radarOverlay) {
+            radarOverlay.classList.remove('opacity-100');
+            radarOverlay.classList.add('opacity-0');
+            setTimeout(() => radarOverlay.classList.add('hidden'), 200);
+        }
+        return;
+    }
+
+    if (radarEmptyState) radarEmptyState.classList.add('hidden');
+    if (ctx) ctx.classList.remove('hidden');
 
     const labels = comps.map(c => c.name);
     const targetData = comps.map(c => c.benchmark_score ? parseFloat(c.benchmark_score) : 4.5);
@@ -1490,7 +1588,7 @@ function updateCompetencyRadarChart(emp, competencies, liveAssessMap = {}) {
         if (assessRec && assessRec.score !== null && assessRec.score !== undefined) {
             return parseFloat(assessRec.score);
         }
-        if (emp.scores && emp.scores[c.id] && emp.scores[c.id].score !== null) {
+        if (emp && emp.scores && emp.scores[c.id] && emp.scores[c.id].score !== null) {
             return parseFloat(emp.scores[c.id].score);
         }
         return 0;
@@ -1548,6 +1646,10 @@ function updateCompetencyRadarChart(emp, competencies, liveAssessMap = {}) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: 350,
+                easing: 'easeOutQuart'
+            },
             plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -1571,8 +1673,9 @@ function updateCompetencyRadarChart(emp, competencies, liveAssessMap = {}) {
         }
     });
 
-    const radarOverlay = document.getElementById('radar-skeleton-overlay');
     if (radarOverlay) {
+        radarOverlay.classList.remove('opacity-100');
+        radarOverlay.classList.add('opacity-0');
         setTimeout(() => radarOverlay.classList.add('hidden'), 200);
     }
 }
@@ -1678,14 +1781,33 @@ function syncCompetencyWithPerformance(empKeyOrId) {
 }
 
 // ========================================================
-// 3.16C Render Skills Gap Analysis & TNA Diagnostic (100% Dynamic from Supabase)
-// ========================================================
-async function renderSkillsGapAnalysis() {
+// 3.16C Render Skills Gap Analysis & TNA Diagnostic (Fast ~160ms Loading Effect + Instant UI)
+async function renderSkillsGapAnalysis(passedComps = null, passedAssessMap = null, passedEmp = null, showLoading = false) {
     const container = document.getElementById('comp-gaps-container');
     if (!container) return;
 
-    const dynEmps = window.dynamicCompetencyState.employees || [];
-    let emp = dynEmps.find(e => e.id === activeCompetencyEmpKey);
+    if (showLoading) {
+        container.innerHTML = `
+            <div class="p-4 bg-slate-50 border border-brand-border rounded-2xl flex items-center justify-between animate-pulse">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-slate-200"></div>
+                    <div class="space-y-1.5">
+                        <div class="h-4 w-44 bg-slate-200 rounded"></div>
+                        <div class="h-3 w-64 bg-slate-200 rounded"></div>
+                    </div>
+                </div>
+                <div class="h-8 w-28 bg-slate-200 rounded-xl"></div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 animate-pulse">
+                <div class="h-16 bg-brand-canvas rounded-xl border border-brand-border"></div>
+                <div class="h-16 bg-brand-canvas rounded-xl border border-brand-border"></div>
+                <div class="h-16 bg-brand-canvas rounded-xl border border-brand-border"></div>
+            </div>
+        `;
+    }
+
+    const dynEmps = window.dynamicCompetencyState?.employees || [];
+    let emp = passedEmp || dynEmps.find(e => isSameEmployee(e.id, activeCompetencyEmpKey));
     if (!emp && associatesCompetencyData[activeCompetencyEmpKey]) {
         const legacy = associatesCompetencyData[activeCompetencyEmpKey];
         emp = {
@@ -1695,176 +1817,212 @@ async function renderSkillsGapAnalysis() {
             department: legacy.dept,
             scores: {}
         };
+    } else if (!emp && dynEmps.length > 0) {
+        emp = dynEmps[0];
     }
     if (!emp) return;
 
-    // 1. Fetch live assessments directly from Supabase for this employee
-    let liveAssessMap = {};
-    try {
-        const assessRes = await fetch(`api/competencies.php?action=get_assessments&employee_id=${encodeURIComponent(emp.id)}`);
-        const assessJson = await assessRes.json();
-        if (assessJson.success && Array.isArray(assessJson.data)) {
-            assessJson.data.forEach(a => {
-                liveAssessMap[a.competency_id] = a;
+    // 1. Resolve live assessments instantly
+    const assessCacheKey = `comp_assess_${emp.id}`;
+    let liveAssessMap = passedAssessMap || window.dynamicCompetencyState?.cache?.[assessCacheKey] || {};
+    
+    if (Object.keys(liveAssessMap).length === 0) {
+        try {
+            const stored = sessionStorage.getItem(assessCacheKey);
+            if (stored) liveAssessMap = JSON.parse(stored);
+        } catch (e) {}
+    }
+
+    if (Object.keys(liveAssessMap).length === 0 && emp.scores && typeof emp.scores === 'object') {
+        Object.keys(emp.scores).forEach(cId => {
+            const s = emp.scores[cId];
+            if (s && s.score !== null && s.score !== undefined) {
+                liveAssessMap[cId] = {
+                    competency_id: cId,
+                    score: parseFloat(s.score)
+                };
+            }
+        });
+    }
+
+    // 2. Resolve applicable competencies instantly
+    let applicableComps = passedComps || [];
+    if (applicableComps.length === 0) {
+        const allMatrixComps = window.dynamicCompetencyState?.competencies || [];
+        const empTitle = (emp.title || emp.role || '').toLowerCase();
+        const empDeptId = emp.department_id;
+
+        if (allMatrixComps.length > 0) {
+            applicableComps = allMatrixComps.filter(c => {
+                if ((c.scope || 'General') === 'General') return true;
+                if (empDeptId && c.department_id && c.department_id !== empDeptId) return false;
+                if (c.position && empTitle) {
+                    const cPos = c.position.toLowerCase();
+                    return empTitle === cPos || empTitle.includes(cPos) || cPos.includes(empTitle);
+                }
+                return true;
             });
         }
-    } catch (err) {
-        console.error('Error fetching live assessments for skills gap analysis:', err);
     }
 
-    // 2. Fetch applicable competencies from Supabase for this employee
-    let applicableComps = [];
-    try {
-        const deptObj = (window.dynamicCompetencyState.departments || []).find(d => 
-            d.name.toLowerCase() === (emp.department || '').toLowerCase() || d.id === emp.department_id
-        );
-        const deptId = emp.department_id || (deptObj ? deptObj.id : null);
-        const res = await fetch(`api/competencies.php?action=get_competencies${deptId ? '&department_id=' + encodeURIComponent(deptId) : ''}`);
-        const json = await res.json();
-        const allComps = json.data || [];
-        applicableComps = allComps.filter(c => {
-            if (c.scope === 'General') return true;
-            if (c.scope === 'Specific' && c.position) {
-                return (emp.title && (emp.title.toLowerCase() === c.position.toLowerCase() || emp.title.toLowerCase().includes(c.position.toLowerCase())));
-            }
-            return true;
-        });
-    } catch (e) {
-        console.error('Error fetching competencies for skills gap analysis:', e);
-        applicableComps = window.dynamicCompetencyState.competencies || [];
+    if (applicableComps.length === 0) {
+        applicableComps = window.dynamicCompetencyState?.competencies || [];
     }
 
-    let detectedGapsCount = 0;
-    let criticalGapsCount = 0;
-
-    const gapCardsHtml = applicableComps.map(c => {
-        const assessRec = liveAssessMap[c.id];
-        const scoreData = (assessRec && assessRec.score !== null && assessRec.score !== undefined)
-            ? { score: parseFloat(assessRec.score) }
-            : (emp.scores ? emp.scores[c.id] : null);
-        const scoreVal = (scoreData && scoreData.score !== null && scoreData.score !== undefined) ? parseFloat(scoreData.score) : null;
-        const benchmark = c.benchmark_score ? parseFloat(c.benchmark_score) : 4.5;
-        const maxScore = c.max_score ? parseFloat(c.max_score) : 5.0;
-
-        let gap = 0;
-        let statusText = 'Benchmark Met';
-        let statusBadge = 'badge-sage';
-        let barColor = 'bg-emerald-500';
-        let isGap = false;
-        let isUnassessed = false;
-
-        if (scoreVal === null) {
-            isUnassessed = true;
-            statusText = 'Not Yet Evaluated';
-            statusBadge = 'bg-slate-100 text-slate-500 border border-slate-200';
-            barColor = 'bg-slate-300';
-        } else {
-            gap = +(scoreVal - benchmark).toFixed(2);
-            if (gap < -0.4) {
-                statusText = `Critical Skill Gap: ${Math.abs(gap).toFixed(2)} Deficit`;
-                statusBadge = 'badge-terracotta';
-                barColor = 'bg-rose-500';
-                isGap = true;
-                detectedGapsCount++;
-                criticalGapsCount++;
-            } else if (gap < 0) {
-                statusText = `Minor Skill Gap: ${Math.abs(gap).toFixed(2)} Deficit`;
-                statusBadge = 'badge-gold';
-                barColor = 'bg-amber-500';
-                isGap = true;
-                detectedGapsCount++;
-            }
+    const renderGaps = () => {
+        if (applicableComps.length === 0) {
+            container.innerHTML = `
+                <div class="p-8 text-center bg-brand-canvas rounded-2xl border border-brand-border space-y-3">
+                    <div class="w-12 h-12 rounded-2xl bg-white border border-brand-border flex items-center justify-center text-slate-300 text-xl mx-auto shadow-2xs">
+                        <i class="fas fa-chart-pie"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h4 class="font-heading font-bold text-slate-800 text-sm">No Competency Diagnostics Available</h4>
+                        <p class="text-xs text-slate-500 max-w-sm mx-auto">No competency benchmark dimensions are currently assigned to ${emp.full_name || emp.name}.</p>
+                    </div>
+                </div>
+            `;
+            return;
         }
 
-        const compliancePct = scoreVal !== null ? Math.min(100, Math.round((scoreVal / benchmark) * 100)) : 0;
+        let detectedGapsCount = 0;
+        let criticalGapsCount = 0;
 
-        const actionBtn = (isGap || isUnassessed) ? `
-            <button onclick="launchDynamicEvaluationModal('${emp.id}')" 
-                class="px-3 py-1.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5">
-                <i class="fas fa-clipboard-check text-[10px]"></i>
-                <span>${isUnassessed ? '+ Conduct Evaluation' : 'Target Training &amp; Re-Evaluate'}</span>
-            </button>
-        ` : `
-            <span class="text-xs font-bold text-emerald-700 flex items-center space-x-1 py-1 px-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
-                <i class="fas fa-circle-check text-emerald-500"></i>
-                <span>Benchmark Standard Verified</span>
-            </span>
-        `;
+        const gapCardsHtml = applicableComps.map(c => {
+            const assessRec = liveAssessMap[c.id];
+            const scoreData = (assessRec && assessRec.score !== null && assessRec.score !== undefined)
+                ? { score: parseFloat(assessRec.score) }
+                : (emp.scores ? emp.scores[c.id] : null);
+            const scoreVal = (scoreData && scoreData.score !== null && scoreData.score !== undefined) ? parseFloat(scoreData.score) : null;
+            const benchmark = c.benchmark_score ? parseFloat(c.benchmark_score) : 4.5;
+            const maxScore = c.max_score ? parseFloat(c.max_score) : 5.0;
 
-        return `
-            <div class="p-4 bg-white rounded-2xl border border-brand-border space-y-3 shadow-2xs hover:border-slate-300 transition ${isGap ? 'ring-1 ring-rose-500/20' : ''}">
-                <div class="flex items-center justify-between flex-wrap gap-2">
+            let gap = 0;
+            let statusText = 'Benchmark Met';
+            let statusBadge = 'badge-sage';
+            let barColor = 'bg-emerald-500';
+            let isGap = false;
+            let isUnassessed = false;
+
+            if (scoreVal === null) {
+                isUnassessed = true;
+                statusText = 'Not Yet Evaluated';
+                statusBadge = 'bg-slate-100 text-slate-500 border border-slate-200';
+                barColor = 'bg-slate-300';
+            } else {
+                gap = +(scoreVal - benchmark).toFixed(2);
+                if (gap < -0.4) {
+                    statusText = `Critical Skill Gap: ${Math.abs(gap).toFixed(2)} Deficit`;
+                    statusBadge = 'badge-terracotta';
+                    barColor = 'bg-rose-500';
+                    isGap = true;
+                    detectedGapsCount++;
+                    criticalGapsCount++;
+                } else if (gap < 0) {
+                    statusText = `Minor Skill Gap: ${Math.abs(gap).toFixed(2)} Deficit`;
+                    statusBadge = 'badge-gold';
+                    barColor = 'bg-amber-500';
+                    isGap = true;
+                    detectedGapsCount++;
+                }
+            }
+
+            const compliancePct = scoreVal !== null ? Math.min(100, Math.round((scoreVal / benchmark) * 100)) : 0;
+
+            const actionBtn = (isGap || isUnassessed) ? `
+                <button onclick="launchDynamicEvaluationModal('${emp.id}')" 
+                    class="px-3 py-1.5 bg-primary hover:bg-primary-dark text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5">
+                    <i class="fas fa-clipboard-check text-[10px]"></i>
+                    <span>${isUnassessed ? '+ Conduct Evaluation' : 'Target Training &amp; Re-Evaluate'}</span>
+                </button>
+            ` : `
+                <span class="text-xs font-bold text-emerald-700 flex items-center space-x-1 py-1 px-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <i class="fas fa-circle-check text-emerald-500"></i>
+                    <span>Benchmark Standard Verified</span>
+                </span>
+            `;
+
+            return `
+                <div class="p-4 bg-white rounded-2xl border border-brand-border space-y-3 shadow-2xs hover:border-slate-300 transition ${isGap ? 'ring-1 ring-rose-500/20' : ''}">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h4 class="font-heading font-bold text-sm text-slate-900">${c.name}</h4>
+                                <span class="${statusBadge} text-[10px] font-bold px-2 py-0.5 rounded-md">${statusText}</span>
+                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${c.scope || 'General'}</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-0.5">
+                                ${c.category || 'Core'} · Benchmark Standard: <strong class="text-slate-800">${benchmark.toFixed(1)} / ${maxScore.toFixed(1)}</strong> · Evaluated Score: <strong class="${isGap ? 'text-rose-600' : 'text-slate-900'}">${scoreVal !== null ? scoreVal.toFixed(2) : '—'}</strong>
+                            </p>
+                        </div>
+                        <div>
+                            ${actionBtn}
+                        </div>
+                    </div>
+
+                    <div class="space-y-1 pt-1">
+                        <div class="flex justify-between text-[11px] font-semibold text-slate-500">
+                            <span>Target Benchmark Compliance: <strong>${compliancePct}%</strong></span>
+                            <span>Gap Delta: <strong class="${gap < 0 ? 'text-rose-600' : (gap > 0 ? 'text-emerald-700' : 'text-slate-600')}">${scoreVal !== null ? (gap >= 0 ? '+' : '') + gap.toFixed(2) + ' pts' : 'Unassessed'}</strong></span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/80">
+                            <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${compliancePct}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <!-- Diagnostic Header Banner -->
+            <div class="p-4 bg-slate-50 border border-brand-border rounded-2xl flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-base shadow-xs">
+                        <i class="fas fa-chart-pie"></i>
+                    </div>
                     <div>
                         <div class="flex items-center space-x-2">
-                            <h4 class="font-heading font-bold text-sm text-slate-900">${c.name}</h4>
-                            <span class="${statusBadge} text-[10px] font-bold px-2 py-0.5 rounded-md">${statusText}</span>
-                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${c.scope}</span>
+                            <h4 class="font-heading font-bold text-base text-slate-900">${emp.full_name || emp.name} · Skills Gap Diagnostic</h4>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${detectedGapsCount > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800'}">
+                                ${detectedGapsCount > 0 ? `${detectedGapsCount} Gap${detectedGapsCount > 1 ? 's' : ''} Detected` : 'All Benchmarks Met'}
+                            </span>
                         </div>
-                        <p class="text-[11px] text-slate-500 mt-0.5">
-                            ${c.category || 'Core'} · Benchmark Standard: <strong class="text-slate-800">${benchmark.toFixed(1)} / ${maxScore.toFixed(1)}</strong> · Evaluated Score: <strong class="${isGap ? 'text-rose-600' : 'text-slate-900'}">${scoreVal !== null ? scoreVal.toFixed(2) : '—'}</strong>
-                        </p>
-                    </div>
-                    <div>
-                        ${actionBtn}
+                        <p class="text-xs text-slate-500">Evaluated against hotel competency benchmarks directly mapped in Supabase.</p>
                     </div>
                 </div>
-
-                <div class="space-y-1 pt-1">
-                    <div class="flex justify-between text-[11px] font-semibold text-slate-500">
-                        <span>Target Benchmark Compliance: <strong>${compliancePct}%</strong></span>
-                        <span>Gap Delta: <strong class="${gap < 0 ? 'text-rose-600' : (gap > 0 ? 'text-emerald-700' : 'text-slate-600')}">${scoreVal !== null ? (gap >= 0 ? '+' : '') + gap.toFixed(2) + ' pts' : 'Unassessed'}</strong></span>
-                    </div>
-                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/80">
-                        <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${compliancePct}%"></div>
-                    </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="launchDynamicEvaluationModal('${emp.id}')" class="btn-primary px-3.5 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-xs">
+                        <i class="fas fa-clipboard-check text-[11px]"></i>
+                        <span>Conduct Full Assessment</span>
+                    </button>
                 </div>
             </div>
+
+            <!-- Summary Stat Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="p-3.5 bg-brand-canvas rounded-xl border border-brand-border">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Applicable Dimensions</span>
+                    <p class="text-base font-heading font-bold text-slate-900">${applicableComps.length} Competencies</p>
+                </div>
+                <div class="p-3.5 ${criticalGapsCount > 0 ? 'bg-rose-50 border border-rose-200 text-rose-900' : 'bg-brand-canvas border border-brand-border'} rounded-xl">
+                    <span class="text-[10px] font-bold ${criticalGapsCount > 0 ? 'text-rose-500' : 'text-slate-400'} uppercase">Critical Skill Gaps</span>
+                    <p class="text-base font-heading font-bold ${criticalGapsCount > 0 ? 'text-rose-700' : 'text-slate-900'}">${criticalGapsCount} Priority Gaps</p>
+                </div>
+                <div class="p-3.5 ${detectedGapsCount > 0 ? 'bg-amber-50 border border-amber-200 text-amber-900' : 'bg-emerald-50 border border-emerald-200 text-emerald-900'} rounded-xl">
+                    <span class="text-[10px] font-bold ${detectedGapsCount > 0 ? 'text-amber-500' : 'text-emerald-600'} uppercase">Diagnostic Status</span>
+                    <p class="text-base font-heading font-bold ${detectedGapsCount > 0 ? 'text-amber-700' : 'text-emerald-700'}">${detectedGapsCount > 0 ? detectedGapsCount + ' Development Areas' : 'All Benchmarks Met'}</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2">${gapCardsHtml}</div>
         `;
-    }).join('');
+    };
 
-    container.innerHTML = `
-        <!-- Diagnostic Header Banner -->
-        <div class="p-4 bg-slate-50 border border-brand-border rounded-2xl flex items-center justify-between flex-wrap gap-3">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-base shadow-xs">
-                    <i class="fas fa-chart-pie"></i>
-                </div>
-                <div>
-                    <div class="flex items-center space-x-2">
-                        <h4 class="font-heading font-bold text-base text-slate-900">${emp.full_name || emp.name} · Skills Gap Diagnostic</h4>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${detectedGapsCount > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800'}">
-                            ${detectedGapsCount > 0 ? `${detectedGapsCount} Gap${detectedGapsCount > 1 ? 's' : ''} Detected` : 'All Benchmarks Met'}
-                        </span>
-                    </div>
-                    <p class="text-xs text-slate-500">Evaluated against hotel competency benchmarks directly mapped in Supabase.</p>
-                </div>
-            </div>
-            <div class="flex items-center space-x-2">
-                <button onclick="launchDynamicEvaluationModal('${emp.id}')" class="btn-primary px-3.5 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-xs">
-                    <i class="fas fa-clipboard-check text-[11px]"></i>
-                    <span>Conduct Full Assessment</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Summary Stat Row -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="p-3.5 bg-brand-canvas rounded-xl border border-brand-border">
-                <span class="text-[10px] font-bold text-slate-400 uppercase">Applicable Dimensions</span>
-                <p class="text-base font-heading font-bold text-slate-900">${applicableComps.length} Competencies</p>
-            </div>
-            <div class="p-3.5 ${criticalGapsCount > 0 ? 'bg-rose-50 border border-rose-200 text-rose-900' : 'bg-brand-canvas border border-brand-border'} rounded-xl">
-                <span class="text-[10px] font-bold ${criticalGapsCount > 0 ? 'text-rose-500' : 'text-slate-400'} uppercase">Critical Skill Gaps</span>
-                <p class="text-base font-heading font-bold ${criticalGapsCount > 0 ? 'text-rose-700' : 'text-slate-900'}">${criticalGapsCount} Priority Gaps</p>
-            </div>
-            <div class="p-3.5 ${detectedGapsCount > 0 ? 'bg-amber-50 border border-amber-200 text-amber-900' : 'bg-emerald-50 border border-emerald-200 text-emerald-900'} rounded-xl">
-                <span class="text-[10px] font-bold ${detectedGapsCount > 0 ? 'text-amber-500' : 'text-emerald-600'} uppercase">Diagnostic Status</span>
-                <p class="text-base font-heading font-bold ${detectedGapsCount > 0 ? 'text-amber-700' : 'text-emerald-700'}">${detectedGapsCount > 0 ? detectedGapsCount + ' Development Areas' : 'All Benchmarks Met'}</p>
-            </div>
-        </div>
-
-        <div class="space-y-3 pt-2">${gapCardsHtml}</div>
-    `;
+    if (showLoading) {
+        setTimeout(renderGaps, 160);
+    } else {
+        renderGaps();
+    }
 }
 
 // ========================================================
@@ -2078,16 +2236,44 @@ function resolveCompetencyActiveEmployee() {
 }
 window.resolveCompetencyActiveEmployee = resolveCompetencyActiveEmployee;
 
-// 3.19 Render IDP View (Connected to performance_goals & IDP Milestones with Caching)
+// 3.19 Render IDP View (Connected to performance_goals & IDP Milestones with Caching & Loading State)
 // 3.20 Render Active Performance Goals (Instant Cached + Live SWR Background Update)
-async function renderIDPView(forceRefresh = false) {
+async function renderIDPView(forceRefresh = false, showLoading = false) {
     const emp = resolveCompetencyActiveEmployee();
     const container = document.getElementById('comp-goals-container') || document.getElementById('comp-idp-container');
     if (!container || !emp) return;
 
+    if (showLoading) {
+        container.innerHTML = `
+            <div class="space-y-4 animate-pulse">
+                <div>
+                    <div class="h-4 w-60 bg-slate-200 rounded mb-1.5"></div>
+                    <div class="h-3 w-80 bg-slate-100 rounded"></div>
+                </div>
+                <div class="space-y-3">
+                    ${[1, 2].map(() => `
+                        <div class="p-5 bg-white rounded-2xl border border-brand-border space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="h-4 w-16 bg-slate-200 rounded-full"></div>
+                                        <div class="h-3 w-24 bg-slate-100 rounded"></div>
+                                    </div>
+                                    <div class="h-4 w-64 bg-slate-200 rounded"></div>
+                                    <div class="h-3 w-40 bg-slate-100 rounded"></div>
+                                </div>
+                                <div class="h-6 w-24 bg-slate-100 rounded-full"></div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     const goalsCacheKey = `comp_goals_cache_${emp.id}`;
-    let goals = window.dynamicCompetencyState?.cache?.[goalsCacheKey];
-    if (!goals) {
+    let goals = (!forceRefresh) ? window.dynamicCompetencyState?.cache?.[goalsCacheKey] : null;
+    if (!goals && !forceRefresh) {
         try {
             const cached = sessionStorage.getItem(goalsCacheKey);
             if (cached) {
@@ -2162,7 +2348,11 @@ async function renderIDPView(forceRefresh = false) {
     };
 
     if (goals) {
-        renderGoalsHtml(goals);
+        if (showLoading) {
+            setTimeout(() => renderGoalsHtml(goals), 140);
+        } else {
+            renderGoalsHtml(goals);
+        }
     }
 
     try {
@@ -2180,15 +2370,40 @@ async function renderIDPView(forceRefresh = false) {
     }
 }
 
-// 3.21 Render Certifications Roster (Instant Cached + Live SWR Background Update)
-async function renderCertificationsRoster(forceRefresh = false) {
+// 3.21 Render Certifications Roster (Instant Cached + Live SWR Background Update & Loading State)
+async function renderCertificationsRoster(forceRefresh = false, showLoading = false) {
     const emp = resolveCompetencyActiveEmployee();
     const container = document.getElementById('comp-certs-container');
     if (!container || !emp) return;
 
+    if (showLoading) {
+        container.innerHTML = `
+            <div class="space-y-4 animate-pulse">
+                <div>
+                    <div class="h-4 w-64 bg-slate-200 rounded mb-1.5"></div>
+                    <div class="h-3 w-72 bg-slate-100 rounded"></div>
+                </div>
+                <div class="space-y-3">
+                    ${[1, 2].map(() => `
+                        <div class="p-5 bg-white rounded-2xl border border-brand-border flex items-center justify-between">
+                            <div class="flex items-center space-x-3.5">
+                                <div class="w-11 h-11 rounded-2xl bg-slate-100"></div>
+                                <div class="space-y-1.5">
+                                    <div class="h-4 w-48 bg-slate-200 rounded"></div>
+                                    <div class="h-3 w-36 bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+                            <div class="h-7 w-28 bg-slate-100 rounded-xl"></div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     const certsCacheKey = `comp_certs_cache_${emp.id}`;
-    let certList = window.dynamicCompetencyState?.cache?.[certsCacheKey];
-    if (!certList) {
+    let certList = (!forceRefresh) ? window.dynamicCompetencyState?.cache?.[certsCacheKey] : null;
+    if (!certList && !forceRefresh) {
         try {
             const cached = sessionStorage.getItem(certsCacheKey);
             if (cached) {
@@ -2269,7 +2484,11 @@ async function renderCertificationsRoster(forceRefresh = false) {
     };
 
     if (certList) {
-        renderCertsHtml(certList);
+        if (showLoading) {
+            setTimeout(() => renderCertsHtml(certList), 140);
+        } else {
+            renderCertsHtml(certList);
+        }
     }
 
     try {
@@ -2476,6 +2695,8 @@ async function fetchDynamicCompetencyMatrix(deptFilter, minScore, forceRefresh =
             window.dynamicCompetencyState.employees = cached.employees || [];
             renderCompetencyMatrixTable();
             renderEmployeeSelectOptions();
+            if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
+            if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
             hasRenderedFromCache = true;
         } else {
             try {
@@ -2488,6 +2709,8 @@ async function fetchDynamicCompetencyMatrix(deptFilter, minScore, forceRefresh =
                     window.dynamicCompetencyState.cache[cacheKey] = parsed;
                     renderCompetencyMatrixTable();
                     renderEmployeeSelectOptions();
+                    if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
+                    if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
                     hasRenderedFromCache = true;
                 }
             } catch (e) {}
@@ -2514,6 +2737,8 @@ async function fetchDynamicCompetencyMatrix(deptFilter, minScore, forceRefresh =
             } catch (e) {}
             renderCompetencyMatrixTable();
             renderEmployeeSelectOptions();
+            if (typeof renderSelectedEmployeeRadarView === 'function') renderSelectedEmployeeRadarView();
+            if (typeof renderSkillsGapAnalysis === 'function') renderSkillsGapAnalysis();
         } else {
             showToast(json.message || 'Error loading competencies', 'error');
         }
@@ -2528,14 +2753,20 @@ window.dynamicCompetencyState.pageSize = window.dynamicCompetencyState.pageSize 
 
 function changeMatrixPage(newPage) {
     window.dynamicCompetencyState.currentPage = Math.max(1, parseInt(newPage));
-    renderCompetencyMatrixTable();
+    showCompetencyMatrixLoadingSkeleton();
+    setTimeout(() => {
+        renderCompetencyMatrixTable();
+    }, 120);
 }
 window.changeMatrixPage = changeMatrixPage;
 
 function changeMatrixPageSize(newSize) {
     window.dynamicCompetencyState.pageSize = (newSize === 'all') ? 'all' : parseInt(newSize);
     window.dynamicCompetencyState.currentPage = 1;
-    renderCompetencyMatrixTable();
+    showCompetencyMatrixLoadingSkeleton();
+    setTimeout(() => {
+        renderCompetencyMatrixTable();
+    }, 120);
 }
 window.changeMatrixPageSize = changeMatrixPageSize;
 
@@ -2793,6 +3024,8 @@ function renderCompetencyMatrixTable() {
     }).join('');
 }
 
+let compFilterDebounceTimer = null;
+
 // 4.4 Department Filter, Min Rating & Search Dispatcher
 function filterMatrixCandidates() {
     window.dynamicCompetencyState.currentPage = 1;
@@ -2804,7 +3037,10 @@ function filterMatrixCandidates() {
         fetchDynamicCompetencyMatrix(deptVal, minVal);
     } else {
         window.dynamicCompetencyState.minScore = parseFloat(minVal);
-        renderCompetencyMatrixTable();
+        clearTimeout(compFilterDebounceTimer);
+        compFilterDebounceTimer = setTimeout(() => {
+            renderCompetencyMatrixTable();
+        }, 50);
     }
 }
 
@@ -3423,8 +3659,25 @@ async function launchDynamicEvaluationModal(empId) {
     const formFieldsContainer = document.getElementById('assess-modal-fields');
     if (formFieldsContainer) {
         formFieldsContainer.innerHTML = `
-            <div class="text-center py-6 text-slate-500 text-xs">
-                <i class="fas fa-spinner fa-spin text-primary mr-2"></i> Loading applicable competencies from database...
+            <div class="space-y-4 animate-pulse py-2">
+                ${[1, 2, 3].map(() => `
+                    <div class="p-4 bg-brand-canvas rounded-2xl border border-brand-border space-y-3">
+                        <div class="flex justify-between items-center">
+                            <div class="space-y-1.5">
+                                <div class="h-4 w-40 bg-slate-200 rounded"></div>
+                                <div class="h-3 w-56 bg-slate-100 rounded"></div>
+                            </div>
+                            <div class="h-5 w-20 bg-slate-200 rounded-full"></div>
+                        </div>
+                        <div class="grid grid-cols-5 gap-2 pt-1">
+                            <div class="h-8 bg-slate-200 rounded-xl"></div>
+                            <div class="h-8 bg-slate-200 rounded-xl"></div>
+                            <div class="h-8 bg-slate-200 rounded-xl"></div>
+                            <div class="h-8 bg-slate-200 rounded-xl"></div>
+                            <div class="h-8 bg-slate-200 rounded-xl"></div>
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
     }

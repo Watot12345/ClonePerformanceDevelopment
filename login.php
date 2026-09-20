@@ -413,16 +413,15 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                         </div>
                     </div>
 
-                    <!-- Dev Test OTP Hint Banner -->
-                    <div id="modal-otp-dev-banner" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <i class="fas fa-flask text-amber-600 text-sm"></i>
-                            <span>Test OTP: <strong id="modal-otp-dev-code" class="font-mono text-sm bg-white px-2 py-0.5 rounded border border-amber-300 tracking-wider text-slate-900 font-bold">123456</strong></span>
+                    <!-- Email Verification Notice Banner -->
+                    <div class="p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs text-blue-900 flex items-start space-x-3">
+                        <div class="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                            <i class="fas fa-envelope-open-text text-xs"></i>
                         </div>
-                        <button type="button" onclick="autoFillDevOtp()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition shadow-sm flex items-center space-x-1">
-                            <i class="fas fa-magic"></i>
-                            <span>Auto-Fill</span>
-                        </button>
+                        <div>
+                            <p class="font-semibold text-blue-950">Check your email inbox</p>
+                            <p class="text-blue-800 text-[11px] mt-0.5">We sent a 6-digit verification code to your email. Please enter it below to verify your identity.</p>
+                        </div>
                     </div>
 
                     <form onsubmit="handleModalVerifyOtpSubmit(event)" class="space-y-4">
@@ -1090,7 +1089,7 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                     const res = await AuthAPI.requestOtp(selectedEmployee.email, selectedEmployee.full_name, selectedEmployee.id);
                     if (res && res.success) {
                         showToast(res.message || 'OTP verification code sent to your email!', 'success');
-                        openOtpModal(selectedEmployee, res.remaining_sends, res.dev_otp);
+                        openOtpModal(selectedEmployee, res.remaining_sends);
                     } else if (res && res.rate_limited) {
                         showToast(res.message, 'warning');
                         openOtpModal(selectedEmployee, 0);
@@ -1125,37 +1124,17 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
             // STEP 4: OTP MODAL & VERIFICATION WITH RATE LIMITING
             // -----------------------------------------------------------------
             let otpResendTimer = null;
-            let currentDevOtp = null;
 
-            function autoFillDevOtp() {
-                if (currentDevOtp) {
-                    const input = document.getElementById('modal-otp-input');
-                    if (input) {
-                        input.value = currentDevOtp;
-                        input.focus();
-                    }
-                }
-            }
-
-            function openOtpModal(employee, remainingSends = 2, devOtp = null) {
+            function openOtpModal(employee, remainingSends = 2) {
                 closeAllModals();
 
                 document.getElementById('otp-employee-name').textContent = employee.full_name;
                 document.getElementById('otp-employee-email').textContent = employee.email;
                 document.getElementById('otp-avatar-initial').textContent = employee.full_name.charAt(0);
                 
-                currentDevOtp = devOtp || null;
-                const devBanner = document.getElementById('modal-otp-dev-banner');
-                const devCodeEl = document.getElementById('modal-otp-dev-code');
                 const otpInput = document.getElementById('modal-otp-input');
-
-                if (devOtp && devBanner && devCodeEl) {
-                    devCodeEl.textContent = devOtp;
-                    devBanner.classList.remove('hidden');
-                    if (otpInput) otpInput.value = devOtp; // Automatically pre-fill for immediate convenience
-                } else if (devBanner) {
-                    devBanner.classList.add('hidden');
-                    if (otpInput) otpInput.value = '';
+                if (otpInput) {
+                    otpInput.value = '';
                 }
 
                 updateOtpRateLimitUI(remainingSends, 30);
@@ -1226,16 +1205,10 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                     const res = await AuthAPI.requestOtp(selectedEmployee.email, selectedEmployee.full_name, selectedEmployee.id);
                     if (res && res.success) {
                         showToast(res.message || 'New verification code sent to your email!', 'success');
-                        if (res.dev_otp) {
-                            currentDevOtp = res.dev_otp;
-                            const devBanner = document.getElementById('modal-otp-dev-banner');
-                            const devCodeEl = document.getElementById('modal-otp-dev-code');
-                            const otpInput = document.getElementById('modal-otp-input');
-                            if (devBanner && devCodeEl) {
-                                devCodeEl.textContent = res.dev_otp;
-                                devBanner.classList.remove('hidden');
-                            }
-                            if (otpInput) otpInput.value = res.dev_otp;
+                        const otpInput = document.getElementById('modal-otp-input');
+                        if (otpInput) {
+                            otpInput.value = '';
+                            otpInput.focus();
                         }
                         updateOtpRateLimitUI(res.remaining_sends, 30);
                     } else if (res && res.rate_limited) {
@@ -1396,7 +1369,7 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                 showToast('Sending OTP verification code...', 'info');
                 const res = await AuthAPI.requestOtp(selectedEmployee.email, selectedEmployee.full_name, selectedEmployee.id);
                 if (res && res.success) {
-                    openOtpModal(selectedEmployee, res.remaining_sends, res.dev_otp);
+                    openOtpModal(selectedEmployee, res.remaining_sends);
                 } else if (res && res.rate_limited) {
                     showToast(res.message, 'warning');
                     openOtpModal(selectedEmployee, 0);
