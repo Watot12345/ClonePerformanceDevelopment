@@ -252,11 +252,14 @@ class EvaluationController
             ]);
         }
 
-        // 8. Fail path: cascade training failure to linked performance goal
+        // 8. Fail path: cascade training failure to linked performance goal and remove need
         if (!$isPassed) {
             try {
                 require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                require_once __DIR__ . '/../models/PerformanceGoalModel.php';
                 $failNeedModel = new TrainingNeedModel();
+                $failGoalModel = new PerformanceGoalModel();
+
                 $linkedNeedId = $evaluationRecord['linkedNeedId'] ?? null;
                 
                 if ($linkedNeedId) {
@@ -266,15 +269,29 @@ class EvaluationController
                     foreach ($allNeeds as $need) {
                         $nEmpId  = $need['employee_id'] ?? ($need['employeeId'] ?? '');
                         $nProgId = $need['linked_program_id'] ?? ($need['linkedProgramId'] ?? '');
-                        $nGoalId = $need['target_goal_id'] ?? ($need['targetGoalId'] ?? null);
 
-                        if ($nEmpId === $associateId && $nProgId === $programId && !empty($nGoalId)) {
-                            // Only call updateStatus — the cascade hook inside fires automatically
+                        if ($nEmpId === $associateId && $nProgId === $programId) {
                             $failNeedModel->updateStatus($need['id'], 'Failed');
-                            break; // one need per program per employee
+                            break;
                         }
                     }
                 }
+
+                // Update all goals for this associate to Failed on failing training evaluation
+                $goals = $failGoalModel->getGoalsByEmployee($associateId);
+                foreach ($goals as $g) {
+                    $failGoalModel->updateStatus($g['id'], 'Failed');
+                    $failGoalModel->setInTraining($g['id'], false);
+                    $failGoalModel->setNeedsTraining($g['id'], false);
+                }
+
+                // Remove from training_needs
+                try {
+                    $pdo = getSupabaseDb();
+                    if ($pdo) {
+                        $pdo->prepare("DELETE FROM training_needs WHERE employee_id = :empId AND (linked_program_id = :progId OR category = 'Appraisal Remediation')")->execute([':empId' => $associateId, ':progId' => $programId]);
+                    }
+                } catch (\Throwable $e) {}
             } catch (\Throwable $e) {
                 error_log('Cascade error on evaluation failure: ' . $e->getMessage());
             }

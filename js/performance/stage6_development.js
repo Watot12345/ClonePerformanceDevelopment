@@ -58,18 +58,27 @@ function openViewIDPPlanModal(empId) {
     if (nameEl) nameEl.textContent = emp.name;
     if (roleEl) roleEl.textContent = `${emp.position} · ${emp.department}`;
 
-    const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
-    const rawScore = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
-    const isPIP = rawScore > 0 && rawScore < 3.0;
+    const hasCalibratedScore = evalRec && (
+        (evalRec.new_calibrated_score !== undefined && evalRec.new_calibrated_score !== null && parseFloat(evalRec.new_calibrated_score) > 0) ||
+        (evalRec.calibrated_score !== undefined && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0) ||
+        (evalRec.final_rating !== undefined && evalRec.final_rating !== null && parseFloat(evalRec.final_rating) > 0)
+    );
+    const isCalibrated = !!(hasCalibratedScore || evalRec?.status === 'Calibrated' || emp?.reviewStatus === 'Calibrated');
+    // Strictly use Stage 5 Calibration final rating (not Stage 4 uncalibrated appraisal evaluation)
+    const rawScore = isCalibrated
+        ? (parseFloat(evalRec?.new_calibrated_score || evalRec?.calibrated_score || evalRec?.final_rating || emp.calibratedScore || 0) || 0)
+        : 0;
+    const isPIP = isCalibrated && rawScore > 0 && rawScore < 3.0;
     const retryCount = getEmployeeRetryCount(emp.id);
-    const isExceededRetry = retryCount >= 3 && isPIP;
+    const isExceededRetry = isCalibrated && retryCount >= 3 && isPIP;
 
     if (ratingEl) {
-        if (rawScore > 0) {
-            ratingEl.innerHTML = `<i class="fas fa-star text-amber-500 mr-1"></i>${rawScore.toFixed(2)} / 5.0 <span class="text-xs font-semibold ${isExceededRetry ? 'text-rose-700' : (isPIP ? 'text-rose-600' : 'text-indigo-700')}">(${isExceededRetry ? 'Failed (3/3 Retries Exceeded)' : (evalRec?.tier_label || (isPIP ? 'Developing (Needs PIP)' : 'Proficient'))})</span>`;
+        if (isCalibrated && rawScore > 0) {
+            const defaultTier = rawScore >= 4.5 ? 'Master Tier' : (rawScore >= 3.5 ? 'Advanced Tier' : (rawScore >= 3.0 ? 'Proficient' : 'Developing (Needs PIP)'));
+            ratingEl.innerHTML = `<i class="fas fa-star text-amber-500 mr-1"></i>${rawScore.toFixed(2)} / 5.0 <span class="text-xs font-semibold ${isExceededRetry ? 'text-rose-700' : (isPIP ? 'text-rose-600' : 'text-indigo-700')}">(${isExceededRetry ? 'Failed (3/3 Retries Exceeded)' : (evalRec?.tier_label || defaultTier)})</span>`;
             ratingEl.className = `text-sm font-bold font-mono ${isPIP ? 'text-rose-600' : 'text-indigo-700'}`;
         } else {
-            ratingEl.innerHTML = `<span class="text-slate-400 italic text-xs">Pending Rating</span>`;
+            ratingEl.innerHTML = `<span class="text-slate-400 italic text-xs">Pending Stage 5 Calibration</span>`;
         }
     }
 
@@ -569,12 +578,20 @@ function renderIDPRosterTable() {
     if (!container) return;
     container.innerHTML = '';
 
-    // Show employees who have goals and finalized calibrated ratings from Stage 5 in database
+    // Show employees who have goals and evaluated ratings from Stage 5 in database
     let roster = (window.perfRoster && window.perfRoster.length > 0) ? window.perfRoster.filter(emp => {
         const hasGoal = typeof employeeHasApprovedGoal === 'function' ? employeeHasApprovedGoal(emp) : false;
         const evalRec = getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id)) || emp.evaluationRecord;
-        const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
-        const score = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
+        const hasCalibratedScore = evalRec && (
+            (evalRec.new_calibrated_score !== undefined && evalRec.new_calibrated_score !== null && parseFloat(evalRec.new_calibrated_score) > 0) ||
+            (evalRec.calibrated_score !== undefined && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0) ||
+            (evalRec.final_rating !== undefined && evalRec.final_rating !== null && parseFloat(evalRec.final_rating) > 0)
+        );
+        const isCalibrated = !!(hasCalibratedScore || evalRec?.status === 'Calibrated' || emp?.reviewStatus === 'Calibrated');
+        // Strictly use Stage 5 Calibration final rating (not Stage 4 uncalibrated appraisal evaluation)
+        const score = isCalibrated
+            ? (parseFloat(evalRec?.new_calibrated_score || evalRec?.calibrated_score || evalRec?.final_rating || emp.calibratedScore || 0) || 0)
+            : 0;
         return hasGoal && score > 0;
     }) : [];
 
@@ -610,19 +627,28 @@ function renderIDPRosterTable() {
         const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
         const activeGoalId = activeGoal ? activeGoal.id : null;
 
-        const evalRec = typeof getEmployeeGoalEvaluation === 'function'
-            ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
-            : (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+        const evalRec = (typeof getEmployeeGoalEvaluation === 'function' ? getEmployeeGoalEvaluation(emp.id, activeGoalId) : null)
+            || (activeGoalId ? dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null)
+            || dbEvals.find(ev => isSameEmployee(ev.employee_id, emp.id))
+            || emp.evaluationRecord;
 
-        const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
-        const score = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
-        const hasPassed = score >= 3.0;
+        const hasCalibratedScore = evalRec && (
+            (evalRec.new_calibrated_score !== undefined && evalRec.new_calibrated_score !== null && parseFloat(evalRec.new_calibrated_score) > 0) ||
+            (evalRec.calibrated_score !== undefined && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0) ||
+            (evalRec.final_rating !== undefined && evalRec.final_rating !== null && parseFloat(evalRec.final_rating) > 0)
+        );
+        const isCalibrated = !!(hasCalibratedScore || evalRec?.status === 'Calibrated' || emp?.reviewStatus === 'Calibrated');
+        // Strictly use Stage 5 Calibration final rating (not Stage 4 uncalibrated appraisal evaluation)
+        const score = isCalibrated
+            ? (parseFloat(evalRec?.new_calibrated_score || evalRec?.calibrated_score || evalRec?.final_rating || emp.calibratedScore || 0) || 0)
+            : 0;
+        const hasPassed = isCalibrated && score >= 3.0;
         const retryCount = getEmployeeRetryCount(emp.id, activeGoalId);
         const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
         const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
         const isGoalFailed = isEmployeeGoalFailed(emp.id, activeGoalId);
-        const isNeeds1on1 = (retryCount >= 3 && isScored && !hasPassed) || retryCount >= 4 || isGoalFailed;
-        const isExceededRetry = (retryCount >= 3 && !hasPassed) || isNeeds1on1;
+        const isNeeds1on1 = isCalibrated && (((retryCount >= 3 && isScored && !hasPassed) || retryCount >= 4 || isGoalFailed));
+        const isExceededRetry = isCalibrated && (((retryCount >= 3 && !hasPassed) || isNeeds1on1));
         const xpPts = getKudosXP(score);
         const isGoalDone = activeGoal && (activeGoal.status === 'Done' || activeGoal.status === 'Completed' || !!activeGoal.exp_id);
         const isKudosDisabled = !!(emp.kudosSent || isGoalDone);
@@ -654,15 +680,23 @@ function renderIDPRosterTable() {
                     `}
                 </td>
                 <td class="px-5 py-4 font-bold text-slate-800">
-                    ${isExceededRetry ? `
+                    ${score <= 0 ? `
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                            <i class="fas fa-hourglass-half mr-1 text-[9px] text-slate-400"></i>Pending Stage 5 Calibration
+                        </span>
+                    ` : (isExceededRetry ? `
                         <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-200 text-rose-900 border border-rose-300">
                             Failed (${score.toFixed(2)}/5.0)
                         </span>
-                    ` : `
-                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${!hasPassed && score > 0 ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
-                            ${!hasPassed && score > 0 ? `PIP Remediation (${score.toFixed(2)}/5.0)` : `<i class="fas fa-star text-amber-500 mr-1 text-[10px]"></i>Proficient (${score.toFixed(2)}/5.0)`}
+                    ` : (score < 3.0 ? `
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                            PIP Remediation (${score.toFixed(2)}/5.0)
                         </span>
-                    `}
+                    ` : `
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <i class="fas fa-star text-amber-500 mr-1 text-[10px]"></i>${evalRec?.tier_label || (score >= 4.5 ? 'Master Tier' : (score >= 3.5 ? 'Advanced Tier' : 'Proficient'))} (${score.toFixed(2)}/5.0)
+                        </span>
+                    `))}
                 </td>
                 <td class="px-5 py-4">
                     ${isExceededRetry ? `
@@ -670,8 +704,8 @@ function renderIDPRosterTable() {
                             <i class="fas fa-circle-xmark mr-1"></i> FAILED (Requires 1-on-1 Training)
                         </span>
                     ` : `
-                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isGoalDone ? 'bg-indigo-100 text-indigo-800' : (hasPassed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800')}">
-                            ${isGoalDone ? 'Goal Done (Kudos Sent) <i class="fas fa-check text-indigo-700 ml-1"></i>' : (hasPassed ? 'Clearance Active' : 'Action Plan Active')}
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isGoalDone ? 'bg-indigo-100 text-indigo-800' : (hasPassed ? 'bg-emerald-100 text-emerald-800' : (score <= 0 ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'))}">
+                            ${isGoalDone ? 'Goal Done (Kudos Sent) <i class="fas fa-check text-indigo-700 ml-1"></i>' : (hasPassed ? 'Clearance Active' : (score <= 0 ? 'Pending Stage 5 Calibration' : 'Action Plan Active'))}
                         </span>
                     `}
                 </td>
@@ -740,17 +774,21 @@ function showIDPDetail(empId, openModalImmediately = false) {
     const activeGoal = typeof getEmployeeActiveGoal === 'function' ? getEmployeeActiveGoal(emp.id) : (emp.goals && emp.goals[0]);
     const activeGoalId = activeGoal ? activeGoal.id : null;
 
-    const evalRec = typeof getEmployeeGoalEvaluation === 'function'
-        ? getEmployeeGoalEvaluation(emp.id, activeGoalId)
-        : (activeGoalId ? getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null);
+    const evalRec = (typeof getEmployeeGoalEvaluation === 'function' ? getEmployeeGoalEvaluation(emp.id, activeGoalId) : null)
+        || (activeGoalId ? getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id) && String(ev.goal_id) === String(activeGoalId)) : null)
+        || getDbEvaluations().find(ev => isSameEmployee(ev.employee_id, emp.id))
+        || emp.evaluationRecord;
 
-    const isCalibrated = evalRec && (evalRec.status === 'Calibrated' || (evalRec.calibrated_score !== null && evalRec.calibrated_score !== undefined && evalRec.status !== 'Rated'));
-    const score = isCalibrated && evalRec.calibrated_score ? parseFloat(evalRec.calibrated_score) : 0;
-
-    if (score === 0) {
-        showEmptyIDPDetail();
-        return;
-    }
+    const hasCalibratedScore = evalRec && (
+        (evalRec.new_calibrated_score !== undefined && evalRec.new_calibrated_score !== null && parseFloat(evalRec.new_calibrated_score) > 0) ||
+        (evalRec.calibrated_score !== undefined && evalRec.calibrated_score !== null && parseFloat(evalRec.calibrated_score) > 0) ||
+        (evalRec.final_rating !== undefined && evalRec.final_rating !== null && parseFloat(evalRec.final_rating) > 0)
+    );
+    const isCalibrated = !!(hasCalibratedScore || evalRec?.status === 'Calibrated' || emp?.reviewStatus === 'Calibrated');
+    // Strictly use Stage 5 Calibration final rating (not Stage 4 uncalibrated appraisal evaluation)
+    const score = isCalibrated
+        ? (parseFloat(evalRec?.new_calibrated_score || evalRec?.calibrated_score || evalRec?.final_rating || emp.calibratedScore || 0) || 0)
+        : 0;
 
     window.selectedEvalEmpId = emp.id;
 
@@ -764,15 +802,15 @@ function showIDPDetail(empId, openModalImmediately = false) {
     const headerActions = document.getElementById('idp-header-actions');
     const headerLmsAction = document.getElementById('idp-commitments-header-action');
 
-    const isPIP = score < 3.0;
-    const hasPassedBenchmark = score >= 3.0;
+    const isPIP = isCalibrated && score > 0 && score < 3.0;
+    const hasPassedBenchmark = isCalibrated && score >= 3.0;
     const retryCount = getEmployeeRetryCount(emp.id, activeGoalId);
     const inTraining = isEmployeeInTraining(emp.id, activeGoalId);
     const tnNeed = getEmployeeTrainingNeed(emp.id, activeGoalId);
     const isScored = isEmployeeTrainingScored(emp.id, activeGoalId);
     const isGoalFailed = isEmployeeGoalFailed(emp.id, activeGoalId);
-    const isNeeds1on1 = (retryCount >= 3 && isScored && !hasPassedBenchmark) || retryCount >= 4 || isGoalFailed;
-    const isExceededRetry = (retryCount >= 3 && !hasPassedBenchmark) || isNeeds1on1;
+    const isNeeds1on1 = isCalibrated && (((retryCount >= 3 && isScored && !hasPassedBenchmark) || retryCount >= 4 || isGoalFailed));
+    const isExceededRetry = isCalibrated && (((retryCount >= 3 && !hasPassedBenchmark) || isNeeds1on1));
     const xpPts = getKudosXP(score);
     const isGoalDone = activeGoal && (activeGoal.status === 'Done' || activeGoal.status === 'Completed' || !!activeGoal.exp_id);
     const isKudosDisabled = !!(emp.kudosSent || isGoalDone);
@@ -834,6 +872,13 @@ function showIDPDetail(empId, openModalImmediately = false) {
                 <button disabled title="Objectives Progress is not 100% (${objCheck.progressPct}%). Complete all monitoring tasks in Stage 3 first. Only view is allowed." class="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl text-xs font-bold cursor-not-allowed flex items-center space-x-1.5">
                     <i class="fas fa-lock text-[10px]"></i>
                     <span>Action (Locked)</span>
+                </button>
+            `);
+        } else if (score <= 0) {
+            actionButtons.push(`
+                <button disabled class="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl text-xs font-semibold cursor-not-allowed flex items-center space-x-1.5" title="Stage 5 Calibration has not been completed. Final rating is required before generating action plans.">
+                    <i class="fas fa-hourglass-half text-[10px]"></i>
+                    <span>Pending Calibration</span>
                 </button>
             `);
         } else if (hasPassedBenchmark) {
@@ -905,6 +950,13 @@ function showIDPDetail(empId, openModalImmediately = false) {
                 <span class="text-xs text-amber-700 font-semibold flex items-center space-x-1">
                     <i class="fas fa-lock text-[10px]"></i>
                     <span>Objectives Incomplete (${objCheck.progressPct}%)</span>
+                </span>
+            `;
+        } else if (score <= 0) {
+            headerLmsAction.innerHTML = `
+                <span class="text-xs text-slate-400 font-semibold flex items-center space-x-1">
+                    <i class="fas fa-hourglass-half text-[10px]"></i>
+                    <span>Pending Stage 5 Calibration</span>
                 </span>
             `;
         } else if (hasPassedBenchmark) {
@@ -1120,7 +1172,29 @@ function showIDPDetail(empId, openModalImmediately = false) {
                     </div>
                 </div>
             `;
+        } else if (score <= 0) {
+            topBannerHtml = `
+                <div class="col-span-full p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 shadow-2xs">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs border border-slate-200">
+                                <i class="fas fa-hourglass-half"></i>
+                            </div>
+                            <div>
+                                <h5 class="font-bold text-slate-900 text-xs">Pending Stage 5 Calibration</h5>
+                                <p class="text-[11px] text-slate-500">Stage 5 calibration rating has not been finalized yet. Reviewing baseline 70-20-10 development commitments.</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 self-start sm:self-auto flex items-center space-x-1">
+                            <i class="fas fa-clock"></i>
+                            <span>Pending Stage 5 Calibration</span>
+                        </span>
+                    </div>
+                </div>
+            `;
         } else if (hasPassedBenchmark) {
+            const clearanceLabel = evalRec?.tier_label ? `${evalRec.tier_label} Clearance` : (score >= 4.5 ? 'Master Tier Clearance' : (score >= 3.5 ? 'Advanced Tier Clearance' : 'Proficient Performance Clearance'));
+            const tierBadge = evalRec?.tier_label || (score >= 4.5 ? 'Master Tier' : (score >= 3.5 ? 'Advanced Tier' : 'Proficient'));
             topBannerHtml = `
                 <div class="col-span-full p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200/70 space-y-2 shadow-2xs">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1129,13 +1203,13 @@ function showIDPDetail(empId, openModalImmediately = false) {
                                 <i class="fas fa-circle-check"></i>
                             </div>
                             <div>
-                                <h5 class="font-bold text-slate-900 text-xs">Proficient Performance Clearance</h5>
+                                <h5 class="font-bold text-slate-900 text-xs">${clearanceLabel}</h5>
                                 <p class="text-[11px] text-slate-500">Evaluated score meets proficiency standards (<i class="fas fa-star text-amber-500 mr-0.5 text-xs"></i><strong class="text-slate-800">${score.toFixed(2)} / 5.0</strong>). No remedial tasks required.</p>
                             </div>
                         </div>
                         <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 self-start sm:self-auto flex items-center space-x-1">
                             <i class="fas fa-check"></i>
-                            <span>Proficient</span>
+                            <span>${tierBadge}</span>
                         </span>
                     </div>
                 </div>
@@ -1416,6 +1490,8 @@ async function passPIPEmployee(empId) {
         });
 
         emp.supervisorRating = 3.50;
+        emp.calibratedScore = 3.50;
+        emp.reviewStatus = 'Calibrated';
         emp.tierLabel = 'Proficient';
         emp.evaluationRecord = updated;
 

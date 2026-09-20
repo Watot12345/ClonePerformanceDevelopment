@@ -154,12 +154,21 @@ class GoalTrainingCascadeService
             return;
         }
 
-        // 3. Step 3a: training resolved successfully
+        // 3. Step 3a: training resolved successfully (Passed)
         if (in_array($newStatus, ['Passed', 'Resolved', 'Completed'], true)) {
             $this->goalModel->setInTraining($goalId, false);
             $this->goalModel->setNeedsTraining($goalId, false);
-            $this->goalModel->updateStatus($goalId, 'Done');
+            $this->goalModel->updateStatus($goalId, 'Completed');
             $this->goalModel->updateFinalRating($goalId, 4.00);
+
+            // Remove from training_needs table
+            $this->needModel->delete($needId);
+            try {
+                $pdo = getSupabaseDb();
+                if ($pdo) {
+                    $pdo->prepare("DELETE FROM training_needs WHERE id = :id")->execute([':id' => $needId]);
+                }
+            } catch (\Throwable $e) {}
 
             // Also synchronize and upgrade linked performance evaluation if exists
             $goal = $this->goalModel->find($goalId);
@@ -188,17 +197,17 @@ class GoalTrainingCascadeService
         // 4. Step 3b: training failed
         if ($newStatus === 'Failed') {
             $this->goalModel->setInTraining($goalId, false);
-            $this->goalModel->incrementRetryCount($goalId);
+            $this->goalModel->setNeedsTraining($goalId, false);
+            $this->goalModel->updateStatus($goalId, 'Failed');
 
-            // Re-fetch goal to get updated retry_count
-            $goal = $this->goalModel->find($goalId);
-            $retryCount = isset($goal['retry_count']) ? (int)$goal['retry_count'] : 0;
-
-            if ($retryCount < self::RETRY_CAP) {
-                // Re-trigger: create a new training need for the next attempt
-                $this->onGoalFailed($goalId);
-            }
-            // If retry_count >= RETRY_CAP, goal stays Failed — no re-trigger
+            // Remove from training_needs table
+            $this->needModel->delete($needId);
+            try {
+                $pdo = getSupabaseDb();
+                if ($pdo) {
+                    $pdo->prepare("DELETE FROM training_needs WHERE id = :id")->execute([':id' => $needId]);
+                }
+            } catch (\Throwable $e) {}
             return;
         }
     }

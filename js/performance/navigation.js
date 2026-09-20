@@ -160,10 +160,16 @@ async function initPerformanceViews() {
 }
 
 function renderPerformanceSkeletons() {
+    const countBadge = document.getElementById('emp-pulse-goals-count');
+    if (countBadge && (!window.dbGoals || window.dbGoals.length === 0)) {
+        countBadge.className = 'badge-primary animate-pulse';
+        countBadge.innerHTML = '<i class="fas fa-circle-notch fa-spin text-[9px] mr-1"></i>Loading...';
+    }
+
     const pulseContainer = document.getElementById('emp-pulse-goals-container');
     if (pulseContainer && (!window.dbGoals || window.dbGoals.length === 0)) {
         pulseContainer.innerHTML = Array(2).fill(0).map(() => `
-            <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-3 animate-pulse min-h-71.25 flex flex-col justify-between" style="contain: layout style;">
+            <div class="p-4.5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-3 animate-pulse min-h-71.25 flex flex-col justify-between" style="contain: layout style;">
                 <div class="flex items-center justify-between">
                     <div class="h-4 bg-slate-200 rounded-full w-24"></div>
                     <div class="h-3 bg-slate-100 rounded w-16"></div>

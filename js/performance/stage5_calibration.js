@@ -548,13 +548,19 @@ async function handleCalibrationSubmit(e) {
                 // Update dbEvaluations array
                 updateDbEvaluationRecord(saved);
 
-                // Update final_rating on dbGoals array for targetGoal only
+                // Update final_rating and needs_training on dbGoals array for targetGoal only
                 if (Array.isArray(window.dbGoals)) {
                     window.dbGoals.forEach(g => {
                         if (isSameEmployee(g.employee_id, empId) && (targetGoal ? String(g.id) === String(targetGoal.id) : true)) {
                             g.final_rating = calibratedScore;
+                            if (calibratedScore >= 3.50) {
+                                g.needs_training = false;
+                            }
                         }
                     });
+                }
+                if (targetGoal && calibratedScore >= 3.50) {
+                    targetGoal.needs_training = false;
                 }
                 try {
                     sessionStorage.removeItem(`comp_goals_cache_${empId}`);

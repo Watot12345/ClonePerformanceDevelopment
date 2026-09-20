@@ -94,6 +94,14 @@ function triggerTaskCompletionModal(taskId, goalId, checkboxEl) {
 
     if (goal) {
         const goalStatus = (goal.status || '').toLowerCase().trim();
+        const isApproved = goalStatus === 'approved' || goalStatus === 'in progress' || goalStatus === 'active';
+        if (!isApproved) {
+            if (checkboxEl) checkboxEl.checked = false;
+            if (typeof showToast === 'function') {
+                showToast(`Action Checklist is locked: Objective is ${goal.status || 'Pending Approval'}. Tasks can only be completed after objective is Approved.`, 'warning');
+            }
+            return;
+        }
         if (goalStatus === 'done' || goalStatus === 'completed' || goalStatus === 'failed') {
             if (checkboxEl) checkboxEl.checked = false;
             if (typeof showToast === 'function') {
@@ -161,6 +169,14 @@ function openCompleteTaskModal(taskId, goalId) {
 
     if (goal) {
         const goalStatus = (goal.status || '').toLowerCase().trim();
+        const isApproved = goalStatus === 'approved' || goalStatus === 'in progress' || goalStatus === 'active';
+        if (!isApproved) {
+            if (window.lastActiveTaskCheckbox) window.lastActiveTaskCheckbox.checked = false;
+            if (typeof showToast === 'function') {
+                showToast(`Action Checklist is locked: Objective is ${goal.status || 'Pending Approval'}. Tasks can only be completed after objective is Approved.`, 'warning');
+            }
+            return;
+        }
         if (goalStatus === 'done' || goalStatus === 'completed' || goalStatus === 'failed') {
             if (window.lastActiveTaskCheckbox) window.lastActiveTaskCheckbox.checked = false;
             if (typeof showToast === 'function') {
@@ -266,14 +282,27 @@ async function handleTaskCompletionSubmit(e) {
         return;
     }
 
-    // Double check LMS progress before submitting API
+    // Double check goal approval and LMS progress before submitting API
     let task = null;
+    let goal = null;
     (window.dbGoals || []).forEach(g => {
         if (!task && g.tasks) {
             const found = g.tasks.find(t => String(t.id) === String(taskId));
-            if (found) task = found;
+            if (found) { task = found; goal = g; }
         }
     });
+
+    if (goal) {
+        const goalStatus = (goal.status || '').toLowerCase().trim();
+        const isApproved = goalStatus === 'approved' || goalStatus === 'in progress' || goalStatus === 'active';
+        if (!isApproved) {
+            if (typeof showToast === 'function') {
+                showToast(`Cannot complete task: Objective is ${goal.status || 'Pending Approval'}. Tasks can only be completed on Approved objectives.`, 'warning');
+            }
+            closeModal('modal-complete-task');
+            return;
+        }
+    }
 
     const lmsInfo = checkLmsTaskProgress(task);
     if (lmsInfo.isLmsTask && !lmsInfo.canComplete) {
@@ -951,12 +980,35 @@ function renderEmployeeMonitoringStream(emp) {
                             ` : ''}
 
                             <div class="flex items-center justify-between pt-1">
-                                ${!isSupervisor && !isDone ? `
-                                    <button type="button" onclick="triggerTaskCompletionModal('${task.id}', '${goal.id}', null)" class="px-2.5 py-1 ${lmsInfo.isLmsTask && !lmsInfo.canComplete ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer'} text-[10px] font-bold rounded-lg transition inline-flex items-center space-x-1" title="${lmsInfo.isLmsTask && !lmsInfo.canComplete ? 'Must take LMS quiz before completing' : (lmsInfo.needsRetest ? 'Quiz completed (Needs Re-test). Click to record reflections and complete task' : 'Log your experience and finish task')}">
-                                        <i class="fas ${lmsInfo.isLmsTask && !lmsInfo.canComplete ? 'fa-lock' : 'fa-check'} text-[8px]"></i>
-                                        <span>${lmsInfo.isLmsTask && !lmsInfo.canComplete ? 'Take Quiz First' : (lmsInfo.needsRetest ? 'Complete Task (Re-test Needed)' : 'Complete Task')}</span>
-                                    </button>
-                                ` : '<div></div>'}
+                                ${!isSupervisor && !isDone ? (() => {
+                                    const gStatus = (goal.status || '').toLowerCase().trim();
+                                    const isApproved = gStatus === 'approved' || gStatus === 'in progress' || gStatus === 'active';
+                                    const isConcluded = gStatus === 'done' || gStatus === 'completed' || gStatus === 'failed';
+                                    const isLmsBlocked = lmsInfo.isLmsTask && !lmsInfo.canComplete;
+
+                                    if (!isApproved) {
+                                        return `
+                                            <button disabled class="px-2.5 py-1 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75 text-[10px] font-bold rounded-lg inline-flex items-center space-x-1" title="Objective is ${goal.status || 'Pending Approval'}. Complete task is available only after objective is Approved.">
+                                                <i class="fas fa-lock text-[8px]"></i>
+                                                <span>Not Approved</span>
+                                            </button>
+                                        `;
+                                    }
+                                    if (isConcluded) {
+                                        return `
+                                            <button disabled class="px-2.5 py-1 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75 text-[10px] font-bold rounded-lg inline-flex items-center space-x-1" title="Objective is already ${goal.status}.">
+                                                <i class="fas fa-lock text-[8px]"></i>
+                                                <span>Locked</span>
+                                            </button>
+                                        `;
+                                    }
+                                    return `
+                                        <button type="button" onclick="triggerTaskCompletionModal('${task.id}', '${goal.id}', null)" class="px-2.5 py-1 ${isLmsBlocked ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer'} text-[10px] font-bold rounded-lg transition inline-flex items-center space-x-1" title="${isLmsBlocked ? 'Must take LMS quiz before completing' : (lmsInfo.needsRetest ? 'Quiz completed (Needs Re-test). Click to record reflections and complete task' : 'Log your experience and finish task')}">
+                                            <i class="fas ${isLmsBlocked ? 'fa-lock' : 'fa-check'} text-[8px]"></i>
+                                            <span>${isLmsBlocked ? 'Take Quiz First' : (lmsInfo.needsRetest ? 'Complete Task (Re-test Needed)' : 'Complete Task')}</span>
+                                        </button>
+                                    `;
+                                })() : '<div></div>'}
                                 <button onclick="openSupervisorFeedbackModal('${task.id}')" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold rounded-lg transition inline-flex items-center space-x-1">
                                     <i class="fas fa-pen text-[8px]"></i>
                                     <span>${task.supervisor_feedback ? 'Edit Coaching / Accomplishment' : '+ Record Coaching & Accomplishments'}</span>

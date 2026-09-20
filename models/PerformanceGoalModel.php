@@ -266,10 +266,29 @@ class PerformanceGoalModel extends BaseModel
      */
     public function setGoalRetryCount(string|int $goalId, int $count): ?array
     {
-        return $this->update((string)$goalId, [
+        $updateData = [
             'retry_count'    => $count,
             'updated_at'     => date('c')
-        ]);
+        ];
+        if ($count >= 3 && $count < 4) {
+            $updateData['needs_training'] = true;
+        } elseif ($count < 3) {
+            $updateData['needs_training'] = false;
+        }
+        $res = $this->update((string)$goalId, $updateData);
+
+        if ($count >= 3) {
+            try {
+                require_once __DIR__ . '/TrainingNeedModel.php';
+                $goal = $this->find((string)$goalId);
+                if (!empty($goal['employee_id'])) {
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($goal['employee_id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('[PerformanceGoalModel] Error syncing deficits on setGoalRetryCount: ' . $e->getMessage());
+            }
+        }
+        return $res;
     }
 
     /**
@@ -329,10 +348,28 @@ class PerformanceGoalModel extends BaseModel
         $current = isset($goal['retry_count']) ? (int)$goal['retry_count'] : 0;
         $newCount = $current + $increment;
 
-        return $this->update((string)$goalId, [
+        $updateData = [
             'retry_count'    => $newCount,
             'updated_at'     => date('c')
-        ]);
+        ];
+        if ($newCount >= 3 && $newCount < 4) {
+            $updateData['needs_training'] = true;
+        }
+
+        $res = $this->update((string)$goalId, $updateData);
+
+        if ($newCount >= 3) {
+            try {
+                require_once __DIR__ . '/TrainingNeedModel.php';
+                $empId = $goal['employee_id'] ?? null;
+                if (!empty($empId)) {
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+                }
+            } catch (\Throwable $e) {
+                error_log('[PerformanceGoalModel] Error syncing deficits on incrementRetryCount: ' . $e->getMessage());
+            }
+        }
+        return $res;
     }
 
     /**

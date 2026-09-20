@@ -992,10 +992,10 @@ async function logOutToAuth(reason = null) {
 window.logOutToAuth = logOutToAuth;
 
 // =========================================================================
-// INACTIVITY AUTO-LOGOUT CONTROLLER (1 MINUTE INACTIVITY + 10S COUNTDOWN)
+// INACTIVITY AUTO-LOGOUT CONTROLLER (5 MINUTES INACTIVITY + 10S COUNTDOWN)
 // =========================================================================
 const InactivityTracker = {
-    INACTIVITY_LIMIT_MS: 60 * 1000,    // 1 minute (60 seconds) of inactivity
+    INACTIVITY_LIMIT_MS: 5 * 60 * 1000,    // 5 minutes (300 seconds) of inactivity
     COUNTDOWN_DURATION_SEC: 10,       // 10 seconds warning countdown
     
     lastActivityTimestamp: Date.now(),

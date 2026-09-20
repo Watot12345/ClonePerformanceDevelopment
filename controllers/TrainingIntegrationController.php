@@ -77,10 +77,26 @@ class TrainingIntegrationController
             $results['xp_synced_to_ledger'] = true;
         }
 
-        // 4. Performance goal updates — handled by cascade hook inside
-        //    TrainingNeedModel::updateStatus('Resolved') → onTrainingNeedStatusChanged()
-        //    which sets in_training=false, needs_training=false, status='Done'
-        //    on the linked goal via target_goal_id. No manual updates needed.
+        // 4. Performance goal updates — cascade status to Completed on passing training
+        if (!empty($associateId)) {
+            require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+            $pGoalModel = new PerformanceGoalModel();
+            $goals = $pGoalModel->getGoalsByEmployee($associateId);
+            foreach ($goals as $g) {
+                $pGoalModel->updateStatus($g['id'], 'Completed');
+                $pGoalModel->updateFinalRating($g['id'], 4.00);
+                $pGoalModel->setInTraining($g['id'], false);
+                $pGoalModel->setNeedsTraining($g['id'], false);
+            }
+
+            // Remove resolved need from training_needs
+            try {
+                $pdo = getSupabaseDb();
+                if ($pdo) {
+                    $pdo->prepare("DELETE FROM training_needs WHERE employee_id = :empId AND (linked_program_id = :progId OR category = 'Appraisal Remediation')")->execute([':empId' => $associateId, ':progId' => $programId]);
+                }
+            } catch (\Throwable $e) {}
+        }
 
         // 5. Email dispatch omitted as per requirement
         $results['email_dispatched'] = false;

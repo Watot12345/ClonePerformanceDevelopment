@@ -417,7 +417,7 @@ function getEmployeeGoalEvaluation(empId, goalId = null) {
 
     const targetGoalId = String(targetGoal.id);
     const goalEval = allEvals.find(ev => isSameEmployee(ev.employee_id, empId) && String(ev.goal_id) === targetGoalId);
-    return goalEval || null;
+    return goalEval || allEvals.find(ev => isSameEmployee(ev.employee_id, empId)) || null;
 }
 window.getEmployeeGoalEvaluation = getEmployeeGoalEvaluation;
 

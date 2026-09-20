@@ -1562,9 +1562,9 @@ class LmsController
             }
         }
 
-        // Auto-complete or sync linked task in performance_tasks
+        // Auto-complete or sync linked task in performance_tasks and performance_goals
         try {
-            $taskQuery = 'performance_tasks?employee_id=eq.' . urlencode($employee) . '&status=neq.completed';
+            $taskQuery = 'performance_tasks?employee_id=eq.' . urlencode($employee);
             $tRes = supabaseRequest($taskQuery, 'GET', null, true);
             if (!empty($tRes['data']) && is_array($tRes['data'])) {
                 foreach ($tRes['data'] as $pt) {
@@ -1583,7 +1583,7 @@ class LmsController
                                 'updated_at' => $now
                             ], true);
                         } else {
-                            // If quiz failed, keep task pending for re-test
+                            // If quiz retake failed, revert task from completed to pending/failed
                             $learningsText = "Completed LMS quiz attempt with score {$score}%. Needs Re-test (Benchmark: 80%).";
                             supabaseRequest('performance_tasks?id=eq.' . urlencode($pt['id']), 'PATCH', [
                                 'status' => 'pending',

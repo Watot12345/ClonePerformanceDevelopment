@@ -436,21 +436,26 @@ function renderEmployeePulseGoals(goals) {
     const pct = totalGoalCount > 0 ? Math.round((completedOrApprovedCount / totalGoalCount) * 100) : 0;
 
     if (countBadge) {
+        countBadge.classList.remove('animate-pulse');
         countBadge.textContent = `${totalGoalCount}/2 Objectives`;
     }
 
     const kpiGoalsRatio = document.getElementById('kpi-goals-ratio');
     if (kpiGoalsRatio) {
+        kpiGoalsRatio.classList.remove('animate-pulse');
+        kpiGoalsRatio.className = 'badge-sage';
         kpiGoalsRatio.textContent = `${completedOrApprovedCount} of ${totalGoalCount} Passed (${totalGoalCount}/2 Set)`;
     }
 
     const kpiGoalsPct = document.getElementById('kpi-goals-pct');
     if (kpiGoalsPct) {
+        kpiGoalsPct.classList.remove('animate-pulse');
         kpiGoalsPct.textContent = `${pct}%`;
     }
 
     const kpiGoalsStatus = document.getElementById('kpi-goals-status');
     if (kpiGoalsStatus) {
+        kpiGoalsStatus.classList.remove('animate-pulse');
         if (totalGoalCount === 0) {
             kpiGoalsStatus.className = 'text-xs text-slate-400 font-semibold';
             kpiGoalsStatus.innerHTML = 'No Goals Set';
@@ -470,6 +475,7 @@ function renderEmployeePulseGoals(goals) {
 
     const kpiGoalsSub = document.getElementById('kpi-goals-subtitle');
     if (kpiGoalsSub) {
+        kpiGoalsSub.classList.remove('animate-pulse');
         kpiGoalsSub.textContent = totalGoalCount === 0 ? '0 goals in progress' : `${inProgressCount} goals in progress`;
     }
 
@@ -1778,11 +1784,14 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                         ${tasks.length > 0 ? tasks.map(t => {
                             const isDone = t.status === 'completed';
                             const isSupervisor = (typeof isCurrentUserSupervisor === 'function') ? isCurrentUserSupervisor() : (window.activePersonaRole === 'Supervisor');
+                            const isGoalApproved = goalStatus.toLowerCase() === 'approved' || goalStatus.toLowerCase() === 'in progress' || goalStatus.toLowerCase() === 'active';
                             const isGoalConcluded = isCompleted || isFailed;
+                            const isEditDisabled = isSupervisor || isGoalConcluded || !isGoalApproved;
                             const cannotEditReason = isSupervisor
                                 ? 'Supervisor cannot edit employee Action Checklist'
-                                : (isGoalConcluded ? `Action Checklist is locked: Objective is ${goalStatus}` : '');
-                            const isEditDisabled = isSupervisor || isGoalConcluded;
+                                : (!isGoalApproved
+                                    ? `Action Checklist is locked: Objective is ${goalStatus || 'Pending Approval'}. Tasks can only be completed on Approved objectives.`
+                                    : (isGoalConcluded ? `Action Checklist is locked: Objective is ${goalStatus}` : ''));
                             const completedDateStr = t.completed_at ? new Date(t.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
                             const lmsInfo = (typeof checkLmsTaskProgress === 'function') ? checkLmsTaskProgress(t, g.employee_id) : { isLmsTask: false };
                             return `
@@ -1821,7 +1830,7 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                                             ` : (isEditDisabled ? `
                                                 <button disabled class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60 shadow-none inline-flex items-center space-x-1" title="${cannotEditReason}">
                                                     <i class="fas fa-lock text-[8px]"></i>
-                                                    <span>${isSupervisor ? 'Employee Task' : 'Locked'}</span>
+                                                    <span>${!isGoalApproved ? 'Not Approved' : (isSupervisor ? 'Employee Task' : 'Locked')}</span>
                                                 </button>
                                                 <span class="text-[9px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                                     Due: ${t.target_date || 'Q3'}

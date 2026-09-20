@@ -131,23 +131,57 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                             <i class="fas fa-expand text-[9px]"></i>
                                         </div>
                                         <!-- Loading Overlay -->
-                                        <div id="kpi-goals-loading" class="overview-loading-overlay hidden absolute inset-0 bg-white/85 backdrop-blur-2xs flex-col items-center justify-center z-10">
+                                        <div id="kpi-goals-loading" class="overview-loading-overlay flex absolute inset-0 bg-white/85 backdrop-blur-2xs flex-col items-center justify-center z-10 transition-opacity duration-300">
                                             <div class="w-6 h-6 rounded-full border-2 border-sage-dark/20 border-t-sage-dark animate-spin mb-1"></div>
                                             <span class="text-[10px] font-semibold text-slate-500">Querying Goals...</span>
                                         </div>
 
                                         <div class="flex justify-between items-center text-xs text-slate-500 font-medium pr-4">
                                             <span class="font-semibold text-slate-700">Q3 Goals Progress</span>
-                                            <span id="kpi-goals-ratio" class="badge-sage">0 of 0 Passed (0/2 Set)</span>
+                                            <span id="kpi-goals-ratio" class="badge-sage animate-pulse"><i class="fas fa-circle-notch fa-spin text-[9px] mr-1"></i>Loading...</span>
                                         </div>
                                         <div class="flex items-baseline space-x-2">
-                                            <span id="kpi-goals-pct" class="text-3xl font-heading font-bold text-slate-900">0%</span>
-                                            <span id="kpi-goals-status" class="text-xs text-slate-400 font-semibold">No Goals Set</span>
+                                            <span id="kpi-goals-pct" class="text-3xl font-heading font-bold text-slate-900 inline-flex items-center"><span class="inline-block w-14 h-7 bg-slate-200/80 rounded-md animate-pulse"></span></span>
+                                            <span id="kpi-goals-status" class="text-xs text-slate-400 font-semibold animate-pulse"><i class="fas fa-circle-notch fa-spin text-[9px] mr-1"></i>Syncing...</span>
                                         </div>
                                         <div class="w-full bg-brand-canvas h-1.5 rounded-full overflow-hidden border border-brand-border/50">
                                             <div id="kpi-goals-bar" class="bg-sage h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
                                         </div>
-                                        <p id="kpi-goals-subtitle" class="text-[11px] text-slate-400">0 goals in progress</p>
+                                        <p id="kpi-goals-subtitle" class="text-[11px] text-slate-400 animate-pulse">Syncing active Q3 goals...</p>
+                                        <script>
+                                            (function() {
+                                                try {
+                                                    var cached = window.PerfCache ? window.PerfCache.get('planning_data') : null;
+                                                    if (cached && Array.isArray(cached.goals) && cached.goals.length > 0) {
+                                                        var userObj = window.currentUser || JSON.parse(localStorage.getItem('oxford_session_user') || '{}');
+                                                        var uid = (userObj.id || userObj.employee_code || '').toLowerCase().trim();
+                                                        var eg = cached.goals.filter(function(g) {
+                                                            var ge = (g.employee_id || '').toLowerCase().trim();
+                                                            return ge === uid || (userObj.id && ge === String(userObj.id).toLowerCase()) || (userObj.employee_code && ge === String(userObj.employee_code).toLowerCase());
+                                                        });
+                                                        if (eg.length > 0) {
+                                                            var comp = eg.filter(function(g){ var s = (g.status||'').toLowerCase(); return s==='approved'||s==='completed'||s==='passed'||s==='done'; }).length;
+                                                            var p = Math.round((comp / eg.length) * 100);
+                                                            var elPct = document.getElementById('kpi-goals-pct');
+                                                            if (elPct) elPct.textContent = p + '%';
+                                                            var elRatio = document.getElementById('kpi-goals-ratio');
+                                                            if (elRatio) { elRatio.className = 'badge-sage'; elRatio.textContent = comp + ' of ' + eg.length + ' Passed (' + eg.length + '/2 Set)'; }
+                                                            var elSub = document.getElementById('kpi-goals-subtitle');
+                                                            if (elSub) { elSub.className = 'text-[11px] text-slate-400'; elSub.textContent = (eg.length - comp) + ' goals in progress'; }
+                                                            var elBar = document.getElementById('kpi-goals-bar');
+                                                            if (elBar) elBar.style.width = p + '%';
+                                                            var elStatus = document.getElementById('kpi-goals-status');
+                                                            if (elStatus) {
+                                                                if (p >= 75) { elStatus.className = 'text-xs text-sage-dark font-semibold'; elStatus.innerHTML = '<i class="fas fa-check"></i> On Track'; }
+                                                                else { elStatus.className = 'text-xs text-dusty-dark font-semibold'; elStatus.innerHTML = '<i class="fas fa-clock"></i> In Progress'; }
+                                                            }
+                                                            var elGl = document.getElementById('kpi-goals-loading');
+                                                            if (elGl) elGl.classList.add('hidden');
+                                                        }
+                                                    }
+                                                } catch(e) {}
+                                            })();
+                                        </script>
                                     </div>
 
                                     <!-- Card 2: Competency Matrix -->
@@ -221,14 +255,14 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 
                                     <!-- Left Column: Individual Performance Objectives Card (Live Supabase Data) -->
-                                    <div class="card-clean p-6 space-y-4 flex flex-col justify-between">
+                                    <div class="card-clean p-6 space-y-4 flex flex-col justify-between relative overflow-hidden">
                                         <div class="flex flex-col h-full">
                                             <div onclick="openOverviewDrilldown('active_objectives')" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 shrink-0 cursor-pointer group" title="Click to view Objectives Drilldown">
                                                 <div class="space-y-0.5">
                                                     <div class="flex items-center space-x-2">
                                                         <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors">
                                                             My Active Performance Objectives</h3>
-                                                        <span id="emp-pulse-goals-count" class="badge-primary">0 Goals</span>
+                                                        <span id="emp-pulse-goals-count" class="badge-primary animate-pulse"><i class="fas fa-circle-notch fa-spin text-[9px] mr-1"></i>Loading...</span>
                                                         <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-primary font-semibold hidden sm:inline-flex items-center gap-0.5">
                                                             <i class="fas fa-expand text-[9px]"></i>
                                                         </span>
@@ -241,7 +275,55 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                                 </button>
                                             </div>
                                             <div id="emp-pulse-goals-container" class="grid grid-cols-1 gap-4 pt-4 min-h-75 max-h-115 overflow-y-auto custom-scrollbar pr-1.5" style="contain: layout style;">
-                                                <!-- Dynamic live goals loaded from Supabase -->
+                                                <!-- Dynamic live goals skeleton loader (replaced once Supabase query completes) -->
+                                                <div class="animate-pulse space-y-4 col-span-full">
+                                                    <!-- Skeleton Card 1 -->
+                                                    <div class="p-4.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-3">
+                                                        <div class="flex justify-between items-start gap-3">
+                                                            <div class="space-y-1.5 flex-1">
+                                                                <div class="h-4 bg-slate-200/80 rounded-md w-3/4"></div>
+                                                                <div class="h-3 bg-slate-200/50 rounded-md w-1/2"></div>
+                                                            </div>
+                                                            <div class="h-5 bg-slate-200/70 rounded-full w-24 shrink-0"></div>
+                                                        </div>
+                                                        <div class="space-y-1.5 pt-1">
+                                                            <div class="flex justify-between text-xs">
+                                                                <div class="h-3 bg-slate-200/60 rounded w-20"></div>
+                                                                <div class="h-3 bg-slate-200/60 rounded w-10"></div>
+                                                            </div>
+                                                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                                <div class="bg-slate-200/80 h-2 rounded-full w-1/3"></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                                            <div class="h-3 bg-slate-200/50 rounded w-28"></div>
+                                                            <div class="h-6 bg-slate-200/60 rounded-lg w-16"></div>
+                                                        </div>
+                                                    </div>
+                                                    <!-- Skeleton Card 2 -->
+                                                    <div class="p-4.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-3">
+                                                        <div class="flex justify-between items-start gap-3">
+                                                            <div class="space-y-1.5 flex-1">
+                                                                <div class="h-4 bg-slate-200/80 rounded-md w-2/3"></div>
+                                                                <div class="h-3 bg-slate-200/50 rounded-md w-2/5"></div>
+                                                            </div>
+                                                            <div class="h-5 bg-slate-200/70 rounded-full w-24 shrink-0"></div>
+                                                        </div>
+                                                        <div class="space-y-1.5 pt-1">
+                                                            <div class="flex justify-between text-xs">
+                                                                <div class="h-3 bg-slate-200/60 rounded w-20"></div>
+                                                                <div class="h-3 bg-slate-200/60 rounded w-10"></div>
+                                                            </div>
+                                                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                                <div class="bg-slate-200/80 h-2 rounded-full w-1/2"></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                                            <div class="h-3 bg-slate-200/50 rounded w-32"></div>
+                                                            <div class="h-6 bg-slate-200/60 rounded-lg w-16"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

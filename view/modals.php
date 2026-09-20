@@ -5098,7 +5098,7 @@
                     </div>
                     <h3 class="font-heading text-xl font-bold text-slate-900 tracking-tight">Are you still there?</h3>
                     <p class="text-xs text-slate-500 leading-relaxed px-2">
-                        You have been inactive for at least 1 minute. To safeguard your account, your session will automatically terminate in:
+                        You have been inactive for at least 5 minutes. To safeguard your account, your session will automatically terminate in:
                     </p>
                 </div>
 

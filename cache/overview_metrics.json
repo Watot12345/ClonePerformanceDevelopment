@@ -1,14 +1,14 @@
 {
-    "livePropertyXp": 750,
-    "liveKudosSent": 19,
-    "liveBadgesCount": 6,
+    "livePropertyXp": 1800,
+    "liveKudosSent": 2,
+    "liveBadgesCount": 11,
     "liveActiveStaffCount": 5,
-    "liveTotalGoals": 0,
-    "liveApprovedGoals": 0,
+    "liveTotalGoals": 1,
+    "liveApprovedGoals": 1,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
-    "liveGoalsApprovalRate": 0,
-    "liveTotalPrescribed": 0,
+    "liveGoalsApprovalRate": 100,
+    "liveTotalPrescribed": 4,
     "livePassedPrescribed": 0,
     "liveLmsAvgScore": 0,
     "liveLmsRate": 0,
@@ -23,8 +23,8 @@
             "staff_ids": [
                 "emp-101"
             ],
-            "goals_total": 0,
-            "goals_approved": 0,
+            "goals_total": 1,
+            "goals_approved": 1,
             "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
@@ -51,7 +51,7 @@
             ],
             "goals_total": 0,
             "goals_approved": 0,
-            "lms_total": 0,
+            "lms_total": 1,
             "lms_progress_sum": 0,
             "lms_passed": 0,
             "succ_candidates": 0,
@@ -79,7 +79,7 @@
             ],
             "goals_total": 0,
             "goals_approved": 0,
-            "lms_total": 0,
+            "lms_total": 3,
             "lms_progress_sum": 0,
             "lms_passed": 0,
             "succ_candidates": 0,
@@ -163,5 +163,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789910235
+    "cached_at": 1789928768
 }

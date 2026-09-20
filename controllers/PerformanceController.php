@@ -674,6 +674,14 @@ class PerformanceController
                 $parentGoal = $this->goalModel->find((string)$existingTask['goal_id']);
                 if ($parentGoal) {
                     $pst = strtolower(trim($parentGoal['status'] ?? ''));
+                    $isApproved = in_array($pst, ['approved', 'in progress', 'active']);
+                    if (!$isApproved) {
+                        return [
+                            'success' => false,
+                            'data'    => null,
+                            'message' => "Cannot complete task: Associated objective is '{$parentGoal['status']}'. Tasks can only be completed on Approved objectives."
+                        ];
+                    }
                     if ($pst === 'done' || $pst === 'completed' || $pst === 'failed') {
                         return [
                             'success' => false,
@@ -1114,6 +1122,14 @@ class PerformanceController
                 'is_read' => false,
                 'created_at' => date('c')
             ]);
+
+            if ($score >= 3.50) {
+                $this->goalModel->setEmployeeGoalsNeedsTraining($empId, false);
+                try {
+                    require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+                } catch (\Throwable $e) {}
+            }
         }
 
         return [
@@ -1572,16 +1588,43 @@ class PerformanceController
             $this->goalModel->setEmployeeGoalsFinalRating($empId, $calibratedScore, $goalId);
         }
 
-        // If calibrated score is below 3.0 after 2nd attempt (retry_count >= 1), automatically flag needs_training = true
-        if ($calibratedScore > 0 && $calibratedScore < 3.0) {
+        // If calibrated score is benchmark met (>= 3.50), clear needs_training flag and resolve training needs
+        if ($calibratedScore >= 3.50) {
+            $this->goalModel->setEmployeeGoalsNeedsTraining($empId, false);
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+            } catch (\Throwable $e) {
+                error_log('Error syncing training deficits after calibration: ' . $e->getMessage());
+            }
+        } elseif ($calibratedScore > 0) {
+            // Check retry count: only flag needs_training = true if retry attempts are exhausted (retry_count >= 3)
             $goals = $this->goalModel->getGoalsByEmployee($empId);
             $maxRetry = 0;
+            $hasFailedGoal = false;
             foreach ($goals as $g) {
                 $r = isset($g['retry_count']) ? (int)$g['retry_count'] : 0;
                 if ($r > $maxRetry) $maxRetry = $r;
+                if (($g['status'] ?? '') === 'Failed') $hasFailedGoal = true;
             }
-            if ($maxRetry >= 1) {
+
+            if ($maxRetry >= 3 || $hasFailedGoal) {
                 $this->goalModel->setEmployeeGoalsNeedsTraining($empId, true);
+                try {
+                    require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+                } catch (\Throwable $e) {
+                    error_log('Error syncing training deficits after calibration: ' . $e->getMessage());
+                }
+            } else {
+                // If retries not yet exhausted (< 3), ensure needs_training is false
+                $this->goalModel->setEmployeeGoalsNeedsTraining($empId, false);
+                try {
+                    require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+                } catch (\Throwable $e) {
+                    error_log('Error syncing training deficits after calibration: ' . $e->getMessage());
+                }
             }
         }
 
@@ -1595,6 +1638,9 @@ class PerformanceController
     /**
      * Set needs_training boolean for a goal or for all goals of an employee
      */
+    /**
+     * Set needs_training boolean for a goal or for all goals of an employee
+     */
     public function setNeedsTraining(array $payload): array
     {
         $goalId = $payload['goal_id'] ?? $payload['id'] ?? null;
@@ -1603,6 +1649,15 @@ class PerformanceController
 
         if (!empty($goalId)) {
             $updated = $this->goalModel->setNeedsTraining($goalId, $needsTraining);
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                $g = $this->goalModel->find((string)$goalId);
+                if (!empty($g['employee_id'])) {
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($g['employee_id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('[PerformanceController::setNeedsTraining] Error syncing deficits: ' . $e->getMessage());
+            }
             return [
                 'success' => true,
                 'data'    => $updated,
@@ -1612,6 +1667,12 @@ class PerformanceController
 
         if (!empty($empId)) {
             $updated = $this->goalModel->setEmployeeGoalsNeedsTraining($empId, $needsTraining);
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+            } catch (\Throwable $e) {
+                error_log('[PerformanceController::setNeedsTraining] Error syncing deficits: ' . $e->getMessage());
+            }
             return [
                 'success' => true,
                 'data'    => $updated,
@@ -1637,6 +1698,19 @@ class PerformanceController
 
         if (!empty($goalId)) {
             $updated = $this->goalModel->incrementRetryCount($goalId, $increment);
+            $newCount = isset($updated['retry_count']) ? (int)$updated['retry_count'] : 0;
+            if ($newCount >= 3 && $newCount < 4) {
+                $this->goalModel->setNeedsTraining($goalId, true);
+            }
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                $g = $this->goalModel->find((string)$goalId);
+                if (!empty($g['employee_id'])) {
+                    (new TrainingNeedModel())->syncDeficitsFromPerformance($g['employee_id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('[PerformanceController::incrementRetryCount] Error syncing deficits: ' . $e->getMessage());
+            }
             return [
                 'success' => true,
                 'data'    => $updated,
@@ -1646,6 +1720,21 @@ class PerformanceController
 
         if (!empty($empId)) {
             $updated = $this->goalModel->incrementEmployeeGoalsRetryCount($empId, $increment);
+            $goals = $this->goalModel->getGoalsByEmployee($empId);
+            $maxRetry = 0;
+            foreach ($goals as $g) {
+                $r = isset($g['retry_count']) ? (int)$g['retry_count'] : 0;
+                if ($r > $maxRetry) $maxRetry = $r;
+            }
+            if ($maxRetry >= 3 && $maxRetry < 4) {
+                $this->goalModel->setEmployeeGoalsNeedsTraining($empId, true);
+            }
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+            } catch (\Throwable $e) {
+                error_log('[PerformanceController::incrementRetryCount] Error syncing deficits: ' . $e->getMessage());
+            }
             return [
                 'success' => true,
                 'data'    => $updated,
@@ -1686,6 +1775,14 @@ class PerformanceController
             $this->goalModel->setEmployeeGoalsNeedsTraining($empId, true);
         }
 
+        // Trigger sync of training_needs so that the deficit row is automatically created/updated
+        try {
+            require_once __DIR__ . '/../models/TrainingNeedModel.php';
+            (new TrainingNeedModel())->syncDeficitsFromPerformance($empId);
+        } catch (\Throwable $e) {
+            error_log('[PerformanceController::retryPlan] Error syncing deficits: ' . $e->getMessage());
+        }
+
         return [
             'success' => true,
             'needs_formal_training' => $needsTraining,
@@ -1693,7 +1790,7 @@ class PerformanceController
             'retry_count' => $newRetryCount,
             'data'    => $updatedGoals,
             'message' => $needsTraining
-                ? "Plan retried (Retry count updated to {$newRetryCount}). Associate is flagged for Needs Training (True)."
+                ? "Plan retried (Retry count updated to {$newRetryCount}). Associate is flagged for Needs Training (True) and enrolled in Training Needs."
                 : "Plan retried (Retry count updated to {$newRetryCount} in database). Tasks prepared for re-monitoring."
         ];
     }

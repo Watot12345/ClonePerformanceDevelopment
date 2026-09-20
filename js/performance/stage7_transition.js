@@ -443,7 +443,7 @@ function showCycleDetail(empId, openModalImmediately = false) {
                     <span class="text-2xl font-bold text-sage-dark font-mono"><i class="fas fa-star text-amber-500 mr-1 text-lg"></i>${effectiveScore.toFixed(2)} / 5.0</span>
                 </div>
                 <p class="text-xs text-slate-600 leading-relaxed">
-                    By completing the 2026 Q3 performance evaluation and IDP commitments, <strong>${emp.name}</strong> achieved a <strong>${evalRec?.tier_label || (isCalibrated ? 'Calibrated' : 'Proficient')}</strong> rating (${effectiveScore.toFixed(2)} / 5.0). These validated competencies will form the elevated baseline for the upcoming <strong>2026 Q4 Cycle</strong>.
+                    By completing the 2026 Q3 performance evaluation and IDP commitments, <strong>${emp.name}</strong> achieved a <strong>${evalRec?.tier_label || (effectiveScore >= 4.5 ? 'Master Tier' : (effectiveScore >= 3.5 ? 'Advanced Tier' : (effectiveScore >= 3.0 ? 'Proficient' : 'Developing')))}</strong> rating (${effectiveScore.toFixed(2)} / 5.0). These validated competencies will form the elevated baseline for the upcoming <strong>2026 Q4 Cycle</strong>.
                 </p>
                 <div class="pt-3 border-t border-brand-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <span class="text-xs text-slate-500">
@@ -1077,7 +1077,8 @@ function openReviewTasksModal(empId) {
     if (empNameEl) empNameEl.textContent = emp.name;
     if (empRoleEl) empRoleEl.textContent = `${emp.position || 'Associate'} · ${emp.department || 'Property-Wide'}`;
     if (scorePillEl) {
-        scorePillEl.innerHTML = `<i class="fas fa-star text-amber-500 mr-1"></i>${score > 0 ? score.toFixed(2) : '0.00'} / 5.0 (${evalRec?.tier_label || (score >= 3.0 ? 'Proficient' : 'Developing')})`;
+        const tierText = score > 0 ? (evalRec?.tier_label || (score >= 4.5 ? 'Master Tier' : (score >= 3.5 ? 'Advanced Tier' : (score >= 3.0 ? 'Proficient' : 'Developing')))) : 'Pending Rating';
+        scorePillEl.innerHTML = `<i class="fas fa-star text-amber-500 mr-1"></i>${score > 0 ? score.toFixed(2) : '0.00'} / 5.0 (${tierText})`;
         scorePillEl.className = `px-2.5 py-1 rounded-full text-[10px] font-bold border font-mono ${score >= 3.0 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`;
     }
 

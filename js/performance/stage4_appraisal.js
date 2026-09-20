@@ -655,6 +655,17 @@ async function handleAppraisalSubmit(e) {
             emp.reviewStatus = 'Pending Calibration';
         }
 
+        if (finalScore >= 3.50) {
+            if (targetGoal) targetGoal.needs_training = false;
+            if (Array.isArray(window.dbGoals)) {
+                window.dbGoals.forEach(g => {
+                    if (isSameEmployee(g.employee_id, empId) && (targetGoal ? String(g.id) === String(targetGoal.id) : true)) {
+                        g.needs_training = false;
+                    }
+                });
+            }
+        }
+
         updateDbEvaluationRecord(saved);
 
         if (typeof showToast === 'function') {

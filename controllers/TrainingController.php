@@ -252,7 +252,7 @@ class TrainingController
         }
         $created = $this->sessionModel->createSession($data);
 
-        // Fix: update linked training need status to Scheduled so cascade hook sets in_training=true
+        // Update linked training need status to Scheduled so cascade hook sets in_training=true
         $linkedNeedId = $data['linkedNeedId'] ?? ($data['linked_need_id'] ?? null);
         if (!empty($linkedNeedId)) {
             require_once __DIR__ . "/../models/TrainingNeedModel.php";
@@ -260,15 +260,33 @@ class TrainingController
             $needModel->updateStatus($linkedNeedId, "Scheduled");
         }
 
-        // Notify all rostered associates
+        // Notify all rostered associates and set in_training = true on their performance goals
         $roster = $created['roster'] ?? ($data['roster'] ?? []);
         if (is_string($roster)) {
             $roster = json_decode($roster, true) ?: [];
         }
         if (is_array($roster)) {
+            require_once __DIR__ . "/../models/PerformanceGoalModel.php";
+            require_once __DIR__ . "/../models/TrainingNeedModel.php";
+            $pGoalModel = new PerformanceGoalModel();
+            $tNeedModel = new TrainingNeedModel();
+
             foreach ($roster as $p) {
                 $empId = $p['associateId'] ?? ($p['employee_id'] ?? ($p['id'] ?? ''));
                 if (!empty($empId)) {
+                    // Set in_training = true on active performance goals
+                    $pGoalModel->setEmployeeGoalsInTraining($empId, true);
+
+                    // Update open training needs for this employee to Scheduled
+                    try {
+                        $openNeeds = $tNeedModel->getNeeds(['employee_id' => $empId]);
+                        foreach ($openNeeds as $on) {
+                            if (!in_array($on['status'] ?? '', ['Resolved', 'Completed', 'Passed', 'Failed'])) {
+                                $tNeedModel->updateStatus($on['id'], 'Scheduled');
+                            }
+                        }
+                    } catch (\Throwable $e) {}
+
                     $sessionTitle = $created['title'] ?? 'Hospitality Training Session';
                     $sessionDate = $created['session_date'] ?? ($created['date'] ?? 'Upcoming');
                     $sessionTime = $created['time_slot'] ?? ($created['time'] ?? '14:00 - 17:30');

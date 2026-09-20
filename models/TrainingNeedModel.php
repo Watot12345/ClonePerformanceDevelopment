@@ -964,9 +964,19 @@ class TrainingNeedModel extends BaseModel
             if (!$eId || isset($seenEmployees[$eId])) continue;
             $seenEmployees[$eId] = true;
 
-            $calibratedScore = (float)($ev['calibrated_score'] ?? ($ev['supervisor_rating'] ?? 5.00));
+            $rawCalibrated = isset($ev['calibrated_score']) && $ev['calibrated_score'] !== '' ? (float)$ev['calibrated_score'] : 0.0;
+            $rawSupervisor = isset($ev['supervisor_rating']) && $ev['supervisor_rating'] !== '' ? (float)$ev['supervisor_rating'] : 0.0;
+            $rawNewCalib   = isset($ev['new_calibrated_score']) && $ev['new_calibrated_score'] !== '' ? (float)$ev['new_calibrated_score'] : 0.0;
+
+            // Pick actual score (new_calibrated > calibrated > supervisor > 0)
+            $calibratedScore = $rawNewCalib > 0 ? $rawNewCalib : ($rawCalibrated > 0 ? $rawCalibrated : ($rawSupervisor > 0 ? $rawSupervisor : 0.0));
             $tierLabel = $ev['tier_label'] ?? '';
             $status = $ev['status'] ?? '';
+
+            // Skip unrated evaluations
+            if ($calibratedScore <= 0.0) {
+                continue;
+            }
 
             $emp = $empMap[$eId] ?? [
                 'full_name' => 'Associate',
@@ -976,17 +986,23 @@ class TrainingNeedModel extends BaseModel
             ];
             $deptName = $emp['dept'] ?? ($deptMap[$emp['department_id'] ?? ''] ?? 'Operations');
             $deptId = $emp['department_id'] ?? null;
+            $requiredBenchmark = 4.00;
+            $gap = round($calibratedScore - $requiredBenchmark, 2);
+            $existingNeed = $needsByEmp[$eId] ?? null;
+            $targetGoal = $goalsByEmp[$eId] ?? null;
+            $targetGoalId = isset($targetGoal['id']) ? $targetGoal['id'] : null;
+            $retryCount = isset($targetGoal['retry_count']) ? (int)$targetGoal['retry_count'] : 0;
+            $goalStatus = $targetGoal['status'] ?? '';
+            $goalNeedsTraining = !empty($targetGoal['needs_training']);
+            $isGoalTerminal = in_array($goalStatus, ['Failed', 'Completed', 'Done'], true);
 
-            // Trigger deficit if calibrated score < 3.50 or status/tier indicates developing/PIP
-            if ($calibratedScore < 3.50 || stripos($tierLabel, 'developing') !== false || stripos($tierLabel, 'pip') !== false) {
-                $requiredBenchmark = 4.00;
-                $gap = round($calibratedScore - $requiredBenchmark, 2);
+            // Only trigger deficit if retries are exhausted (retry_count >= 3), goal is NOT terminal, and there is a performance score deficit
+            $isEligibleForTrainingDeficit = ($retryCount >= 3 || $goalNeedsTraining) && !$isGoalTerminal;
+            $hasScoreDeficit = ($calibratedScore < 3.50 || stripos($tierLabel, 'developing') !== false || stripos($tierLabel, 'pip') !== false);
+
+            if ($isEligibleForTrainingDeficit && $hasScoreDeficit) {
                 $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
-                $existingNeed = $needsByEmp[$eId] ?? null;
-
-                $targetGoalId = isset($goalsByEmp[$eId]) ? $goalsByEmp[$eId]['id'] : null;
-
-                $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered via Stage 5 Appraisal Review & IDP Remediation Protocol";
+                $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered after {$retryCount} remediation attempts via Formal Training Protocol";
 
                 if ($existingNeed) {
                     $isResolved = in_array($existingNeed['status'] ?? '', ['Resolved', 'Completed']);
@@ -1049,6 +1065,96 @@ class TrainingNeedModel extends BaseModel
                         require_once __DIR__ . '/../models/PerformanceGoalModel.php';
                         (new PerformanceGoalModel())->setNeedsTraining((string)$targetGoalId, true);
                     }
+                }
+            } else {
+                // Not eligible for training deficit (e.g. retries < 3, terminal goal Failed/Completed, or score >= 3.50):
+                // Clean up any existing performance need from training_needs
+                if ($existingNeed) {
+                    $this->delete($existingNeed['id']);
+                }
+
+                $effectiveGoalId = $targetGoalId ?: ($existingNeed['target_goal_id'] ?? null);
+                if (!empty($effectiveGoalId) && ($retryCount < 3 || $isGoalTerminal)) {
+                    require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                    (new PerformanceGoalModel())->setNeedsTraining((string)$effectiveGoalId, false);
+                }
+            }
+        }
+
+        // 5. Process any goals with retry_count >= 3 or needs_training = true for employees not in evaluations
+        foreach ($goalsByEmp as $eIdLower => $targetGoal) {
+            if (isset($seenEmployees[$eIdLower])) continue;
+            $retryCount = isset($targetGoal['retry_count']) ? (int)$targetGoal['retry_count'] : 0;
+            $goalNeedsTraining = !empty($targetGoal['needs_training']);
+            $goalStatus = $targetGoal['status'] ?? '';
+            $isGoalTerminal = in_array($goalStatus, ['Failed', 'Completed', 'Done'], true);
+
+            if (($retryCount >= 3 || $goalNeedsTraining) && !$isGoalTerminal) {
+                $eId = $targetGoal['employee_id'] ?? $eIdLower;
+                $emp = $empMap[$eId] ?? ($empMap[$eIdLower] ?? [
+                    'full_name' => 'Associate',
+                    'title' => 'Staff',
+                    'dept' => 'Operations',
+                    'avatar_url' => 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+                ]);
+                $deptName = $emp['dept'] ?? ($deptMap[$emp['department_id'] ?? ''] ?? 'Operations');
+                $deptId = $emp['department_id'] ?? null;
+                $calibratedScore = (float)($targetGoal['final_rating'] ?? 0.00);
+                $requiredBenchmark = 4.00;
+                $gap = round($calibratedScore - $requiredBenchmark, 2);
+                $existingNeed = $needsByEmp[$eIdLower] ?? null;
+                $targetGoalId = isset($targetGoal['id']) ? $targetGoal['id'] : null;
+                $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
+                $diagnosisNote = "Remediation Deficit for Goal: " . ($targetGoal['title'] ?? 'Performance Standard') . "\n• Triggered after {$retryCount} remediation attempts via Formal Training Protocol";
+
+                if ($existingNeed) {
+                    $isResolved = in_array($existingNeed['status'] ?? '', ['Resolved', 'Completed']);
+                    $currentProgId = $existingNeed['linked_program_id'] ?? null;
+                    $needStatus = $isResolved ? 'Resolved' : ($currentProgId ? 'Program Linked' : 'Identified');
+
+                    $updatePayload = [
+                        'title' => 'Performance Deficit & IDP: ' . ($emp['full_name'] ?? 'Associate'),
+                        'current_score' => $calibratedScore,
+                        'required_score' => $requiredBenchmark,
+                        'gap' => $gap,
+                        'urgency' => $urgency,
+                        'status' => $needStatus,
+                        'notes' => $diagnosisNote
+                    ];
+                    if (empty($existingNeed['target_goal_id']) && !empty($targetGoalId)) {
+                        $updatePayload['target_goal_id'] = $targetGoalId;
+                    }
+                    $this->update($existingNeed['id'], $updatePayload);
+                    $synced[] = array_merge($existingNeed, $updatePayload);
+                } else {
+                    $newNeedId = 'need-perf-' . substr(bin2hex(random_bytes(3)), 0, 6);
+                    $newNeed = [
+                        'id' => $newNeedId,
+                        'title' => 'Performance Deficit & IDP: ' . ($emp['full_name'] ?? 'Associate'),
+                        'source_type' => 'competency_gap',
+                        'source_label' => 'Performance Referral',
+                        'category' => 'Appraisal Remediation',
+                        'department_id' => $deptId,
+                        'dept' => $deptName,
+                        'employee_id' => $eId,
+                        'associate_name' => $emp['full_name'] ?? ($emp['name'] ?? 'Associate'),
+                        'associate_role' => $emp['title'] ?? ($emp['role'] ?? 'Staff'),
+                        'associate_avatar' => $emp['avatar_url'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                        'target_competency' => 'Operational Performance & Standards',
+                        'competency_key' => 'operational_performance',
+                        'current_score' => $calibratedScore,
+                        'required_score' => $requiredBenchmark,
+                        'gap' => $gap,
+                        'urgency' => $urgency,
+                        'status' => 'Identified',
+                        'linked_program_id' => null,
+                        'target_goal_id' => $targetGoalId,
+                        'date_identified' => date('M d, Y'),
+                        'notes' => $diagnosisNote
+                    ];
+                    $created = $this->create($newNeed);
+                    $synced[] = $created;
+                    $needsByEmp[$eIdLower] = $created;
                 }
             }
         }
@@ -1155,19 +1261,37 @@ class TrainingNeedModel extends BaseModel
             if (!$eId || isset($seenEmployees[$eId])) continue;
             $seenEmployees[$eId] = true;
 
-            $calibratedScore = (float)($ev['calibrated_score'] ?? ($ev['supervisor_rating'] ?? 5.00));
+            $rawCalibrated = isset($ev['calibrated_score']) && $ev['calibrated_score'] !== '' ? (float)$ev['calibrated_score'] : 0.0;
+            $rawSupervisor = isset($ev['supervisor_rating']) && $ev['supervisor_rating'] !== '' ? (float)$ev['supervisor_rating'] : 0.0;
+            $rawNewCalib   = isset($ev['new_calibrated_score']) && $ev['new_calibrated_score'] !== '' ? (float)$ev['new_calibrated_score'] : 0.0;
+
+            // Pick actual score (new_calibrated > calibrated > supervisor > 0)
+            $calibratedScore = $rawNewCalib > 0 ? $rawNewCalib : ($rawCalibrated > 0 ? $rawCalibrated : ($rawSupervisor > 0 ? $rawSupervisor : 0.0));
             $tierLabel = $ev['tier_label'] ?? '';
             $status = $ev['eval_status'] ?? '';
 
-            if ($calibratedScore < 3.50 || stripos($tierLabel, 'developing') !== false || stripos($tierLabel, 'pip') !== false) {
-                $requiredBenchmark = 4.00;
-                $gap = round($calibratedScore - $requiredBenchmark, 2);
+            // Skip unrated evaluations
+            if ($calibratedScore <= 0.0) {
+                continue;
+            }
+
+            $requiredBenchmark = 4.00;
+            $gap = round($calibratedScore - $requiredBenchmark, 2);
+            $existingNeed = $needsByEmp[$eId] ?? null;
+            $targetGoal = $goalsByEmp[$eId] ?? null;
+            $targetGoalId = isset($targetGoal['id']) ? (int)$targetGoal['id'] : null;
+            $retryCount = isset($targetGoal['retry_count']) ? (int)$targetGoal['retry_count'] : 0;
+            $goalStatus = $targetGoal['status'] ?? '';
+            $goalNeedsTraining = !empty($targetGoal['needs_training']);
+            $isGoalTerminal = in_array($goalStatus, ['Failed', 'Completed', 'Done'], true);
+
+            // Only trigger deficit if retries are exhausted (retry_count >= 3), goal is NOT terminal, and there is a performance score deficit
+            $isEligibleForTrainingDeficit = ($retryCount >= 3 || $goalNeedsTraining) && !$isGoalTerminal;
+            $hasScoreDeficit = ($calibratedScore < 3.50 || stripos($tierLabel, 'developing') !== false || stripos($tierLabel, 'pip') !== false);
+
+            if ($isEligibleForTrainingDeficit && $hasScoreDeficit) {
                 $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
-                $existingNeed = $needsByEmp[$eId] ?? null;
-
-                $targetGoalId = isset($goalsByEmp[$eId]) ? (int)$goalsByEmp[$eId]['id'] : null;
-
-                $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered via Stage 5 Appraisal Review & IDP Remediation Protocol";
+                $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered after {$retryCount} remediation attempts via Formal Training Protocol";
 
                 if ($existingNeed) {
                     $isResolved = in_array($existingNeed['status'] ?? '', ['Resolved', 'Completed']);
@@ -1193,7 +1317,7 @@ class TrainingNeedModel extends BaseModel
                             ':gap' => $gap,
                             ':urgency' => $urgency,
                             ':status' => $needStatus,
-                            ':target_goal_id' => $targetGoalId,
+                            ':target_goal_id' => $targetGoalId ?: $existingGoalId,
                             ':notes' => $diagnosisNote,
                             ':id' => $existingNeed['id']
                         ]);
@@ -1278,6 +1402,126 @@ class TrainingNeedModel extends BaseModel
                         require_once __DIR__ . '/../models/PerformanceGoalModel.php';
                         (new PerformanceGoalModel())->setNeedsTraining((string)$targetGoalId, true);
                     }
+                }
+            } else {
+                // Not eligible for training deficit (e.g. retries < 3, terminal goal Failed/Completed, or score >= 3.50):
+                // Clean up any existing performance need from training_needs
+                if ($existingNeed) {
+                    $delStmt = $pdo->prepare("DELETE FROM training_needs WHERE id = :id");
+                    $delStmt->execute([':id' => $existingNeed['id']]);
+                }
+
+                $effectiveGoalId = $targetGoalId ?: ($existingNeed['target_goal_id'] ?? null);
+                if (!empty($effectiveGoalId) && ($retryCount < 3 || $isGoalTerminal)) {
+                    require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                    (new PerformanceGoalModel())->setNeedsTraining((string)$effectiveGoalId, false);
+                }
+            }
+        }
+
+        // 5. Process any goals with retry_count >= 3 or needs_training = true for employees not in evaluations
+        foreach ($goalsByEmp as $eIdLower => $targetGoal) {
+            if (isset($seenEmployees[$eIdLower])) continue;
+            $retryCount = isset($targetGoal['retry_count']) ? (int)$targetGoal['retry_count'] : 0;
+            $goalNeedsTraining = !empty($targetGoal['needs_training']);
+            $goalStatus = $targetGoal['status'] ?? '';
+            $isGoalTerminal = in_array($goalStatus, ['Failed', 'Completed', 'Done'], true);
+
+            if (($retryCount >= 3 || $goalNeedsTraining) && !$isGoalTerminal) {
+                $targetGoalId = isset($targetGoal['id']) ? (int)$targetGoal['id'] : null;
+                $existingNeed = $needsByEmp[$eIdLower] ?? null;
+
+                // Resolve employee details
+                $empStmt = $pdo->prepare("SELECT e.*, d.name as dept_name FROM employees e LEFT JOIN departments d ON d.id = e.department_id WHERE LOWER(e.id) = :empId");
+                $empStmt->execute([':empId' => $eIdLower]);
+                $empData = $empStmt->fetch(PDO::FETCH_ASSOC);
+
+                $calibratedScore = (float)($targetGoal['final_rating'] ?? 0.00);
+                $requiredBenchmark = 4.00;
+                $gap = round($calibratedScore - $requiredBenchmark, 2);
+                $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
+                $diagnosisNote = "Remediation Deficit for Goal: " . ($targetGoal['title'] ?? 'Performance Standard') . "\n• Triggered after {$retryCount} remediation attempts via Formal Training Protocol";
+
+                if ($existingNeed) {
+                    $isResolved = in_array($existingNeed['status'] ?? '', ['Resolved', 'Completed']);
+                    $currentProgId = $existingNeed['linked_program_id'] ?? null;
+                    $needStatus = $isResolved ? 'Resolved' : ($currentProgId ? 'Program Linked' : 'Identified');
+                    $existingGoalId = $existingNeed['target_goal_id'] ?? null;
+
+                    $updateStmt->execute([
+                        ':title' => 'Performance Deficit & IDP: ' . ($empData['full_name'] ?? 'Associate'),
+                        ':current_score' => $calibratedScore,
+                        ':required_score' => $requiredBenchmark,
+                        ':gap' => $gap,
+                        ':urgency' => $urgency,
+                        ':status' => $needStatus,
+                        ':target_goal_id' => $targetGoalId ?: $existingGoalId,
+                        ':notes' => $diagnosisNote,
+                        ':id' => $existingNeed['id']
+                    ]);
+                    $merged = array_merge($existingNeed, [
+                        'title' => 'Performance Deficit & IDP: ' . ($empData['full_name'] ?? 'Associate'),
+                        'current_score' => $calibratedScore,
+                        'required_score' => $requiredBenchmark,
+                        'gap' => $gap,
+                        'urgency' => $urgency,
+                        'status' => $needStatus,
+                        'target_goal_id' => $targetGoalId ?: $existingGoalId,
+                        'notes' => $diagnosisNote
+                    ]);
+                    $synced[] = $this->normalizeRecord($merged);
+                } else {
+                    $newNeedId = 'need-perf-' . substr(bin2hex(random_bytes(3)), 0, 6);
+                    $newNeed = [
+                        'id' => $newNeedId,
+                        'title' => 'Performance Deficit & IDP: ' . ($empData['full_name'] ?? 'Associate'),
+                        'source_type' => 'competency_gap',
+                        'source_label' => 'Performance Referral',
+                        'category' => 'Appraisal Remediation',
+                        'department_id' => $empData['department_id'] ?? null,
+                        'dept' => $empData['dept_name'] ?? 'Operations',
+                        'employee_id' => $targetGoal['employee_id'] ?? $eIdLower,
+                        'associate_name' => $empData['full_name'] ?? 'Associate',
+                        'associate_role' => $empData['title'] ?? ($empData['role'] ?? 'Staff'),
+                        'associate_avatar' => $empData['avatar_url'] ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                        'target_competency' => 'Operational Performance & Standards',
+                        'competency_key' => 'operational_performance',
+                        'current_score' => $calibratedScore,
+                        'required_score' => $requiredBenchmark,
+                        'gap' => $gap,
+                        'urgency' => $urgency,
+                        'status' => 'Identified',
+                        'linked_program_id' => null,
+                        'target_goal_id' => $targetGoalId,
+                        'date_identified' => date('M d, Y'),
+                        'notes' => $diagnosisNote
+                    ];
+                    $insertStmt->execute([
+                        ':id' => $newNeed['id'],
+                        ':title' => $newNeed['title'],
+                        ':source_type' => $newNeed['source_type'],
+                        ':source_label' => $newNeed['source_label'],
+                        ':category' => $newNeed['category'],
+                        ':dept' => $newNeed['dept'],
+                        ':department_id' => $newNeed['department_id'],
+                        ':employee_id' => $newNeed['employee_id'],
+                        ':associate_name' => $newNeed['associate_name'],
+                        ':associate_role' => $newNeed['associate_role'],
+                        ':associate_avatar' => $newNeed['associate_avatar'],
+                        ':target_competency' => $newNeed['target_competency'],
+                        ':competency_key' => $newNeed['competency_key'],
+                        ':current_score' => $newNeed['current_score'],
+                        ':required_score' => $newNeed['required_score'],
+                        ':gap' => $newNeed['gap'],
+                        ':urgency' => $newNeed['urgency'],
+                        ':status' => $newNeed['status'],
+                        ':linked_program_id' => $newNeed['linked_program_id'],
+                        ':target_goal_id' => $targetGoalId,
+                        ':date_identified' => $newNeed['date_identified'],
+                        ':notes' => $newNeed['notes']
+                    ]);
+                    $synced[] = $this->normalizeRecord($newNeed);
+                    $needsByEmp[$eIdLower] = $newNeed;
                 }
             }
         }

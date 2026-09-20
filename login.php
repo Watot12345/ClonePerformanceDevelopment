@@ -108,7 +108,7 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
             try {
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.get('reason') === 'inactivity') {
-                    window.showToast('You were automatically logged out due to 1 minute of inactivity.', 'warning', { duration: 6000 });
+                    window.showToast('You were automatically logged out due to 5 minutes of inactivity.', 'warning', { duration: 6000 });
                 }
             } catch (e) {}
         </script>
