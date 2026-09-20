@@ -4,9 +4,9 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
-
-// 1. Read .env file
-$env = parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW);
+// 1. Read .env file or system environment
+require_once __DIR__ . '/config/config.php';
+$env = function_exists('loadEnv') ? loadEnv() : [];
 
 /**
  * Send Email function
@@ -23,8 +23,28 @@ function sendMail($to, $subject, $body)
         $mail->SMTPAuth   = true;
         $mail->Username   = $env['SMTP_USER'];
         $mail->Password   = $env['SMTP_PASS'];
-        $mail->SMTPSecure = ($env['SMTP_SECURE'] ?? 'tls') === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = (int)($env['SMTP_PORT'] ?? 587);
+        
+        $port = (int)($env['SMTP_PORT'] ?? 587);
+        $secure = strtolower(trim($env['SMTP_SECURE'] ?? 'tls'));
+        
+        if ($port === 465 || $secure === 'ssl') {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = 465;
+        } else {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = $port;
+        }
+
+        // Strict timeouts: prevent Railway edge proxy 502 timeout
+        $mail->Timeout       = 5; // Socket timeout in seconds
+        $mail->SMTPKeepAlive = false;
+        $mail->SMTPOptions   = [
+            'ssl' => [
+                'verify_peer'       => false,
+                'verify_peer_name'  => false,
+                'allow_self_signed' => true
+            ]
+        ];
 
         // Sender & Recipient
         $mail->setFrom($env['SMTP_USER'], $env['MAIL_FROM_NAME'] ?? 'HR3 System');

@@ -1,13 +1,35 @@
 <?php
 if (!function_exists('loadEnv')) {
     function loadEnv($filePath = null) {
+        $data = [];
         if ($filePath === null) {
             $filePath = file_exists(__DIR__ . '/.env') ? __DIR__ . '/.env' : __DIR__ . '/../.env';
         }
-        if (!file_exists($filePath)) {
-            return [];
+        if (file_exists($filePath)) {
+            $parsed = parse_ini_file($filePath, false, INI_SCANNER_RAW);
+            if (is_array($parsed)) {
+                $data = $parsed;
+            }
         }
-        return parse_ini_file($filePath, false, INI_SCANNER_RAW) ?: [];
+        // Merge system environment variables (for cloud hosts like Railway, Render, Heroku)
+        $systemKeys = [
+            'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
+            'DATABASE_URL', 'GEMINI_API_KEY', 'GEMINI_MODEL',
+            'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM_NAME'
+        ];
+        foreach ($systemKeys as $key) {
+            $val = getenv($key);
+            if ($val === false && isset($_ENV[$key])) {
+                $val = $_ENV[$key];
+            }
+            if ($val === false && isset($_SERVER[$key])) {
+                $val = $_SERVER[$key];
+            }
+            if ($val !== false && $val !== null && $val !== '') {
+                $data[$key] = $val;
+            }
+        }
+        return $data;
     }
 }
 
@@ -98,6 +120,8 @@ function supabaseRequest($endpoint, $method = 'GET', $data = null, $useServiceRo
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 6);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
 
     if ($data !== null && in_array(strtoupper($method), ['POST', 'PUT', 'PATCH'])) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));

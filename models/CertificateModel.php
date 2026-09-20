@@ -71,7 +71,7 @@ class CertificateModel extends BaseModel
             'program_title'          => $data['program_title'] ?? ($data['programTitle'] ?? 'Hospitality Program'),
             'category'               => $data['category'] ?? 'Skill Gap: Service Excellence',
             'dept'                   => $data['dept'] ?? 'Front Office',
-            'score'                  => (int)($data['score'] ?? 100),
+            'score'                  => (int)($data['score'] ?? 10),
             'issue_date'             => $data['issue_date'] ?? ($data['issueDate'] ?? date('M d, Y')),
             'verification_seal_code' => $data['verification_seal_code'] ?? ($data['verificationSealCode'] ?? ('OXF-SEAL-' . strtoupper(substr(md5(uniqid()), 0, 12)))),
             'gm_signature'           => $data['gm_signature'] ?? ($data['gmSignature'] ?? 'General Manager, Oxford Suites'),

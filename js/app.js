@@ -524,6 +524,22 @@ const personaData = {
         bannerClass: 'bg-amber-50/80 border-amber-200 text-amber-950',
         badgeClass: 'bg-amber-100 text-amber-800'
     },
+    supervisor_hk: {
+        id: '3bb792e6-b25e-460e-a8fa-712c65c3b2e2',
+        role: 'Supervisor',
+        name: 'Janzel',
+        initials: 'JZ',
+        roleLabel: 'Janzel (Housekeeping Supervisor)',
+        badge: 'Mgr',
+        dept: 'Housekeeping',
+        greeting: 'Good morning, Janzel',
+        title: 'Viewing as: Housekeeping Supervisor',
+        desc: 'You can review subordinate goals, monitor guest room cleanliness standards, assign training curricula, and manage housekeeping development.',
+        tag: 'Supervisor',
+        icon: 'fas fa-broom',
+        bannerClass: 'bg-emerald-50/80 border-emerald-200 text-emerald-950',
+        badgeClass: 'bg-emerald-100 text-emerald-800'
+    },
     hradmin: {
         id: 'emp-103',
         role: 'HRAdmin',
@@ -560,6 +576,8 @@ const personaData = {
 // Support exact role column lookups
 personaData['Associate'] = personaData.associate;
 personaData['Supervisor'] = personaData.supervisor;
+personaData['supervisor_hk'] = personaData.supervisor_hk;
+personaData['housekeeping_supervisor'] = personaData.supervisor_hk;
 personaData['HRAdmin'] = personaData.hradmin;
 personaData['GeneralManager'] = personaData.generalmanager;
 personaData['employee'] = personaData.associate;

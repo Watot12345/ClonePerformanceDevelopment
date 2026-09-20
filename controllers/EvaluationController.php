@@ -59,13 +59,21 @@ class EvaluationController
                 'dept' => 'Front Office',
                 'duration' => '3.5 Hours',
                 'format' => 'In-Person Workshop & Roleplay',
-                'passingScore' => 80,
+                'passingScore' => 8,
                 'xpAward' => 150,
                 'competencyKey' => 'guest_complaint_handling',
                 'targetCompetency' => 'Guest Complaint Handling & VIP Protocol',
                 'quizQuestions' => [
-                    ['q' => 'What is the benchmark standard response time for VIP guest requests?', 'correct' => 0],
-                    ['q' => 'Which protocol must be followed when a guest escalates a service delay?', 'correct' => 0]
+                    ['q' => 'What is the benchmark standard response time for VIP guest requests?', 'options' => ['Within 5 minutes', 'Within 30 minutes', 'By end of shift', 'Next morning'], 'correct' => 0],
+                    ['q' => 'Which protocol must be followed when a guest escalates a service delay?', 'options' => ['Listen and execute immediate service recovery voucher', 'Escalate immediately to GM without apology', 'Ask guest to wait in the lounge', 'Ignore the delay'], 'correct' => 0],
+                    ['q' => 'What does the "A" in the LAST hospitality recovery framework represent?', 'options' => ['Argue company policies firmly', 'Apologize sincerely with empathy without assigning blame', 'Ask the security team to intervene', 'Assess financial liability immediately'], 'correct' => 1],
+                    ['q' => 'When a guest raises their voice in the lobby, the recommended verbal cadence is:', 'options' => ['Speak louder than the guest to assert authority', 'Lower your tone, speak 15% slower, and maintain open body posture', 'Remain completely silent until the guest walks away', 'Immediately retreat to the back office without answering'], 'correct' => 1],
+                    ['q' => 'What is the maximum instant amenity voucher a Front Desk Host may authorize without GM signoff?', 'options' => ['₱500 Dining Credit', '₱2,500 F&B or Spa Voucher + Category Upgrade', 'Free Weekend Stay Voucher', '₱10,000 Cash Refund'], 'correct' => 1],
+                    ['q' => 'During de-escalation, which phrase should ALWAYS be avoided?', 'options' => ['"I understand your frustration and will personally ensure this is resolved."', '"That is strictly against our hotel policy and there is nothing I can do."', '"Allow me to check what alternatives I can arrange right away."', '"Thank you for bringing this issue to our attention immediately."'], 'correct' => 1],
+                    ['q' => 'When handling a room cleanliness complaint, what is the immediate first action?', 'options' => ['Blame the housekeeping contractor on duty', 'Validate the guest distress and offer an immediate room relocation inspection', 'Offer a discount voucher for the next stay next year', 'Request the guest to clean the surface themselves'], 'correct' => 1],
+                    ['q' => 'In service recovery, what does "closing the loop" require?', 'options' => ['Archiving the incident ticket quietly', 'Personal follow-up call within 30 minutes to confirm guest satisfaction', 'Reporting the guest name to hotel security blacklist', 'Forwarding the bill to corporate without notes'], 'correct' => 1],
+                    ['q' => 'How should a front desk associate handle an intoxicated and disruptive guest in the public foyer?', 'options' => ['Engage in a heated argument in front of other guests', 'Guide the guest respectfully to a private area and notify Duty Manager/Security', 'Refuse all service loudly across the counter', 'Physically push the guest out of the lobby'], 'correct' => 1],
+                    ['q' => 'What documentation is mandatory within 60 minutes of resolving a Tier-1 guest incident?', 'options' => ['A personal diary entry', 'A formal Incident Recovery Log entry in the PMS guest profile', 'An anonymous message on social media', 'No record is needed once the guest smiles'], 'correct' => 1]
                 ]
             ];
         }
@@ -120,12 +128,13 @@ class EvaluationController
                     $correctCount++;
                 }
             }
-            $calculatedScore = (int)round(($correctCount / $totalQuestions) * 100);
+            $calculatedScore = (int)round(($correctCount / $totalQuestions) * 10);
         } else {
-            $calculatedScore = 95; // Default score if no quiz questions attached
+            $calculatedScore = 9; // Default score if no quiz questions attached (out of 10)
         }
 
-        $passingThreshold = (int)($program['passingScore'] ?? 80);
+        $rawThreshold = (int)($program['passingScore'] ?? 8);
+        $passingThreshold = ($rawThreshold > 10) ? (int)round($rawThreshold / 10) : $rawThreshold;
         $isPassed = $calculatedScore >= $passingThreshold;
         $resultStatus = $isPassed ? 'Passed & Certified' : 'Needs Retest';
 
@@ -147,7 +156,7 @@ class EvaluationController
                 'dept'                   => $session['dept'] ?? $program['dept'] ?? 'Hotel Operations',
                 'score'                  => $calculatedScore
             ]);
-            $certReference = $issuedCertificate['certificate_number'] ?? null;
+            $certReference = $issuedCertificate['certificate_number'] ?? ($issuedCertificate['certificateNumber'] ?? null);
         }
 
         require_once __DIR__ . '/../models/CompetencyModel.php';
@@ -160,7 +169,10 @@ class EvaluationController
         // Capped at 5.0, increase by 1.0 if passed
         $scoreAfter = $isPassed ? min($scoreBefore + 1.0, 5.0) : $scoreBefore;
 
-        $resultId = 'res-' . substr(bin2hex(random_bytes(3)), 0, 6);
+        $previousResultId = trim($payload['previousResultId'] ?? ($payload['previous_result_id'] ?? ''));
+        $isRetest = !empty($previousResultId);
+        $resultId = $isRetest ? $previousResultId : ('res-' . substr(bin2hex(random_bytes(3)), 0, 6));
+
         $evaluationRecord = [
             'id'                     => $resultId,
             'sessionId'              => $sessionId,
@@ -186,7 +198,8 @@ class EvaluationController
             'competencyScoreBefore'  => $scoreBefore,
             'competencyScoreAfter'   => $scoreAfter,
             'syncedToProfile'        => $isPassed,
-            'xpAwarded'              => $isPassed ? (int)($program['xpAward'] ?? 150) : 0
+            'xpAwarded'              => $isPassed ? (int)($program['xpAward'] ?? 150) : 0,
+            'linkedNeedId'           => $session['linked_need_id'] ?? ($session['linkedNeedId'] ?? null)
         ];
         
         // Convert camelCase to snake_case for the database model to match schema
@@ -207,7 +220,11 @@ class EvaluationController
         // Unset camelCase keys from dbRecord
         unset($dbRecord['sessionId'], $dbRecord['programId'], $dbRecord['associateId'], $dbRecord['quizScore'], $dbRecord['feedbackRating'], $dbRecord['feedbackNotes'], $dbRecord['certificateReference'], $dbRecord['xpAwarded'], $dbRecord['competencyKey'], $dbRecord['competencyScoreBefore'], $dbRecord['competencyScoreAfter'], $dbRecord['syncedToProfile']);
         
-        $this->evaluationModel->createEvaluation($dbRecord);
+        if ($isRetest) {
+            $this->evaluationModel->updateEvaluation($previousResultId, $dbRecord);
+        } else {
+            $this->evaluationModel->createEvaluation($dbRecord);
+        }
 
         // 6. Update Session Roster Participant
         $this->sessionModel->updateRosterParticipant($sessionId, $associateId, [
@@ -235,11 +252,44 @@ class EvaluationController
             ]);
         }
 
+        // 8. Fail path: cascade training failure to linked performance goal
+        if (!$isPassed) {
+            try {
+                require_once __DIR__ . '/../models/TrainingNeedModel.php';
+                $failNeedModel = new TrainingNeedModel();
+                $linkedNeedId = $evaluationRecord['linkedNeedId'] ?? null;
+                
+                if ($linkedNeedId) {
+                    $failNeedModel->updateStatus($linkedNeedId, 'Failed');
+                } elseif ($programId !== '') {
+                    $allNeeds = $failNeedModel->getNeeds();
+                    foreach ($allNeeds as $need) {
+                        $nEmpId  = $need['employee_id'] ?? ($need['employeeId'] ?? '');
+                        $nProgId = $need['linked_program_id'] ?? ($need['linkedProgramId'] ?? '');
+                        $nGoalId = $need['target_goal_id'] ?? ($need['targetGoalId'] ?? null);
+
+                        if ($nEmpId === $associateId && $nProgId === $programId && !empty($nGoalId)) {
+                            // Only call updateStatus — the cascade hook inside fires automatically
+                            $failNeedModel->updateStatus($need['id'], 'Failed');
+                            break; // one need per program per employee
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('Cascade error on evaluation failure: ' . $e->getMessage());
+            }
+        }
+
+        $scoreDisplay = $calculatedScore <= 10 ? "{$calculatedScore}/10" : "{$calculatedScore}%";
+        $thresholdDisplay = $passingThreshold <= 10 ? "{$passingThreshold}/10" : "{$passingThreshold}%";
+
+        $feedbackMsg = $isPassed
+            ? ($isRetest ? "Re-test passed! +{$evaluationRecord['xpAwarded']} XP awarded and Certificate {$certReference} issued." : "Evaluation passed! +{$evaluationRecord['xpAwarded']} XP awarded and Certificate {$certReference} issued.")
+            : ($isRetest ? "Re-test completed. Score ({$scoreDisplay}) is still below passing threshold ({$thresholdDisplay}). You may review and re-test again." : "Evaluation completed. Score ({$scoreDisplay}) is below passing threshold ({$thresholdDisplay}).");
+
         return [
             'success' => true,
-            'message' => $isPassed
-                ? "Evaluation passed! +{$evaluationRecord['xpAwarded']} XP awarded and Certificate {$certReference} issued."
-                : "Evaluation completed. Score ({$calculatedScore}%) is below passing threshold ({$passingThreshold}%).",
+            'message' => $feedbackMsg,
             'data' => [
                 'isPassed'            => $isPassed,
                 'quizScore'           => $calculatedScore,

@@ -108,7 +108,7 @@ class TrainingNeedModel extends BaseModel
                 $need['programDuration'] = $matchedProg['duration'] ?? '3 Hours';
                 $need['programPassingScore'] = $matchedProg['passingScore'] ?? ($matchedProg['passing_score'] ?? 80);
                 $need['programFormat'] = $matchedProg['format'] ?? 'Workshop';
-                if (empty($need['status']) || $need['status'] === 'Identified') {
+                if ((empty($need['status']) || $need['status'] === 'Identified') && $need['status'] !== 'Resolved' && $need['status'] !== 'Completed') {
                     $need['status'] = 'Program Linked';
                 }
             } else {
@@ -258,7 +258,7 @@ class TrainingNeedModel extends BaseModel
                 $need['programDuration'] = $matchedProg['duration'] ?? '3 Hours';
                 $need['programPassingScore'] = $matchedProg['passingScore'] ?? ($matchedProg['passing_score'] ?? 80);
                 $need['programFormat'] = $matchedProg['format'] ?? 'Workshop';
-                if (empty($need['status']) || $need['status'] === 'Identified') {
+                if ((empty($need['status']) || $need['status'] === 'Identified') && $need['status'] !== 'Resolved' && $need['status'] !== 'Completed') {
                     $need['status'] = 'Program Linked';
                 }
             } else {
@@ -321,7 +321,35 @@ class TrainingNeedModel extends BaseModel
             'updated_at'        => date('c')
         ];
 
-        return $this->update($needId, $payload);
+        $result = $this->update($needId, $payload);
+
+        // Cascade: propagate 'Program Linked' status to linked performance goal
+        require_once __DIR__ . '/../services/GoalTrainingCascadeService.php';
+        $cascadeService = new GoalTrainingCascadeService();
+        $cascadeService->onTrainingNeedStatusChanged($needId, 'Program Linked');
+
+        return $result;
+    }
+
+    /**
+     * Find the latest open (non-terminal) training need linked to a performance goal.
+     * Terminal statuses excluded: 'Passed', 'Failed', 'Resolved', 'Completed'.
+     *
+     * @return array|null The open training need row, or null if none exists.
+     */
+    public function findOpenNeedByGoalId(string $goalId): ?array
+    {
+        $query = $this->table
+            . '?target_goal_id=eq.' . urlencode($goalId)
+            . '&status=not.in.(Passed,Failed,Resolved,Completed)'
+            . '&order=created_at.desc'
+            . '&limit=1';
+
+        $res = supabaseRequest($query, 'GET', null, true);
+        if ($res['status'] === 200 && is_array($res['data']) && !empty($res['data'])) {
+            return $res['data'][0];
+        }
+        return null;
     }
 
     /**
@@ -364,7 +392,14 @@ class TrainingNeedModel extends BaseModel
             $update['linked_program_id'] = $linkedProgramId;
         }
 
-        return $this->update($needId, $update);
+        $result = $this->update($needId, $update);
+
+        // Cascade: propagate status change to linked performance goal
+        require_once __DIR__ . '/../services/GoalTrainingCascadeService.php';
+        $cascadeService = new GoalTrainingCascadeService();
+        $cascadeService->onTrainingNeedStatusChanged($needId, $status);
+
+        return $result;
     }
 
     /**
@@ -433,6 +468,10 @@ class TrainingNeedModel extends BaseModel
         $needsByEmp = [];
 
         foreach ($existingNeeds as $n) {
+            // Isolate: Skill Gap sync must never inspect or mutate Performance Referrals
+            if (($n['source_label'] ?? ($n['sourceLabel'] ?? '')) === 'Performance Referral') {
+                continue;
+            }
             $eId = strtolower(trim($n['employee_id'] ?? ($n['employeeId'] ?? '')));
             $cKey = $n['competency_key'] ?? ($n['competencyKey'] ?? '');
             $gId = $n['target_goal_id'] ?? ($n['targetGoalId'] ?? '');
@@ -487,8 +526,10 @@ class TrainingNeedModel extends BaseModel
                     'benchmark_score' => 4.50
                 ];
                 $benchmark = (float)($comp['benchmark_score'] ?? 4.50);
+                $tnaThreshold = 3.80;
 
-                if ($score < $benchmark) {
+
+                if ($score < $tnaThreshold) {
                     $lowCompetencies[] = [
                         'id' => $cId,
                         'name' => $comp['name'],
@@ -509,7 +550,7 @@ class TrainingNeedModel extends BaseModel
             $existingNeed = $needsByEmp[$eId] ?? null;
 
             // Trigger Skill Gap / Needs TNA if Overall Score < Required Benchmark OR has individual competency deficits below benchmark
-            if ($overallScore < $requiredBenchmark || !empty($lowCompetencies)) {
+            if ($overallScore < 3.80 || !empty($lowCompetencies)) {
                 $urgency = ($overallScore < 2.0) ? 'Critical' : (($overallScore < 3.5) ? 'High' : 'Medium');
                 $targetCompSummary = !empty($lowCompetencies)
                     ? implode(', ', array_map(fn($c) => $c['name'], array_slice($lowCompetencies, 0, 3))) . (count($lowCompetencies) > 3 ? ' +' . (count($lowCompetencies) - 3) . ' more' : '')
@@ -621,8 +662,8 @@ class TrainingNeedModel extends BaseModel
             return [];
         }
 
-        // Fetch existing needs from Supabase via PDO
-        $existingNeedsStmt = $pdo->query("SELECT * FROM training_needs WHERE source_type = 'competency_gap'");
+        // Fetch existing needs from Supabase via PDO (scoped strictly to Skill Gap deficits, ignoring Performance Referrals)
+        $existingNeedsStmt = $pdo->query("SELECT * FROM training_needs WHERE source_type = 'competency_gap' AND COALESCE(source_label, '') != 'Performance Referral'");
         $existingNeeds = $existingNeedsStmt->fetchAll(PDO::FETCH_ASSOC);
         $needsByEmp = [];
         foreach ($existingNeeds as $n) {
@@ -690,7 +731,8 @@ class TrainingNeedModel extends BaseModel
                 $score = (float)($assessment['score'] ?? 0);
                 $scoreValues[] = $score;
                 $benchmark = (float)($assessment['benchmark_score'] ?? 4.50);
-                if ($score < $benchmark) {
+                $tnaThreshold = 3.80;
+                if ($score < $tnaThreshold) {
                     $lowCompetencies[] = [
                         'id' => $cId,
                         'name' => $assessment['competency_name'],
@@ -708,7 +750,7 @@ class TrainingNeedModel extends BaseModel
             $gap = round($overallScore - $requiredBenchmark, 2);
             $existingNeed = $needsByEmp[$eId] ?? null;
 
-            if ($overallScore < $requiredBenchmark || !empty($lowCompetencies)) {
+            if ($overallScore < 3.80 || !empty($lowCompetencies)) {
                 $urgency = ($overallScore < 2.0) ? 'Critical' : (($overallScore < 3.5) ? 'High' : 'Medium');
                 $targetCompSummary = !empty($lowCompetencies)
                     ? implode(', ', array_map(fn($c) => $c['name'], array_slice($lowCompetencies, 0, 3))) . (count($lowCompetencies) > 3 ? ' +' . (count($lowCompetencies) - 3) . ' more' : '')
@@ -893,6 +935,26 @@ class TrainingNeedModel extends BaseModel
             }
         }
 
+        // Fetch performance goals to resolve active/failed goals for target_goal_id
+        $goalsRes = supabaseRequest('performance_goals?order=updated_at.desc', 'GET', null, true);
+        $allGoals = (is_array($goalsRes['data'] ?? null) && !isset($goalsRes['data']['code'])) ? $goalsRes['data'] : [];
+        $goalsByEmp = [];
+        foreach ($allGoals as $g) {
+            $eIdLower = strtolower(trim($g['employee_id'] ?? ''));
+            if (!$eIdLower) continue;
+            $gStatus = $g['status'] ?? '';
+            if (!in_array($gStatus, ['Done', 'Completed'], true)) {
+                $needsTraining = !empty($g['needs_training']);
+                if (!isset($goalsByEmp[$eIdLower])) {
+                    $goalsByEmp[$eIdLower] = $g;
+                } elseif ($needsTraining && empty($goalsByEmp[$eIdLower]['needs_training'])) {
+                    $goalsByEmp[$eIdLower] = $g;
+                } elseif ($gStatus === 'Failed' && ($goalsByEmp[$eIdLower]['status'] ?? '') !== 'Failed' && empty($goalsByEmp[$eIdLower]['needs_training'])) {
+                    $goalsByEmp[$eIdLower] = $g;
+                }
+            }
+        }
+
         $synced = [];
 
         // 4. Evaluate each calibrated appraisal
@@ -922,6 +984,8 @@ class TrainingNeedModel extends BaseModel
                 $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
                 $existingNeed = $needsByEmp[$eId] ?? null;
 
+                $targetGoalId = isset($goalsByEmp[$eId]) ? $goalsByEmp[$eId]['id'] : null;
+
                 $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered via Stage 5 Appraisal Review & IDP Remediation Protocol";
 
                 if ($existingNeed) {
@@ -938,8 +1002,18 @@ class TrainingNeedModel extends BaseModel
                         'status' => $needStatus,
                         'notes' => $diagnosisNote
                     ];
+                    if (empty($existingNeed['target_goal_id']) && !empty($targetGoalId)) {
+                        $updatePayload['target_goal_id'] = $targetGoalId;
+                    }
                     $this->update($existingNeed['id'], $updatePayload);
                     $synced[] = array_merge($existingNeed, $updatePayload);
+
+                    // Cascade: ensure linked goal knows training is needed
+                    $effectiveGoalId = $updatePayload['target_goal_id'] ?? ($existingNeed['target_goal_id'] ?? null);
+                    if (!empty($effectiveGoalId)) {
+                        require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                        (new PerformanceGoalModel())->setNeedsTraining((string)$effectiveGoalId, true);
+                    }
                 } else {
                     $newNeedId = 'need-perf-' . substr(bin2hex(random_bytes(3)), 0, 6);
                     $newNeed = [
@@ -962,12 +1036,19 @@ class TrainingNeedModel extends BaseModel
                         'urgency' => $urgency,
                         'status' => 'Identified',
                         'linked_program_id' => null,
+                        'target_goal_id' => $targetGoalId,
                         'date_identified' => date('M d, Y'),
                         'notes' => $diagnosisNote
                     ];
                     $created = $this->create($newNeed);
                     $synced[] = $created;
                     $needsByEmp[$eId] = $created;
+
+                    // Cascade: flag the linked goal as needing training
+                    if (!empty($targetGoalId)) {
+                        require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                        (new PerformanceGoalModel())->setNeedsTraining((string)$targetGoalId, true);
+                    }
                 }
             }
         }
@@ -1015,6 +1096,27 @@ class TrainingNeedModel extends BaseModel
             }
         }
 
+        // Fetch relevant active/failed performance goals
+        $goalsSql = "
+            SELECT id, employee_id, status, needs_training, retry_count
+            FROM performance_goals
+            WHERE status::text NOT IN ('Done', 'Completed')
+        ";
+        if ($specificEmployeeId) {
+            $goalsSql .= " AND employee_id = :empId";
+        }
+        $goalsSql .= " ORDER BY (CASE WHEN needs_training = true THEN 1 WHEN status = 'Failed' THEN 2 ELSE 3 END), updated_at DESC";
+        $goalsStmt = $pdo->prepare($goalsSql);
+        $goalsStmt->execute($params);
+        $goals = $goalsStmt->fetchAll(PDO::FETCH_ASSOC);
+        $goalsByEmp = [];
+        foreach ($goals as $g) {
+            $eIdLower = strtolower(trim($g['employee_id'] ?? ''));
+            if ($eIdLower && !isset($goalsByEmp[$eIdLower])) {
+                $goalsByEmp[$eIdLower] = $g;
+            }
+        }
+
         $updateStmt = $pdo->prepare("
             UPDATE training_needs
             SET title = :title,
@@ -1023,6 +1125,7 @@ class TrainingNeedModel extends BaseModel
                 gap = :gap,
                 urgency = :urgency,
                 status = :status,
+                target_goal_id = COALESCE(:target_goal_id, target_goal_id),
                 notes = :notes,
                 updated_at = NOW()
             WHERE id = :id
@@ -1034,13 +1137,13 @@ class TrainingNeedModel extends BaseModel
                 employee_id, associate_name, associate_role, associate_avatar,
                 target_competency, competency_key,
                 current_score, required_score, gap, urgency, status,
-                linked_program_id, date_identified, notes, created_at, updated_at
+                linked_program_id, target_goal_id, date_identified, notes, created_at, updated_at
             ) VALUES (
                 :id, :title, :source_type, :source_label, :category, :dept, :department_id,
                 :employee_id, :associate_name, :associate_role, :associate_avatar,
                 :target_competency, :competency_key,
                 :current_score, :required_score, :gap, :urgency, :status,
-                :linked_program_id, :date_identified, :notes, NOW(), NOW()
+                :linked_program_id, :target_goal_id, :date_identified, :notes, NOW(), NOW()
             )
         ");
 
@@ -1062,6 +1165,8 @@ class TrainingNeedModel extends BaseModel
                 $urgency = ($calibratedScore < 3.00) ? 'Critical' : 'High';
                 $existingNeed = $needsByEmp[$eId] ?? null;
 
+                $targetGoalId = isset($goalsByEmp[$eId]) ? (int)$goalsByEmp[$eId]['id'] : null;
+
                 $diagnosisNote = "Calibrated Performance Rating: " . number_format($calibratedScore, 2) . " / 5.0 (Benchmark: " . number_format($requiredBenchmark, 2) . ")\n• Appraisal Status: " . ($status ?: 'Calibrated') . " (" . ($tierLabel ?: 'Needs Development') . ")\n• Triggered via Stage 5 Appraisal Review & IDP Remediation Protocol";
 
                 if ($existingNeed) {
@@ -1069,11 +1174,15 @@ class TrainingNeedModel extends BaseModel
                     $currentProgId = $existingNeed['linked_program_id'] ?? null;
                     $needStatus = $isResolved ? 'Resolved' : ($currentProgId ? 'Program Linked' : 'Identified');
 
+                    $existingGoalId = $existingNeed['target_goal_id'] ?? null;
+                    $goalNeedsBackfill = empty($existingGoalId) && !empty($targetGoalId);
+
                     // DIRTY CHECK: Only update if values changed
                     $isDirty = (
                         abs((float)($existingNeed['current_score'] ?? 0) - $calibratedScore) > 0.01 ||
                         ($existingNeed['status'] ?? '') !== $needStatus ||
-                        ($existingNeed['urgency'] ?? '') !== $urgency
+                        ($existingNeed['urgency'] ?? '') !== $urgency ||
+                        $goalNeedsBackfill
                     );
 
                     if ($isDirty) {
@@ -1084,6 +1193,7 @@ class TrainingNeedModel extends BaseModel
                             ':gap' => $gap,
                             ':urgency' => $urgency,
                             ':status' => $needStatus,
+                            ':target_goal_id' => $targetGoalId,
                             ':notes' => $diagnosisNote,
                             ':id' => $existingNeed['id']
                         ]);
@@ -1096,9 +1206,17 @@ class TrainingNeedModel extends BaseModel
                         'gap' => $gap,
                         'urgency' => $urgency,
                         'status' => $needStatus,
+                        'target_goal_id' => $targetGoalId ?: $existingGoalId,
                         'notes' => $diagnosisNote
                     ]);
                     $synced[] = $this->normalizeRecord($merged);
+
+                    // Cascade: ensure linked goal knows training is needed
+                    $effectiveGoalId = $targetGoalId ?: $existingGoalId;
+                    if (!empty($effectiveGoalId)) {
+                        require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                        (new PerformanceGoalModel())->setNeedsTraining((string)$effectiveGoalId, true);
+                    }
                 } else {
                     $newNeedId = 'need-perf-' . substr(bin2hex(random_bytes(3)), 0, 6);
                     $newNeed = [
@@ -1121,6 +1239,7 @@ class TrainingNeedModel extends BaseModel
                         'urgency' => $urgency,
                         'status' => 'Identified',
                         'linked_program_id' => null,
+                        'target_goal_id' => $targetGoalId,
                         'date_identified' => date('M d, Y'),
                         'notes' => $diagnosisNote
                     ];
@@ -1145,6 +1264,7 @@ class TrainingNeedModel extends BaseModel
                         ':urgency' => $newNeed['urgency'],
                         ':status' => $newNeed['status'],
                         ':linked_program_id' => $newNeed['linked_program_id'],
+                        ':target_goal_id' => $targetGoalId,
                         ':date_identified' => $newNeed['date_identified'],
                         ':notes' => $newNeed['notes']
                     ]);
@@ -1152,6 +1272,12 @@ class TrainingNeedModel extends BaseModel
                     $norm = $this->normalizeRecord($newNeed);
                     $synced[] = $norm;
                     $needsByEmp[$eId] = $newNeed;
+
+                    // Cascade: flag the linked goal as needing training
+                    if (!empty($targetGoalId)) {
+                        require_once __DIR__ . '/../models/PerformanceGoalModel.php';
+                        (new PerformanceGoalModel())->setNeedsTraining((string)$targetGoalId, true);
+                    }
                 }
             }
         }
