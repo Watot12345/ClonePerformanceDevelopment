@@ -18,6 +18,42 @@ class AuthController
         }
     }
 
+    private function setRememberDeviceCookie(string $token): void
+    {
+        if (headers_sent() || empty($token)) {
+            return;
+        }
+        $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+        setcookie('oxford_remember_token', $token, [
+            'expires'  => time() + (30 * 86400),
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $isSecure,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
+
+    private function clearRememberDeviceCookie(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+        setcookie('oxford_remember_token', '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $isSecure,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
+
     private function safeRegenerateSession(): void
     {
         $this->startSession();
@@ -48,7 +84,8 @@ class AuthController
         }
 
         $role = $verify['role'];
-        $employees = $this->authModel->getEmployeesForRole($role);
+        $deviceToken = trim($payload['device_token'] ?? $_COOKIE['oxford_remember_token'] ?? '');
+        $employees = $this->authModel->getEmployeesForRole($role, $deviceToken);
 
         $this->startSession();
         $_SESSION['authenticated_gateway_role'] = $role;
@@ -68,7 +105,8 @@ class AuthController
     public function getRoleEmployees(array $payload = []): array
     {
         $role = $payload['role'] ?? $_SESSION['authenticated_gateway_role'] ?? 'Employee';
-        $employees = $this->authModel->getEmployeesForRole($role);
+        $deviceToken = trim($payload['device_token'] ?? $_COOKIE['oxford_remember_token'] ?? '');
+        $employees = $this->authModel->getEmployeesForRole($role, $deviceToken);
 
         return [
             'success'   => true,
@@ -162,6 +200,12 @@ class AuthController
             $_SESSION['role']               = $role;
             $_SESSION['authenticated_user'] = $user;
 
+            if ($rememberMe && !empty($loginRes['session_token'])) {
+                $this->setRememberDeviceCookie($loginRes['session_token']);
+            } elseif (!$rememberMe) {
+                $this->clearRememberDeviceCookie();
+            }
+
             return [
                 'success'       => true,
                 'logged_in'     => true,
@@ -243,6 +287,10 @@ class AuthController
         $_SESSION['role']               = $role;
         $_SESSION['authenticated_user'] = $user;
 
+        if ($rememberMe && !empty($createRes['session_token'])) {
+            $this->setRememberDeviceCookie($createRes['session_token']);
+        }
+
         return [
             'success'       => true,
             'logged_in'     => true,
@@ -285,6 +333,12 @@ class AuthController
         $_SESSION['full_name']          = $user['full_name'];
         $_SESSION['role']               = $role;
         $_SESSION['authenticated_user'] = $user;
+
+        if ($rememberMe && !empty($verifyRes['session_token'])) {
+            $this->setRememberDeviceCookie($verifyRes['session_token']);
+        } elseif (!$rememberMe) {
+            $this->clearRememberDeviceCookie();
+        }
 
         return [
             'success'       => true,

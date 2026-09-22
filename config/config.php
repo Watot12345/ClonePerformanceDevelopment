@@ -6,16 +6,37 @@ if (!function_exists('loadEnv')) {
             $filePath = file_exists(__DIR__ . '/.env') ? __DIR__ . '/.env' : __DIR__ . '/../.env';
         }
         if (file_exists($filePath)) {
-            $parsed = parse_ini_file($filePath, false, INI_SCANNER_RAW);
+            $parsed = @parse_ini_file($filePath, false, INI_SCANNER_RAW);
             if (is_array($parsed)) {
                 $data = $parsed;
+            } else {
+                $lines = file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                if (is_array($lines)) {
+                    foreach ($lines as $line) {
+                        $line = trim($line);
+                        if ($line === '' || $line[0] === '#' || $line[0] === ';') {
+                            continue;
+                        }
+                        if (strpos($line, '=') !== false) {
+                            list($k, $v) = explode('=', $line, 2);
+                            $k = trim($k);
+                            $v = trim($v);
+                            if ((substr($v, 0, 1) === '"' && substr($v, -1) === '"') ||
+                                (substr($v, 0, 1) === "'" && substr($v, -1) === "'")) {
+                                $v = substr($v, 1, -1);
+                            }
+                            $data[$k] = $v;
+                        }
+                    }
+                }
             }
         }
         // Merge system environment variables (for cloud hosts like Railway, Render, Heroku)
         $systemKeys = [
             'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
             'DATABASE_URL', 'GEMINI_API_KEY', 'GEMINI_MODEL',
-            'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM_NAME'
+            'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM_NAME',
+            'BREVO_API_KEY', 'brevo', 'MAIL_FROM_ADDRESS'
         ];
         foreach ($systemKeys as $key) {
             $val = getenv($key);

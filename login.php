@@ -702,7 +702,12 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
             const AuthAPI = {
                 baseUrl: 'api/auth.php',
                 async request(action, method = 'GET', payload = null) {
-                    const url = `${this.baseUrl}?action=${action}`;
+                    let url = `${this.baseUrl}?action=${encodeURIComponent(action)}`;
+                    if (payload && method === 'GET') {
+                        const params = new URLSearchParams(payload).toString();
+                        if (params) url += `&${params}`;
+                    }
+
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
 
@@ -712,6 +717,7 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
                         },
+                        credentials: 'same-origin',
                         signal: controller.signal
                     };
                     if (payload && method !== 'GET') {
@@ -731,10 +737,12 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                     }
                 },
                 roleLogin(email, password) {
-                    return this.request('role_login', 'POST', { email, password });
+                    const device_token = localStorage.getItem('oxford_remember_token') || '';
+                    return this.request('role_login', 'POST', { email, password, device_token });
                 },
                 getRoleEmployees(role) {
-                    return this.request('get_role_employees', 'GET', { role });
+                    const device_token = localStorage.getItem('oxford_remember_token') || '';
+                    return this.request('get_role_employees', 'GET', { role, device_token });
                 },
                 requestOtp(email, full_name, user_id) {
                     return this.request('request_otp', 'POST', { email, full_name, user_id });
@@ -1267,6 +1275,12 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                             localStorage.setItem('oxford_session_user', JSON.stringify(user));
                             localStorage.setItem('oxford_session_role', role);
 
+                            if (rememberMe && res.session_token) {
+                                localStorage.setItem('oxford_remember_token', res.session_token);
+                            } else if (!rememberMe) {
+                                localStorage.removeItem('oxford_remember_token');
+                            }
+
                             showToast(res.message || `Welcome back, ${user.full_name}!`, 'success');
                             setTimeout(() => {
                                 window.location.replace(res.redirect || 'index.php');
@@ -1343,6 +1357,10 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                         localStorage.setItem('oxford_session_user', JSON.stringify(user));
                         localStorage.setItem('oxford_session_role', role);
 
+                        if (res.session_token) {
+                            localStorage.setItem('oxford_remember_token', res.session_token);
+                        }
+
                         showToast(res.message || 'Password created successfully! Entering portal...', 'success');
                         setTimeout(() => {
                             window.location.replace(res.redirect || 'index.php');
@@ -1416,6 +1434,10 @@ $isServerAuth = !empty($_SESSION['user_id']) && !empty($_SESSION['role']);
                         localStorage.setItem('oxford_session_auth', 'true');
                         localStorage.setItem('oxford_session_user', JSON.stringify(user));
                         localStorage.setItem('oxford_session_role', role);
+
+                        if (res.session_token) {
+                            localStorage.setItem('oxford_remember_token', res.session_token);
+                        }
 
                         showToast(res.message || `Welcome back, ${user.full_name}!`, 'success');
                         setTimeout(() => {
