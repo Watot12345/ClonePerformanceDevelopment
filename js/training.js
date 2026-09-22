@@ -138,6 +138,13 @@ let trainingResultsState = [];
 let trainingCertificatesState = [];
 let trainingEmployeesState = [];
 
+window.trainingNeedsState = trainingNeedsState;
+window.trainingProgramsState = trainingProgramsState;
+window.trainingSessionsState = trainingSessionsState;
+window.trainingResultsState = trainingResultsState;
+window.trainingCertificatesState = trainingCertificatesState;
+window.trainingEmployeesState = trainingEmployeesState;
+
 let activeAttendanceSessionId = 'sess-101';
 
 function matchesDepartment(itemDept, supervisorDept) {
@@ -443,15 +450,14 @@ async function initTrainingManagement() {
         console.warn('[Training] Running with cached offline state:', err.message);
     }
 
-    // 3. Supabase Realtime Subscription for Competency Gaps, Performance Evaluations & Training Needs
+    // 3. Supabase Realtime Subscription across all 6 Training Management Tables & Upstream Triggers
     const sbClient = window.supabaseClient || (window.supabase && typeof window.supabase.channel === 'function' ? window.supabase : null);
-    if (sbClient && typeof sbClient.channel === 'function') {
-        // Debounce + in-flight lock to prevent infinite loop:
-        // bootstrap({ force_sync }) writes back to training_needs, which fires
-        // another realtime event on the same table, re-triggering this handler.
+    if (sbClient && typeof sbClient.channel === 'function' && !window.trainingRealtimeSubscribed) {
+        window.trainingRealtimeSubscribed = true;
+
         let _realtimeSyncInFlight = false;
         let _realtimeLastSyncTs = 0;
-        const REALTIME_DEBOUNCE_MS = 10000; // ignore re-fires within 10 s of last sync
+        const REALTIME_DEBOUNCE_MS = 6000; // debounce for upstream auto-sync
 
         const handleRealtimeSync = async (source) => {
             const now = Date.now();
@@ -476,6 +482,7 @@ async function initTrainingManagement() {
                     } else if (Array.isArray(freshData.allNeeds)) {
                         window.propertyNeedsState = freshData.allNeeds.map(normalizeTrainingNeed);
                     }
+                    window.trainingNeedsState = trainingNeedsState;
                     renderTrainingNeeds();
                     updateTrainingStats();
                     if (typeof window.showToast === 'function') {
@@ -489,15 +496,206 @@ async function initTrainingManagement() {
             }
         };
 
-        sbClient
-            .channel('training_realtime_channel')
+        const trainingChannel = sbClient.channel('training_management_realtime_hub');
+
+        // A. Upstream Competency & Performance Triggers
+        trainingChannel
             .on('postgres_changes', { event: '*', schema: 'public', table: 'competency_assessments' }, () => handleRealtimeSync('competency appraisal'))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'performance_evaluations' }, () => handleRealtimeSync('performance evaluation'))
-            // NOTE: Do NOT listen on 'training_needs' here — that table is written to
-            // by the sync itself (syncDeficitsFromAssessments), so subscribing to it
-            // creates an infinite realtime loop. The two listeners above cover all
-            // upstream data sources that feed into training_needs.
-            .subscribe();
+
+        // B. Stage 1: Training Needs & Deficits Direct Sync
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'training_needs' }, (payload) => {
+            const newRow = payload.new;
+            const oldRow = payload.old;
+            console.log('[Training Realtime] training_needs change:', payload.eventType, newRow || oldRow);
+
+            if (payload.eventType === 'INSERT' && newRow && newRow.id) {
+                const normalized = normalizeTrainingNeed(newRow);
+                const exists = trainingNeedsState.some(n => n.id === normalized.id);
+                if (!exists) {
+                    trainingNeedsState.unshift(normalized);
+                    if (Array.isArray(window.propertyNeedsState)) window.propertyNeedsState.unshift(normalized);
+                }
+            } else if (payload.eventType === 'UPDATE' && newRow && newRow.id) {
+                const normalized = normalizeTrainingNeed(newRow);
+                const idx = trainingNeedsState.findIndex(n => n.id === normalized.id);
+                if (idx >= 0) trainingNeedsState[idx] = Object.assign({}, trainingNeedsState[idx], normalized);
+                else trainingNeedsState.unshift(normalized);
+
+                if (Array.isArray(window.propertyNeedsState)) {
+                    const pIdx = window.propertyNeedsState.findIndex(n => n.id === normalized.id);
+                    if (pIdx >= 0) window.propertyNeedsState[pIdx] = Object.assign({}, window.propertyNeedsState[pIdx], normalized);
+                }
+            } else if (payload.eventType === 'DELETE' && oldRow && oldRow.id) {
+                trainingNeedsState = trainingNeedsState.filter(n => n.id != oldRow.id);
+                if (Array.isArray(window.propertyNeedsState)) {
+                    window.propertyNeedsState = window.propertyNeedsState.filter(n => n.id != oldRow.id);
+                }
+            }
+
+            window.trainingNeedsState = trainingNeedsState;
+            renderTrainingNeeds();
+            updateTrainingStats();
+
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Training Management',
+                    'TRAINING_NEED_' + payload.eventType,
+                    'Training Queue',
+                    `Training deficit ${newRow?.title || oldRow?.title || 'record'} synchronized in real time.`,
+                    'SUCCESS'
+                );
+            }
+        });
+
+        // C. Stage 2: Training Programs (Curricula)
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'training_programs' }, (payload) => {
+            const newRow = payload.new;
+            const oldRow = payload.old;
+            console.log('[Training Realtime] training_programs change:', payload.eventType);
+
+            if (payload.eventType === 'INSERT' && newRow && newRow.id) {
+                const normalized = normalizeTrainingProgram(newRow);
+                if (!trainingProgramsState.some(p => p.id === normalized.id)) trainingProgramsState.unshift(normalized);
+            } else if (payload.eventType === 'UPDATE' && newRow && newRow.id) {
+                const normalized = normalizeTrainingProgram(newRow);
+                const idx = trainingProgramsState.findIndex(p => p.id === normalized.id);
+                if (idx >= 0) trainingProgramsState[idx] = Object.assign({}, trainingProgramsState[idx], normalized);
+                else trainingProgramsState.unshift(normalized);
+            } else if (payload.eventType === 'DELETE' && oldRow && oldRow.id) {
+                trainingProgramsState = trainingProgramsState.filter(p => p.id != oldRow.id);
+            }
+
+            window.trainingProgramsState = trainingProgramsState;
+            renderTrainingPrograms();
+
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Training Management',
+                    'TRAINING_PROGRAM_' + payload.eventType,
+                    'Curriculum Designer',
+                    `Program "${newRow?.title || oldRow?.title || 'curriculum'}" updated.`,
+                    'SUCCESS'
+                );
+            }
+        });
+
+        // D. Stage 3: Training Sessions & Cohorts
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'training_sessions' }, (payload) => {
+            const newRow = payload.new;
+            const oldRow = payload.old;
+            console.log('[Training Realtime] training_sessions change:', payload.eventType);
+
+            if (payload.eventType === 'INSERT' && newRow && newRow.id) {
+                const normalized = normalizeTrainingSession(newRow);
+                if (!trainingSessionsState.some(s => s.id === normalized.id)) trainingSessionsState.unshift(normalized);
+            } else if (payload.eventType === 'UPDATE' && newRow && newRow.id) {
+                const normalized = normalizeTrainingSession(newRow);
+                const idx = trainingSessionsState.findIndex(s => s.id === normalized.id);
+                if (idx >= 0) trainingSessionsState[idx] = Object.assign({}, trainingSessionsState[idx], normalized);
+                else trainingSessionsState.unshift(normalized);
+            } else if (payload.eventType === 'DELETE' && oldRow && oldRow.id) {
+                trainingSessionsState = trainingSessionsState.filter(s => s.id != oldRow.id);
+            }
+
+            window.trainingSessionsState = trainingSessionsState;
+            renderTrainingSessions();
+            renderAttendanceConsole();
+            updateTrainingStats();
+
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Training Management',
+                    'TRAINING_SESSION_' + payload.eventType,
+                    'Session Coordinator',
+                    `Session "${newRow?.title || oldRow?.title || 'schedule'}" synchronized.`,
+                    'SUCCESS'
+                );
+            }
+        });
+
+        // E. Stage 4: Attendance Participants
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants' }, (payload) => {
+            const newRow = payload.new;
+            console.log('[Training Realtime] session_participants change:', payload.eventType);
+            renderAttendanceConsole();
+        });
+
+        // F. Stage 5: Post-Training Evaluations & Quiz Results
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'training_evaluations' }, (payload) => {
+            const newRow = payload.new;
+            const oldRow = payload.old;
+            console.log('[Training Realtime] training_evaluations change:', payload.eventType);
+
+            if (payload.eventType === 'INSERT' && newRow && newRow.id) {
+                const normalized = normalizeTrainingResult(newRow);
+                if (!trainingResultsState.some(r => r.id === normalized.id)) trainingResultsState.unshift(normalized);
+            } else if (payload.eventType === 'UPDATE' && newRow && newRow.id) {
+                const normalized = normalizeTrainingResult(newRow);
+                const idx = trainingResultsState.findIndex(r => r.id === normalized.id);
+                if (idx >= 0) trainingResultsState[idx] = Object.assign({}, trainingResultsState[idx], normalized);
+                else trainingResultsState.unshift(normalized);
+            } else if (payload.eventType === 'DELETE' && oldRow && oldRow.id) {
+                trainingResultsState = trainingResultsState.filter(r => r.id != oldRow.id);
+            }
+
+            window.trainingResultsState = trainingResultsState;
+            renderTrainingResults();
+            renderBasicTrainingReport();
+            updateTrainingStats();
+            renderCertsTable();
+
+            // Trigger live succession recalibration
+            if (typeof window.scheduleSuccessionBackgroundSync === 'function') {
+                window.scheduleSuccessionBackgroundSync('training_evaluation_passed');
+            }
+
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Training Management',
+                    'EVALUATION_RESULT_' + payload.eventType,
+                    'Kirkpatrick Evaluation Engine',
+                    `Training evaluation recorded (Score: ${newRow?.quiz_score || 0}%).`,
+                    'SUCCESS'
+                );
+            }
+        });
+
+        // G. Stage 6: Digital Certificates
+        trainingChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, (payload) => {
+            const newRow = payload.new;
+            const oldRow = payload.old;
+            console.log('[Training Realtime] certificates change:', payload.eventType);
+
+            if (payload.eventType === 'INSERT' && newRow && newRow.id) {
+                if (!trainingCertificatesState.some(c => c.id === newRow.id)) trainingCertificatesState.unshift(newRow);
+                if (Array.isArray(window.propertyCertificatesState)) window.propertyCertificatesState.unshift(newRow);
+            } else if (payload.eventType === 'UPDATE' && newRow && newRow.id) {
+                const idx = trainingCertificatesState.findIndex(c => c.id === newRow.id);
+                if (idx >= 0) trainingCertificatesState[idx] = Object.assign({}, trainingCertificatesState[idx], newRow);
+            } else if (payload.eventType === 'DELETE' && oldRow && oldRow.id) {
+                trainingCertificatesState = trainingCertificatesState.filter(c => c.id != oldRow.id);
+            }
+
+            window.trainingCertificatesState = trainingCertificatesState;
+            renderCertsTable();
+
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Training Management',
+                    'CERTIFICATE_ISSUED',
+                    'Oxford Certification Office',
+                    `Certificate ${newRow?.certificate_number || ''} issued for ${newRow?.associate_name || 'Associate'}.`,
+                    'SUCCESS'
+                );
+            }
+        });
+
+        trainingChannel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('[Supabase Realtime] Training Management Hub subscribed across all 6 tables.');
+            }
+        });
     }
 }
 

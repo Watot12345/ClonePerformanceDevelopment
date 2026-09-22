@@ -1,21 +1,21 @@
 {
-    "livePropertyXp": 1800,
-    "liveKudosSent": 2,
-    "liveBadgesCount": 11,
+    "livePropertyXp": 440,
+    "liveKudosSent": 1,
+    "liveBadgesCount": 2,
     "liveActiveStaffCount": 5,
     "liveTotalGoals": 1,
     "liveApprovedGoals": 1,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
     "liveGoalsApprovalRate": 100,
-    "liveTotalPrescribed": 4,
-    "livePassedPrescribed": 0,
-    "liveLmsAvgScore": 0,
-    "liveLmsRate": 0,
-    "totalRolesCount": 1,
-    "coveredRolesCount": 1,
-    "fastTrackCount": 1,
-    "liveBenchDepthPct": 100,
+    "liveTotalPrescribed": 1,
+    "livePassedPrescribed": 1,
+    "liveLmsAvgScore": 100,
+    "liveLmsRate": 100,
+    "totalRolesCount": 0,
+    "coveredRolesCount": 0,
+    "fastTrackCount": 0,
+    "liveBenchDepthPct": 0,
     "deptBuckets": {
         "Front Office": {
             "department": "Front Office",
@@ -25,11 +25,11 @@
             ],
             "goals_total": 1,
             "goals_approved": 1,
-            "lms_total": 0,
-            "lms_progress_sum": 0,
-            "lms_passed": 0,
-            "succ_candidates": 1,
-            "succ_ready": 1
+            "lms_total": 1,
+            "lms_progress_sum": 100,
+            "lms_passed": 1,
+            "succ_candidates": 0,
+            "succ_ready": 0
         },
         "Food & Beverage": {
             "department": "Food & Beverage",
@@ -51,7 +51,7 @@
             ],
             "goals_total": 0,
             "goals_approved": 0,
-            "lms_total": 1,
+            "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
             "succ_candidates": 0,
@@ -79,7 +79,7 @@
             ],
             "goals_total": 0,
             "goals_approved": 0,
-            "lms_total": 3,
+            "lms_total": 0,
             "lms_progress_sum": 0,
             "lms_passed": 0,
             "succ_candidates": 0,
@@ -163,5 +163,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789928768
+    "cached_at": 1789971148
 }

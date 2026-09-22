@@ -16,6 +16,11 @@ let successionEmployeesState = [];
 let successionRecommendationsState = [];
 let successionActiveDeptFilter = 'all';
 
+window.successionRolesState = successionRolesState;
+window.successionCandidatesState = successionCandidatesState;
+window.nineBoxRosterState = nineBoxRosterState;
+window.successionEmployeesState = successionEmployeesState;
+
 // =========================================================================
 // 1. INITIALIZATION & DATA SYNC
 // =========================================================================
@@ -33,6 +38,11 @@ async function initSuccessionPlanning() {
             successionEmployeesState = payload.data.employees || [];
             successionRecommendationsState = payload.data.recommendations || [];
             
+            window.successionRolesState = successionRolesState;
+            window.successionCandidatesState = successionCandidatesState;
+            window.nineBoxRosterState = nineBoxRosterState;
+            window.successionEmployeesState = successionEmployeesState;
+
             populateSuccessionEmployeeDropdowns();
             updateSuccessionModalRecommendations();
         }
@@ -54,25 +64,72 @@ async function initSuccessionPlanning() {
         
         // Listen to changes in Performance Appraisals that might close a cycle
         channel.on('postgres_changes', { event: '*', schema: 'public', table: 'performance_evaluations' }, (payload) => {
-            console.log('Realtime: Performance Evaluation change detected -> scheduling debounced succession sync');
+            console.log('[Succession Realtime] Performance Evaluation change detected -> scheduling debounced succession sync');
             scheduleSuccessionBackgroundSync('performance_evaluations');
         });
         
         // Listen to changes in Competency/Training that alter readiness index
         channel.on('postgres_changes', { event: '*', schema: 'public', table: 'competency_assessments' }, (payload) => {
-            console.log('Realtime: Competency score change detected -> scheduling debounced succession sync');
+            console.log('[Succession Realtime] Competency score change detected -> scheduling debounced succession sync');
             scheduleSuccessionBackgroundSync('competency_assessments');
+        });
+
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'competency_evaluations' }, (payload) => {
+            console.log('[Succession Realtime] Competency evaluation score change detected -> scheduling debounced succession sync');
+            scheduleSuccessionBackgroundSync('competency_evaluations');
+        });
+
+        // Listen to newly passed training results & certifications
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'training_evaluations' }, (payload) => {
+            console.log('[Succession Realtime] Training result pass detected -> recalibrating readiness index');
+            scheduleSuccessionBackgroundSync('training_evaluations');
+        });
+
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, (payload) => {
+            console.log('[Succession Realtime] Certificate issued -> recalibrating readiness index');
+            scheduleSuccessionBackgroundSync('certificates');
         });
 
         // Listen directly to succession records changes (HR flags updated)
         channel.on('postgres_changes', { event: '*', schema: 'public', table: 'succession_candidates' }, (payload) => {
-            console.log('Realtime: Succession Candidate change detected -> scheduling debounced succession sync');
+            console.log('[Succession Realtime] Succession Candidate change detected -> scheduling debounced succession sync');
             scheduleSuccessionBackgroundSync('succession_candidates');
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Succession Planning',
+                    'CANDIDATE_CALIBRATION_SYNC',
+                    'HR Director',
+                    'Succession pipeline candidate readiness status updated.',
+                    'SUCCESS'
+                );
+            }
+        });
+
+        // Listen to succession target roles
+        channel.on('postgres_changes', { event: '*', schema: 'public', table: 'succession_positions' }, (payload) => {
+            console.log('[Succession Realtime] Succession Position change detected -> scheduling debounced succession sync');
+            scheduleSuccessionBackgroundSync('succession_positions');
+            if (typeof window.appendLiveAuditLog === 'function') {
+                window.appendLiveAuditLog(
+                    'Succession Planning',
+                    'BENCH_STRENGTH_SYNC',
+                    'HR Director',
+                    'Critical role succession target bench updated.',
+                    'SUCCESS'
+                );
+            }
         });
 
         channel.subscribe();
     }
 }
+
+window.renderSuccessionKPIs = renderSuccessionKPIs;
+window.renderSuccessionRecords = renderSuccessionRecords;
+window.renderComputedReadinessMatrix = renderComputedReadinessMatrix;
+window.renderSuccession9BoxGrid = renderSuccession9BoxGrid;
+window.scheduleSuccessionBackgroundSync = scheduleSuccessionBackgroundSync;
+window.syncSuccessionBackground = syncSuccessionBackground;
 
 let _successionSyncInFlight = false;
 let _successionDebounceTimer = null;

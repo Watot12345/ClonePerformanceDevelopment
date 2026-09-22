@@ -167,6 +167,17 @@ function triggerPerformanceRealtimeSync(sourceTable, empId = null) {
         if (typeof fetchAndRenderDepartmentExecutionMatrix === 'function') {
             fetchAndRenderDepartmentExecutionMatrix(true);
         }
+
+        // 11. Dispatch live audit log entry
+        if (typeof window.appendLiveAuditLog === 'function' && sourceTable) {
+            window.appendLiveAuditLog(
+                'Performance Management',
+                'REALTIME_' + sourceTable.toUpperCase() + '_SYNC',
+                'Oxford Performance Engine',
+                `Synchronized ${sourceTable.replace(/_/g, ' ')} across active views.`,
+                'SUCCESS'
+            );
+        }
     }, 100);
 }
 window.triggerPerformanceRealtimeSync = triggerPerformanceRealtimeSync;
@@ -811,6 +822,9 @@ function initSupabaseRealtime() {
                         if (typeof loadSuccessionOverview === 'function') {
                             loadSuccessionOverview();
                         }
+                        if (typeof window.scheduleSuccessionBackgroundSync === 'function') {
+                            window.scheduleSuccessionBackgroundSync('succession_candidates');
+                        }
                     }
                 )
                 .on(
@@ -819,6 +833,9 @@ function initSupabaseRealtime() {
                     (payload) => {
                         if (typeof fetchAndRenderDepartmentExecutionMatrix === 'function') {
                             fetchAndRenderDepartmentExecutionMatrix(true);
+                        }
+                        if (typeof window.scheduleSuccessionBackgroundSync === 'function') {
+                            window.scheduleSuccessionBackgroundSync('succession_positions');
                         }
                     }
                 )
@@ -843,6 +860,121 @@ function initSupabaseRealtime() {
                 .subscribe((status) => {
                     if (status === 'SUBSCRIBED') {
                         console.log('[Supabase Realtime] Succession & Department Matrix channel active');
+                    }
+                });
+        }
+
+        // 7. Training Operations & Deficits Realtime Channel
+        if (!realtimeChannels.training_management) {
+            realtimeChannels.training_management = supabaseClient
+                .channel('realtime_training_ops_hub')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'training_needs' },
+                    (payload) => {
+                        const newRow = payload.new || {};
+                        const oldRow = payload.old || {};
+                        console.log('[Supabase Realtime] training_needs event:', payload.eventType);
+
+                        if (Array.isArray(window.trainingNeedsState) && typeof window.normalizeTrainingNeed === 'function') {
+                            if (payload.eventType === 'INSERT' && newRow.id) {
+                                const norm = window.normalizeTrainingNeed(newRow);
+                                if (!window.trainingNeedsState.some(n => n.id === norm.id)) {
+                                    window.trainingNeedsState.unshift(norm);
+                                }
+                            } else if (payload.eventType === 'UPDATE' && newRow.id) {
+                                const norm = window.normalizeTrainingNeed(newRow);
+                                const idx = window.trainingNeedsState.findIndex(n => n.id === norm.id);
+                                if (idx >= 0) window.trainingNeedsState[idx] = Object.assign({}, window.trainingNeedsState[idx], norm);
+                                else window.trainingNeedsState.unshift(norm);
+                            } else if (payload.eventType === 'DELETE' && oldRow.id) {
+                                window.trainingNeedsState = window.trainingNeedsState.filter(n => n.id != oldRow.id);
+                            }
+                        }
+
+                        if (typeof window.renderTrainingNeeds === 'function') {
+                            window.renderTrainingNeeds();
+                        }
+                        if (typeof window.updateTrainingStats === 'function') {
+                            window.updateTrainingStats();
+                        }
+                        if (typeof window.appendLiveAuditLog === 'function') {
+                            window.appendLiveAuditLog(
+                                'Training Management',
+                                'TRAINING_NEED_MUTATION',
+                                'Training Operations',
+                                `Training need record ${newRow.title || oldRow.title || ''} synchronized.`,
+                                'SUCCESS'
+                            );
+                        }
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'training_programs' },
+                    (payload) => {
+                        if (typeof window.renderTrainingPrograms === 'function') {
+                            window.renderTrainingPrograms();
+                        }
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'training_sessions' },
+                    (payload) => {
+                        if (typeof window.renderTrainingSessions === 'function') {
+                            window.renderTrainingSessions();
+                        }
+                        if (typeof window.renderAttendanceConsole === 'function') {
+                            window.renderAttendanceConsole();
+                        }
+                        if (typeof window.updateTrainingStats === 'function') {
+                            window.updateTrainingStats();
+                        }
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'training_evaluations' },
+                    (payload) => {
+                        if (typeof window.renderTrainingResults === 'function') {
+                            window.renderTrainingResults();
+                        }
+                        if (typeof window.updateTrainingStats === 'function') {
+                            window.updateTrainingStats();
+                        }
+                        if (typeof window.renderCertsTable === 'function') {
+                            window.renderCertsTable();
+                        }
+                        if (typeof window.scheduleSuccessionBackgroundSync === 'function') {
+                            window.scheduleSuccessionBackgroundSync('training_evaluations');
+                        }
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('[Supabase Realtime] Training Operations Hub channel active');
+                    }
+                });
+        }
+
+        // 8. Notifications & Alerts Realtime Channel
+        if (!realtimeChannels.notifications) {
+            realtimeChannels.notifications = supabaseClient
+                .channel('realtime_notifications_hub')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'notifications' },
+                    (payload) => {
+                        console.log('[Supabase Realtime] notifications event:', payload.eventType);
+                        if (typeof window.handleRealtimeNotification === 'function') {
+                            window.handleRealtimeNotification(payload);
+                        }
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('[Supabase Realtime] Notifications & Alerts channel active');
                     }
                 });
         }

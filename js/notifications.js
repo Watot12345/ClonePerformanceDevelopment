@@ -80,6 +80,155 @@ let auditLogsState = [
     }
 ];
 
+window.alertsState = alertsState;
+window.auditLogsState = auditLogsState;
+
+/**
+ * Append an immutable live audit log entry in real time
+ */
+function appendLiveAuditLog(module, action, actor, details, status = 'SUCCESS', customId = null) {
+    const logId = customId || ('LOG-' + Math.floor(1000 + Math.random() * 9000));
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const newLog = {
+        id: logId,
+        timestamp: `Just now · ${timeStr}`,
+        module: module || 'System Core',
+        action: action || 'OPERATIONAL_EVENT',
+        actor: actor || 'Oxford System Engine',
+        target: 'Realtime Pipeline',
+        details: details || 'Real-time database transaction synchronized.',
+        status: status,
+        ip: 'Live WebSocket Client'
+    };
+
+    auditLogsState.unshift(newLog);
+    if (auditLogsState.length > 150) {
+        auditLogsState.pop();
+    }
+
+    renderAuditLogs();
+    renderAlertsKPIs();
+}
+window.appendLiveAuditLog = appendLiveAuditLog;
+
+/**
+ * Map raw database notification row to standardized UI alert object
+ */
+function formatNotificationItem(item) {
+    if (!item) return null;
+
+    let icon = 'fa-bell';
+    let color = 'primary';
+    let priority = 'info';
+    let actionLabel = 'View Details →';
+    let actionTarget = 'pillar-overview';
+    let actionSubTab = 'pulse';
+
+    const type = (item.type || '').toLowerCase();
+
+    if (type === 'goal_created') {
+        icon = 'fa-bullseye';
+        color = 'amber';
+        priority = 'action';
+        actionLabel = 'Review & Endorse Goal →';
+        actionTarget = 'pillar-perf';
+        actionSubTab = 'plan';
+    } else if (type === 'goal_revised') {
+        icon = 'fa-pen-to-square';
+        color = 'purple';
+        priority = 'action';
+        actionLabel = 'View Calibrated Target →';
+        actionTarget = 'pillar-overview';
+        actionSubTab = 'pulse';
+    } else if (type === 'goal_approved') {
+        icon = 'fa-circle-check';
+        color = 'emerald';
+        priority = 'info';
+        actionLabel = 'View Approved Plan →';
+        actionTarget = 'pillar-overview';
+        actionSubTab = 'pulse';
+    } else if (type === 'training_need' || type === 'training_deficit') {
+        icon = 'fa-triangle-exclamation';
+        color = 'rose';
+        priority = 'action';
+        actionLabel = 'View Training Needs →';
+        actionTarget = 'pillar-training';
+        actionSubTab = 'needs';
+    } else if (type === 'training_session' || type === 'training_scheduled') {
+        icon = 'fa-graduation-cap';
+        color = 'gold';
+        priority = 'action';
+        actionLabel = 'View Training Session →';
+        actionTarget = 'pillar-training';
+        actionSubTab = 'sessions';
+    } else if (type === 'training_assigned') {
+        icon = 'fa-book-open-reader';
+        color = 'primary';
+        priority = 'action';
+        actionLabel = 'View Assigned Program →';
+        actionTarget = 'pillar-training';
+        actionSubTab = 'programs';
+    } else if (type === 'training_passed') {
+        icon = 'fa-award';
+        color = 'emerald';
+        priority = 'info';
+        actionLabel = 'View Certificate →';
+        actionTarget = 'pillar-training';
+        actionSubTab = 'eval';
+    } else if (type === 'training_failed') {
+        icon = 'fa-circle-xmark';
+        color = 'rose';
+        priority = 'action';
+        actionLabel = 'View Training Result →';
+        actionTarget = 'pillar-training';
+        actionSubTab = 'eval';
+    } else if (type.includes('succession') || type === 'talent_bench_update') {
+        icon = 'fa-chess-knight';
+        color = 'purple';
+        priority = 'action';
+        actionLabel = 'View Succession Pipeline →';
+        actionTarget = 'pillar-succession';
+        actionSubTab = 'overview';
+    } else if (type === 'kudos' || type === 'recognition' || type === 'xp_award') {
+        icon = 'fa-heart';
+        color = 'rose';
+        priority = 'info';
+        actionLabel = 'View Kudos Feed →';
+        actionTarget = 'pillar-kudos';
+        actionSubTab = 'feed';
+    } else if (type.includes('lms')) {
+        icon = 'fa-book-bookmark';
+        color = 'primary';
+        priority = 'info';
+        actionLabel = 'Open LMS Library →';
+        actionTarget = 'pillar-lms';
+        actionSubTab = 'bookshelf';
+    }
+
+    const dateStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
+    const fullDate = item.created_at ? new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+
+    return {
+        id: item.id,
+        title: item.title || 'Operational Notification',
+        category: item.type || 'system_alert',
+        priority: priority,
+        dept: item.recipient_role || 'General',
+        icon: icon,
+        color: color,
+        timestamp: dateStr,
+        date: fullDate,
+        message: item.message || '',
+        actionLabel: actionLabel,
+        actionTarget: actionTarget,
+        actionSubTab: actionSubTab,
+        isRead: !!item.is_read
+    };
+}
+window.formatNotificationItem = formatNotificationItem;
+
 // =========================================================================
 // 2. INITIALIZATION & LIVE NOTIFICATIONS SYNC
 // =========================================================================
@@ -99,7 +248,115 @@ async function initNotificationsHub() {
     }
     await loadLiveNotifications(currentRole, currentUserId);
     renderAuditLogs();
+    initNotificationsRealtime();
 }
+
+/**
+ * Handle incoming Supabase Realtime postgres_changes event on 'notifications'
+ */
+function handleRealtimeNotification(payload) {
+    if (!payload) return;
+    const eventType = payload.eventType;
+    const newRow = payload.new || {};
+    const oldRow = payload.old || {};
+
+    const currentRole = (window.activePersonaRole || (window.activePersonaKey === 'employee' ? 'Associate' : 'Supervisor')).toLowerCase();
+    const currentUserId = (window.currentUser?.id || '').toLowerCase();
+
+    const isMatchForCurrentUser = (row) => {
+        if (!row) return false;
+        const targetUser = (row.user_id || '').toLowerCase().trim();
+        const targetRole = (row.recipient_role || '').toLowerCase().trim();
+
+        if (targetUser) {
+            return targetUser === currentUserId;
+        }
+
+        if (!targetRole || targetRole === 'all' || targetRole === 'broadcast') return true;
+        if (targetRole === currentRole) return true;
+        if ((currentRole === 'associate' || currentRole === 'employee') && (targetRole === 'associate' || targetRole === 'employee')) return true;
+        if ((currentRole === 'supervisor' || currentRole === 'manager') && (targetRole === 'supervisor' || targetRole === 'manager')) return true;
+        if (currentRole === 'hradmin' && (targetRole === 'hradmin' || targetRole === 'hr')) return true;
+        if (currentRole === 'generalmanager' && (targetRole === 'generalmanager' || targetRole === 'gm')) return true;
+        return false;
+    };
+
+    if (eventType === 'INSERT' && newRow.id) {
+        if (isMatchForCurrentUser(newRow)) {
+            const formatted = formatNotificationItem(newRow);
+            if (formatted) {
+                const existingIdx = alertsState.findIndex(a => a.id === formatted.id);
+                if (existingIdx >= 0) {
+                    alertsState[existingIdx] = formatted;
+                } else {
+                    alertsState.unshift(formatted);
+                }
+
+                renderAlertsInbox();
+                renderAlertsKPIs();
+                updateUnreadBadges();
+
+                // Show instant live notification banner / toast
+                if (typeof window.showToast === 'function') {
+                    const toastType = (newRow.type === 'goal_approved' || newRow.type === 'training_passed') ? 'success' : 'info';
+                    window.showToast(`${newRow.title}: ${newRow.message}`, toastType);
+                }
+
+                // Append live audit event
+                appendLiveAuditLog(
+                    'Notifications & Alerts',
+                    'NOTIFICATION_DISPATCHED',
+                    'System Alert Bus',
+                    `Delivered "${newRow.title}" to ${newRow.recipient_role || 'Target Role'}`,
+                    'SUCCESS'
+                );
+            }
+        }
+    } else if (eventType === 'UPDATE' && newRow.id) {
+        const idx = alertsState.findIndex(a => a.id == newRow.id);
+        if (idx >= 0) {
+            const formatted = formatNotificationItem(newRow);
+            if (formatted) alertsState[idx] = formatted;
+            renderAlertsInbox();
+            renderAlertsKPIs();
+            updateUnreadBadges();
+        }
+    } else if (eventType === 'DELETE' && oldRow.id) {
+        alertsState = alertsState.filter(a => a.id != oldRow.id);
+        renderAlertsInbox();
+        renderAlertsKPIs();
+        updateUnreadBadges();
+    }
+}
+window.handleRealtimeNotification = handleRealtimeNotification;
+
+/**
+ * Dedicated Supabase Realtime Listener for Notifications
+ */
+let _notifRealtimeSubscribed = false;
+function initNotificationsRealtime() {
+    if (_notifRealtimeSubscribed) return;
+    const sbClient = window.supabaseClient || (window.supabase && typeof window.supabase.channel === 'function' ? window.supabase : null);
+    if (!sbClient || typeof sbClient.channel !== 'function') return;
+
+    try {
+        _notifRealtimeSubscribed = true;
+        sbClient
+            .channel('notifications_realtime_channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
+                console.log('[Supabase Realtime] Notification change received:', payload);
+                handleRealtimeNotification(payload);
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('[Supabase Realtime] Notifications & Alerts WebSocket channel active.');
+                }
+            });
+    } catch (e) {
+        console.warn('[Notifications Realtime] Setup error:', e);
+    }
+}
+window.initNotificationsRealtime = initNotificationsRealtime;
 
 async function loadLiveNotifications(role = 'all', userId = null) {
     const currentRole = role !== 'all' ? role : (window.activePersonaRole || (window.activePersonaKey === 'employee' ? 'Associate' : 'Supervisor'));
@@ -107,78 +364,7 @@ async function loadLiveNotifications(role = 'all', userId = null) {
     const data = await NotificationAPI.getNotifications(currentRole, currentUserId);
     
     // Format database notifications into alert card objects
-    alertsState = data.map(item => {
-        let icon = 'fa-bell';
-        let color = 'primary';
-        let priority = 'info';
-        let actionLabel = 'View Details →';
-        let actionTarget = 'pillar-overview';
-        let actionSubTab = 'pulse';
-
-        if (item.type === 'goal_created') {
-            icon = 'fa-bullseye';
-            color = 'amber';
-            priority = 'action';
-            actionLabel = 'Review & Endorse Goal →';
-            actionTarget = 'pillar-perf';
-            actionSubTab = 'plan';
-        } else if (item.type === 'goal_revised') {
-            icon = 'fa-pen-to-square';
-            color = 'purple';
-            priority = 'action';
-            actionLabel = 'View Calibrated Target →';
-            actionTarget = 'pillar-overview';
-            actionSubTab = 'pulse';
-        } else if (item.type === 'goal_approved') {
-            icon = 'fa-circle-check';
-            color = 'emerald';
-            priority = 'info';
-            actionLabel = 'View Approved Plan →';
-            actionTarget = 'pillar-overview';
-            actionSubTab = 'pulse';
-        } else if (item.type === 'training_session' || item.type === 'training_scheduled') {
-            icon = 'fa-graduation-cap';
-            color = 'gold';
-            priority = 'action';
-            actionLabel = 'View Training Session →';
-            actionTarget = 'pillar-training';
-            actionSubTab = 'sessions';
-        } else if (item.type === 'training_assigned') {
-            icon = 'fa-book-open-reader';
-            color = 'primary';
-            priority = 'action';
-            actionLabel = 'View Assigned Program →';
-            actionTarget = 'pillar-training';
-            actionSubTab = 'programs';
-        } else if (item.type === 'training_passed') {
-            icon = 'fa-award';
-            color = 'emerald';
-            priority = 'info';
-            actionLabel = 'View Certificate →';
-            actionTarget = 'pillar-training';
-            actionSubTab = 'eval';
-        }
-
-        const dateStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
-        const fullDate = item.created_at ? new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-
-        return {
-            id: item.id,
-            title: item.title,
-            category: item.type,
-            priority: priority,
-            dept: item.recipient_role || 'General',
-            icon: icon,
-            color: color,
-            timestamp: dateStr,
-            date: fullDate,
-            message: item.message,
-            actionLabel: actionLabel,
-            actionTarget: actionTarget,
-            actionSubTab: actionSubTab,
-            isRead: !!item.is_read
-        };
-    });
+    alertsState = (data || []).map(item => formatNotificationItem(item)).filter(Boolean);
 
     const isAssociate = (window.activePersonaRole === 'Associate' || window.activePersonaKey === 'associate' || window.activePersonaKey === 'employee');
     
