@@ -1115,12 +1115,17 @@ function openReviewTasksModal(empId) {
                                     <span>Locked</span>
                                 </span>
                             ` : `
-                                ${isDone ? `
+                                ${isDone ? (needsTraining ? `
+                                    <button disabled class="px-3 py-1.5 bg-slate-100 text-slate-400 font-bold rounded-xl text-xs border border-slate-200 cursor-not-allowed opacity-60 flex items-center space-x-1" title="Reset to Re-Do is disabled because this employee requires training.">
+                                        <i class="fas fa-ban"></i>
+                                        <span>Reset to Re-Do</span>
+                                    </button>
+                                ` : `
                                     <button onclick="resetTaskForGoal('${t.id}', '${emp.id}', this)" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-xl text-xs border border-amber-200 transition flex items-center space-x-1" title="Reset to pending so employee can re-do task">
                                         <i class="fas fa-rotate-left"></i>
                                         <span>Reset to Re-Do</span>
                                     </button>
-                                ` : ''}
+                                `) : ''}
                                 <button onclick="deleteTaskFromGoal('${t.id}', '${emp.id}', this)" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition" title="Delete obsolete task">
                                     <i class="fas fa-trash-can"></i>
                                 </button>
@@ -1204,6 +1209,12 @@ window.deployAndProceedToMonitoring = deployAndProceedToMonitoring;
  * Reset a task back to pending for employee re-execution
  */
 async function resetTaskForGoal(taskId, empId, btnEl = null) {
+    if (typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(empId)) {
+        if (typeof showToast === 'function') {
+            showToast('Reset to Re-Do is disabled because this employee requires training.', 'warning');
+        }
+        return;
+    }
     let origHtml = '';
     if (btnEl) {
         origHtml = btnEl.innerHTML;
