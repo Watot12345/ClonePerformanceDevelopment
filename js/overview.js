@@ -276,33 +276,103 @@
             html += `</div>`;
         }
 
-        // 2. Interactive Chart Canvas Container (Rendered on demand with Empty State)
+        // 2. Interactive Chart Canvas Container (Rendered on demand with Contextual Empty State)
         if (payload.chart) {
             const chartData = payload.chart.data || (payload.chart.datasets ? payload.chart.datasets.flatMap(d => d.data || []) : []);
             const hasData = chartData.some(v => parseFloat(v) > 0);
 
             if (!hasData) {
+                let emptyIcon = 'fa-chart-pie';
+                let emptyHeading = 'No Data Recorded';
+                let emptyTitle = `${payload.title || 'Metric'} Distribution`;
+                let emptyMsg = 'No records or telemetry logs found in the database for this cycle.';
+                let emptyBtn = '';
+
+                const mKey = String(payload.metric || '').toLowerCase();
+
+                if (mKey.includes('shift') || mKey.includes('sentiment') || mKey.includes('climate')) {
+                    emptyIcon = 'fa-heart-pulse';
+                    emptyHeading = 'No Shift Mood Check-Ins Recorded';
+                    emptyTitle = 'Shift Climate Telemetry';
+                    emptyMsg = 'No daily shift climate check-ins have been recorded yet in Supabase for this cycle. Complete a quick mood check-in to log live team pulse.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-social');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-heart-pulse text-[10px]"></i>
+                        <span>Open Climate Hub</span>
+                    </button>`;
+                } else if (mKey.includes('goal') || mKey.includes('objective') || mKey.includes('perf')) {
+                    emptyIcon = 'fa-bullseye';
+                    emptyHeading = 'No Performance Objectives Recorded';
+                    emptyTitle = 'Objectives Distribution & Status';
+                    emptyMsg = 'You currently do not have any active or approved Q3 SMART objectives in this cycle. Set an objective to track progress velocity.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof openModal==='function') openModal('modal-create-goal');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-plus text-[10px]"></i>
+                        <span>+ Set Q3 Objective</span>
+                    </button>`;
+                } else if (mKey.includes('lms') || mKey.includes('learning')) {
+                    emptyIcon = 'fa-graduation-cap';
+                    emptyHeading = 'No LMS Quizzes or Reading Records';
+                    emptyTitle = 'Learning Completion Telemetry';
+                    emptyMsg = 'No active SOP reading records or quiz attempts recorded yet. Complete an SOP reading & quiz to log progress.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-lms');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-book-open text-[10px]"></i>
+                        <span>Open LMS Hub</span>
+                    </button>`;
+                } else if (mKey.includes('train') || mKey.includes('session')) {
+                    emptyIcon = 'fa-chalkboard-user';
+                    emptyHeading = 'No Training Sessions Recorded';
+                    emptyTitle = 'Training Ops Telemetry';
+                    emptyMsg = 'No training sessions or certifications have been logged for this cycle.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-training');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-calendar-check text-[10px]"></i>
+                        <span>Open Training Ops</span>
+                    </button>`;
+                } else if (mKey.includes('succ') || mKey.includes('bench')) {
+                    emptyIcon = 'fa-sitemap';
+                    emptyHeading = 'No Succession Bench Data';
+                    emptyTitle = 'Succession Pipeline Telemetry';
+                    emptyMsg = 'No calibrated 9-Box candidates mapped yet for this position.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-succession');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-sitemap text-[10px]"></i>
+                        <span>Open Succession Hub</span>
+                    </button>`;
+                } else if (mKey.includes('xp') || mKey.includes('podium') || mKey.includes('kudos') || mKey.includes('champion')) {
+                    emptyIcon = 'fa-trophy';
+                    emptyHeading = 'No XP Transactions Recorded';
+                    emptyTitle = 'Recognition & Ledger Telemetry';
+                    emptyMsg = 'No recognition kudos, badges, or quiz XP transactions have been recorded in the ledger yet.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-social');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-award text-[10px]"></i>
+                        <span>Open Recognition Hub</span>
+                    </button>`;
+                } else if (mKey.includes('comp')) {
+                    emptyIcon = 'fa-bullseye';
+                    emptyHeading = 'No Competency Ratings Assessed';
+                    emptyTitle = 'Competency Radar Telemetry';
+                    emptyMsg = 'Your job role competency standards have not been evaluated yet.';
+                    emptyBtn = `<button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof switchPillar==='function') switchPillar('pillar-comp');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
+                        <i class="fas fa-bullseye text-[10px]"></i>
+                        <span>Open Competency Radar</span>
+                    </button>`;
+                }
+
                 html += `
                     <div class="p-6 rounded-2xl bg-white border border-slate-200 text-center space-y-3 shadow-2xs">
                         <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
                             <span class="font-bold text-xs text-slate-800 flex items-center space-x-1.5">
-                                <i class="fas fa-chart-pie text-slate-400 text-xs"></i>
-                                <span>Objectives Distribution &amp; Status</span>
+                                <i class="fas ${emptyIcon} text-slate-400 text-xs"></i>
+                                <span>${escapeHtml(emptyTitle)}</span>
                             </span>
                             <span class="badge-dusty text-[10px]">No Data Recorded</span>
                         </div>
                         <div class="py-6 flex flex-col items-center justify-center space-y-2.5">
                             <div class="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-300 text-xl shadow-2xs">
-                                <i class="fas fa-bullseye"></i>
+                                <i class="fas ${emptyIcon}"></i>
                             </div>
                             <div class="space-y-1">
-                                <p class="font-heading font-bold text-xs text-slate-800">No Performance Objectives Recorded</p>
-                                <p class="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">You currently do not have any active or approved Q3 SMART objectives in this cycle. Set an objective to track progress velocity.</p>
+                                <p class="font-heading font-bold text-xs text-slate-800">${escapeHtml(emptyHeading)}</p>
+                                <p class="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">${escapeHtml(emptyMsg)}</p>
                             </div>
-                            <button type="button" onclick="if(typeof closeModal==='function') closeModal('modal-overview-drilldown'); if(typeof openModal==='function') openModal('modal-create-goal');" class="btn-primary px-3.5 py-1.5 text-xs font-bold inline-flex items-center space-x-1.5 mt-1.5 shadow-2xs">
-                                <i class="fas fa-plus text-[10px]"></i>
-                                <span>+ Set Q3 Objective</span>
-                            </button>
+                            ${emptyBtn}
                         </div>
                     </div>
                 `;

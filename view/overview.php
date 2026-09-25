@@ -1353,7 +1353,75 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                     </div>
                                 </div>
 
-                                <!-- Row 1: Top 5 Gamified XP Champions + Department Execution Matrix -->
+                                <!-- Row 1: Department Execution Matrix (Full Width) -->
+                                <div class="grid grid-cols-1 gap-6 items-start">
+
+                                    <!-- Department Completion & Progress Comparison (Full Width) -->
+                                    <div class="card-clean p-5 space-y-3">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('dept_matrix')" title="Click for detailed department execution metrics & rankings">
+                                            <div>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
+                                                    <span>Department Execution Matrix</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                                </h3>
+                                                <p class="text-xs text-slate-500">Goal Approval %, LMS Completion %, and Succession Depth across all property departments</p>
+                                            </div>
+                                            <span class="badge-neutral text-[10px]">5 Departments</span>
+                                        </div>
+
+                                        <!-- Side-by-Side Chart and Mini Table for balanced height -->
+                                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center pt-1">
+                                            <!-- Department Comparison Bar Chart (7 Cols) -->
+                                            <div onclick="openOverviewDrilldown('dept_matrix')" class="lg:col-span-7 h-44 sm:h-48 w-full relative cursor-pointer hover:opacity-95 transition-opacity" title="Click to view department comparison telemetry">
+                                                <canvas id="chart-system-dept-progress"></canvas>
+                                                <div id="dept-matrix-loading-overlay" class="overview-loading-overlay absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-lg hidden items-center justify-center transition-opacity">
+                                                    <div class="flex items-center space-x-2 text-xs font-semibold text-slate-600 bg-white/90 shadow-sm px-3 py-1.5 rounded-full border border-slate-200">
+                                                        <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                                        <span>Syncing...</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Department Breakdown Mini Table (5 Cols) -->
+                                            <div onclick="openOverviewDrilldown('dept_matrix')" class="lg:col-span-5 overflow-x-auto custom-scrollbar border-t lg:border-t-0 lg:border-l border-brand-border lg:pl-5 pt-3 lg:pt-0 cursor-pointer hover:bg-slate-50/30 transition-colors rounded-r-lg" title="Click to inspect full department breakdown">
+                                                <table class="w-full text-left text-xs">
+                                                    <thead>
+                                                        <tr class="text-slate-400 font-semibold border-b border-brand-border text-[11px]">
+                                                            <th class="pb-1.5 font-medium">Department</th>
+                                                            <th class="pb-1.5 font-medium text-center">Staff</th>
+                                                            <th class="pb-1.5 font-medium text-center">Goals</th>
+                                                            <th class="pb-1.5 font-medium text-center">LMS</th>
+                                                            <th class="pb-1.5 font-medium text-center">Succ.</th>
+                                                            <th class="pb-1.5 font-medium text-right">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="table-dept-execution-matrix-body" class="divide-y divide-brand-border">
+                                                        <?php foreach ($deptMatrixRows as $dRow): 
+                                                             $gColor = $dRow['goals_approved_pct'] > 0 ? 'text-sage-dark font-bold' : 'text-slate-400 font-medium';
+                                                             $lColor = $dRow['lms_rate_pct'] > 0 ? 'text-primary font-bold' : 'text-slate-400 font-medium';
+                                                             $sColor = $dRow['succession_ready_pct'] > 0 ? 'text-dusty-dark font-bold' : 'text-slate-400 font-medium';
+                                                         ?>
+                                                        <tr class="hover:bg-slate-50/50 transition-colors">
+                                                            <td class="py-1.5 font-bold text-slate-800 text-[11px] truncate max-w-[110px]" title="<?= htmlspecialchars($dRow['department']) ?>"><?= htmlspecialchars($dRow['department']) ?></td>
+                                                            <td class="py-1.5 text-center text-slate-500 font-medium text-[11px]"><?= (int)$dRow['staff_count'] ?></td>
+                                                            <td class="py-1.5 text-center <?= $gColor ?> text-[11px]"><?= number_format($dRow['goals_approved_pct'], 1) ?>%</td>
+                                                            <td class="py-1.5 text-center <?= $lColor ?> text-[11px]"><?= number_format($dRow['lms_rate_pct'], 1) ?>%</td>
+                                                            <td class="py-1.5 text-center <?= $sColor ?> text-[11px]"><?= number_format($dRow['succession_ready_pct'], 1) ?>%</td>
+                                                            <td class="py-1.5 text-right"><span class="<?= $dRow['badge_class'] ?> text-[10px] py-0.5 px-1.5"><?= htmlspecialchars($dRow['status']) ?></span></td>
+                                                        </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                                <script>
+                                                    window.initialDeptMatrixData = <?= json_encode($deptMatrixRows) ?>;
+                                                </script>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <!-- Row 2: Top 5 Gamified XP Champions + Shift Climate Pulse -->
                                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
                                     <!-- Column 1: Top 5 Highest Gamified XP Staff Leaderboard (5 cols) -->
@@ -1477,73 +1545,8 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                         </button>
                                     </div>
 
-                                    <!-- Column 2: Department Completion & Progress Comparison (7 cols) -->
+                                    <!-- Column 2: Shift Climate Pulse (7 cols) -->
                                     <div class="lg:col-span-7 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('dept_matrix')" title="Click for detailed department execution metrics & rankings">
-                                            <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
-                                                    <span>Department Execution Matrix</span>
-                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
-                                                </h3>
-                                                <p class="text-xs text-slate-500">Goal Approval %, LMS Completion %, and Succession Depth by Department</p>
-                                            </div>
-                                            <span class="badge-neutral text-[10px]">5 Departments</span>
-                                        </div>
-
-                                        <!-- Department Comparison Horizontal Bar Chart -->
-                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="h-44 w-full relative cursor-pointer hover:opacity-95 transition-opacity" title="Click to view department comparison telemetry">
-                                            <canvas id="chart-system-dept-progress"></canvas>
-                                            <div id="dept-matrix-loading-overlay" class="overview-loading-overlay absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-lg hidden items-center justify-center transition-opacity">
-                                                <div class="flex items-center space-x-2 text-xs font-semibold text-slate-600 bg-white/90 shadow-sm px-3 py-1.5 rounded-full border border-slate-200">
-                                                    <i class="fas fa-circle-notch fa-spin text-primary"></i>
-                                                    <span>Syncing...</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Department Breakdown Mini Table -->
-                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="overflow-x-auto custom-scrollbar pt-2 border-t border-brand-border cursor-pointer hover:bg-slate-50/40 transition-colors" title="Click to inspect full department breakdown">
-                                            <table class="w-full text-left text-xs">
-                                                <thead>
-                                                    <tr class="text-slate-400 font-semibold border-b border-brand-border">
-                                                        <th class="pb-2 font-medium">Department</th>
-                                                        <th class="pb-2 font-medium text-center">Staff</th>
-                                                        <th class="pb-2 font-medium text-center">Goals Approved</th>
-                                                        <th class="pb-2 font-medium text-center">LMS Rate</th>
-                                                        <th class="pb-2 font-medium text-center">Succession</th>
-                                                        <th class="pb-2 font-medium text-right">Status</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="table-dept-execution-matrix-body" class="divide-y divide-brand-border">
-                                                    <?php foreach ($deptMatrixRows as $dRow): 
-                                                        $gColor = $dRow['goals_approved_pct'] > 0 ? 'text-sage-dark font-bold' : 'text-slate-400 font-medium';
-                                                        $lColor = $dRow['lms_rate_pct'] > 0 ? 'text-primary font-bold' : 'text-slate-400 font-medium';
-                                                        $sColor = $dRow['succession_ready_pct'] > 0 ? 'text-dusty-dark font-bold' : 'text-slate-400 font-medium';
-                                                    ?>
-                                                    <tr class="hover:bg-slate-50/50 transition-colors">
-                                                        <td class="py-2.5 font-bold text-slate-800"><?= htmlspecialchars($dRow['department']) ?></td>
-                                                        <td class="py-2.5 text-center text-slate-500 font-medium"><?= (int)$dRow['staff_count'] ?></td>
-                                                        <td class="py-2.5 text-center <?= $gColor ?>"><?= number_format($dRow['goals_approved_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-center <?= $lColor ?>"><?= number_format($dRow['lms_rate_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-center <?= $sColor ?>"><?= number_format($dRow['succession_ready_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-right"><span class="<?= $dRow['badge_class'] ?>"><?= htmlspecialchars($dRow['status']) ?></span></td>
-                                                    </tr>
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                            <script>
-                                                window.initialDeptMatrixData = <?= json_encode($deptMatrixRows) ?>;
-                                            </script>
-                                        </div>
-                                    </div>
-
-                                </div>
-
-                                <!-- Row 2: Property Shift Climate Pulse + Governance Highlights -->
-                                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
-                                    <!-- Column 1: Property Shift Climate Pulse (Doughnut Chart) (5 cols) -->
-                                    <div class="lg:col-span-5 card-clean p-6 space-y-4">
                                         <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('shift_sentiment')" title="Click for full shift climate & sentiment log">
                                             <div>
                                                 <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
@@ -1554,111 +1557,49 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                             </div>
                                             <span class="badge-sage text-[10px]"><i class="fas fa-heart-pulse mr-1"></i>Live Pulse</span>
                                         </div>
-                                        <div onclick="openOverviewDrilldown('shift_sentiment')" class="h-48 w-full flex items-center justify-center relative cursor-pointer hover:scale-[1.01] transition-transform" title="Click for sentiment distribution & recent mood log">
-                                            <canvas id="chart-sentiment-doughnut"></canvas>
-                                            
-                                            <!-- Empty State for Shift Climate Pulse -->
-                                            <div id="chart-sentiment-empty-state" class="overview-loading-overlay hidden absolute inset-0 flex-col items-center justify-center text-center p-4 bg-slate-50/90 rounded-2xl border border-dashed border-slate-200">
-                                                <div class="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-lg mb-2 shadow-2xs">
-                                                    <i class="fas fa-heart-pulse text-primary/60"></i>
-                                                </div>
-                                                <p class="font-bold text-xs text-slate-700">No Shift Climate Data</p>
-                                                <p class="text-[10px] text-slate-400 mt-0.5 max-w-52.5 leading-tight">No employee shift sentiments recorded yet in Supabase. Check in above to start tracking live team pulse.</p>
-                                            </div>
-                                        </div>
-                                        <div onclick="openOverviewDrilldown('shift_sentiment')"
-                                            class="flex justify-around text-center text-xs pt-3 border-t border-brand-border cursor-pointer hover:bg-slate-50/50 transition-colors" title="Click for sentiment history">
-                                            <div>
-                                                <p id="pulse-smooth-pct" class="font-bold text-sage-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Smooth</p>
-                                            </div>
-                                            <div>
-                                                <p id="pulse-manageable-pct" class="font-bold text-dusty-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Manageable</p>
-                                            </div>
-                                            <div>
-                                                <p id="pulse-friction-pct" class="font-bold text-terracotta-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Friction</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Column 2: Governance & Operational Velocity (7 cols in a single clean card) -->
-                                    <div class="lg:col-span-7 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('governance')" title="Click for governance & SLA compliance telemetry">
-                                            <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
-                                                    <span>Governance &amp; Operational Velocity</span>
-                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
-                                                </h3>
-                                                <p class="text-xs text-slate-500">Cross-module synchronization, calibration compliance, and succession pipeline throughput</p>
-                                            </div>
-                                            <span class="badge-neutral text-[10px]">Operations</span>
-                                        </div>
-
-                                        <!-- 2-Column Analytics Grid -->
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                                            <!-- Column 1: Appraisal Calibration & Review Velocity -->
-                                            <div onclick="openOverviewDrilldown('governance')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-primary hover:shadow-xs transition-all group" title="Click to inspect appraisal calibration & SLA metrics">
-                                                <div class="space-y-2">
-                                                    <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-primary transition-colors">
-                                                            <i class="fas fa-scale-balanced text-primary text-xs"></i>
-                                                            <span>Appraisal Calibration &amp; SLA</span>
-                                                        </span>
-                                                        <span class="badge-sage text-[10px]">100% Calibrated</span>
-                                                    </div>
-                                                    <p class="text-xs text-slate-500 leading-relaxed">Enforces 15% Top / 70% Core / 15% Growth bell-curve across closed cycles. Closed scores directly feed the 9-Box matrix (40% weight).</p>
-                                                </div>
+                                        
+                                        <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center pt-2">
+                                            <!-- Doughnut Chart Canvas Container -->
+                                            <div onclick="openOverviewDrilldown('shift_sentiment')" class="md:col-span-5 h-48 w-full flex items-center justify-center relative cursor-pointer hover:scale-[1.01] transition-transform" title="Click for sentiment distribution & recent mood log">
+                                                <canvas id="chart-sentiment-doughnut"></canvas>
                                                 
-                                                <div class="space-y-2 pt-2 border-t border-brand-border">
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">Review SLA Speed:</span>
-                                                        <span class="font-bold text-sage-dark">4.2d Avg <span class="text-[10px] text-slate-400 font-normal">(&lt; 7.0d Target)</span></span>
+                                                <!-- Empty State for Shift Climate Pulse -->
+                                                <div id="chart-sentiment-empty-state" class="overview-loading-overlay hidden absolute inset-0 flex-col items-center justify-center text-center p-4 bg-slate-50/90 rounded-2xl border border-dashed border-slate-200">
+                                                    <div class="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-lg mb-2 shadow-2xs">
+                                                        <i class="fas fa-heart-pulse text-primary/60"></i>
                                                     </div>
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">AI Feedback Assists:</span>
-                                                        <span class="font-bold text-dusty-dark">312 Accepted (89%)</span>
-                                                    </div>
-                                                    <div class="flex flex-wrap gap-1 text-[10px] pt-1">
-                                                        <span class="px-2 py-0.5 bg-sage-50 text-sage-dark rounded-md font-bold border border-sage-100">15 Top</span>
-                                                        <span class="px-2 py-0.5 bg-dusty-50 text-dusty-dark rounded-md font-bold border border-dusty-100">70 Core</span>
-                                                        <span class="px-2 py-0.5 bg-terracotta-50 text-terracotta-dark rounded-md font-bold border border-terracotta-100">15 Growth</span>
-                                                    </div>
+                                                    <p class="font-bold text-xs text-slate-700">No Shift Climate Data</p>
+                                                    <p class="text-[10px] text-slate-400 mt-0.5 max-w-52.5 leading-tight">No employee shift sentiments recorded yet in Supabase. Check in above to start tracking live team pulse.</p>
                                                 </div>
                                             </div>
-
-                                            <!-- Column 2: Training Ops & Succession Pipeline -->
-                                            <div onclick="openOverviewDrilldown('sys_succession')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-dusty hover:shadow-xs transition-all group" title="Click to inspect succession bench & training metrics">
-                                                <div class="space-y-2">
-                                                    <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-dusty-dark transition-colors">
-                                                            <i class="fas fa-sitemap text-dusty-dark text-xs"></i>
-                                                            <span>Succession &amp; Training Pipeline</span>
-                                                        </span>
-                                                        <span class="badge-dusty text-[10px]">78.5% Bench Ready</span>
+                                            
+                                            <!-- Sentiment Breakdown Metric Cards -->
+                                            <div onclick="openOverviewDrilldown('shift_sentiment')" class="md:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center cursor-pointer" title="Click for sentiment history">
+                                                <div class="p-3.5 bg-sage-50/70 rounded-2xl border border-sage-100/90 hover:bg-sage-100/70 transition-colors">
+                                                    <div class="w-7 h-7 rounded-full bg-sage-100 text-sage-dark flex items-center justify-center mx-auto mb-1.5 text-xs">
+                                                        <i class="fas fa-face-smile"></i>
                                                     </div>
-                                                    <p class="text-xs text-slate-500 leading-relaxed">Competency gap alerts automatically trigger Training sessions &amp; LMS SOPs. Passing upgrades competency match (60% weight) and issues XP.</p>
+                                                    <p id="pulse-smooth-pct" class="text-lg font-extrabold text-sage-dark">0.0%</p>
+                                                    <p class="text-[11px] font-bold text-slate-800 mt-0.5">Smooth</p>
+                                                    <p class="text-[9px] text-slate-500 mt-0.5">High morale</p>
                                                 </div>
-
-                                                <div class="space-y-2 pt-2 border-t border-brand-border">
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">Key Roles Covered:</span>
-                                                        <span class="font-bold text-slate-800">14 / 16 Roles <span class="text-[10px] text-sage-dark font-semibold">(2 Fast-Track)</span></span>
+                                                <div class="p-3.5 bg-dusty-50/70 rounded-2xl border border-dusty-100/90 hover:bg-dusty-100/70 transition-colors">
+                                                    <div class="w-7 h-7 rounded-full bg-dusty-100 text-dusty-dark flex items-center justify-center mx-auto mb-1.5 text-xs">
+                                                        <i class="fas fa-face-meh"></i>
                                                     </div>
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">LMS Quiz Pass Rate:</span>
-                                                        <span class="font-bold text-primary">94.2% <span class="text-[10px] text-slate-400 font-normal">(First Attempt)</span></span>
+                                                    <p id="pulse-manageable-pct" class="text-lg font-extrabold text-dusty-dark">0.0%</p>
+                                                    <p class="text-[11px] font-bold text-slate-800 mt-0.5">Manageable</p>
+                                                    <p class="text-[9px] text-slate-500 mt-0.5">Steady</p>
+                                                </div>
+                                                <div class="p-3.5 bg-terracotta-50/70 rounded-2xl border border-terracotta-100/90 hover:bg-terracotta-100/70 transition-colors">
+                                                    <div class="w-7 h-7 rounded-full bg-terracotta-100 text-terracotta-dark flex items-center justify-center mx-auto mb-1.5 text-xs">
+                                                        <i class="fas fa-face-frown"></i>
                                                     </div>
-                                                    <div class="flex flex-wrap gap-1 text-[10px] pt-1">
-                                                        <span class="px-2 py-0.5 bg-dusty-50 text-dusty-dark rounded-md font-bold border border-dusty-100">8 Ready Now</span>
-                                                        <span class="px-2 py-0.5 bg-gold-50 text-gold-dark rounded-md font-bold border border-gold-100">6 in 1-2 Yrs</span>
-                                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-bold border border-slate-200">+150 XP/Cert</span>
-                                                    </div>
+                                                    <p id="pulse-friction-pct" class="text-lg font-extrabold text-terracotta-dark">0.0%</p>
+                                                    <p class="text-[11px] font-bold text-slate-800 mt-0.5">Friction</p>
+                                                    <p class="text-[9px] text-slate-500 mt-0.5">Needs check</p>
                                                 </div>
                                             </div>
-
                                         </div>
                                     </div>
 

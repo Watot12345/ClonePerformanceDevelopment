@@ -1094,14 +1094,22 @@ function openReviewTasksModal(empId) {
         if (allTasks.length > 0) {
             listEl.innerHTML = allTasks.map(t => {
                 const isDone = t.status === 'completed';
+                const dueStatus = (typeof getTaskDueStatus === 'function') ? getTaskDueStatus(t) : { isOverdue: false, isCompletedLate: false, pillHtml: '' };
+                const dateDisplay = dueStatus.isCompletedLate 
+                    ? `<span class="text-amber-700 font-bold"><i class="fas fa-clock mr-1"></i>Completed Late (Due: ${t.target_date || 'N/A'})</span>`
+                    : (dueStatus.isOverdue 
+                        ? `<span class="text-rose-700 font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>Overdue (Due: ${t.target_date || 'N/A'})</span>`
+                        : (t.target_date || 'Due Soon'));
                 return `
-                    <div class="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div class="p-3.5 bg-white rounded-2xl border ${isDone ? (dueStatus.isCompletedLate ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200') : (dueStatus.isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200')} shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                         <div class="space-y-1">
-                            <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                    ${isDone ? '✓ Completed' : 'Pending'}
-                                </span>
-                                <span class="text-[10px] text-slate-400 font-mono">${t.target_date || 'Due Soon'}</span>
+                            <div class="flex items-center space-x-2 flex-wrap">
+                                ${dueStatus.pillHtml || `
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                        ${isDone ? '✓ Completed' : 'Pending'}
+                                    </span>
+                                `}
+                                <span class="text-[10px] font-mono">${dateDisplay}</span>
                             </div>
                             <p class="font-bold text-slate-900">${t.title}</p>
                             <p class="text-[10px] text-slate-500">Goal: ${t.goal_title}</p>
@@ -1115,12 +1123,17 @@ function openReviewTasksModal(empId) {
                                     <span>Locked</span>
                                 </span>
                             ` : `
-                                ${isDone ? `
+                                ${isDone ? (needsTraining ? `
+                                    <button disabled class="px-3 py-1.5 bg-slate-100 text-slate-400 font-bold rounded-xl text-xs border border-slate-200 cursor-not-allowed opacity-60 flex items-center space-x-1" title="Reset to Re-Do is disabled because this employee requires training.">
+                                        <i class="fas fa-ban"></i>
+                                        <span>Reset to Re-Do</span>
+                                    </button>
+                                ` : `
                                     <button onclick="resetTaskForGoal('${t.id}', '${emp.id}', this)" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-xl text-xs border border-amber-200 transition flex items-center space-x-1" title="Reset to pending so employee can re-do task">
                                         <i class="fas fa-rotate-left"></i>
                                         <span>Reset to Re-Do</span>
                                     </button>
-                                ` : ''}
+                                `) : ''}
                                 <button onclick="deleteTaskFromGoal('${t.id}', '${emp.id}', this)" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition" title="Delete obsolete task">
                                     <i class="fas fa-trash-can"></i>
                                 </button>
@@ -1204,6 +1217,12 @@ window.deployAndProceedToMonitoring = deployAndProceedToMonitoring;
  * Reset a task back to pending for employee re-execution
  */
 async function resetTaskForGoal(taskId, empId, btnEl = null) {
+    if (typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(empId)) {
+        if (typeof showToast === 'function') {
+            showToast('Reset to Re-Do is disabled because this employee requires training.', 'warning');
+        }
+        return;
+    }
     let origHtml = '';
     if (btnEl) {
         origHtml = btnEl.innerHTML;
