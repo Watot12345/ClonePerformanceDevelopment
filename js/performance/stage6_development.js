@@ -201,17 +201,40 @@ function openViewIDPPlanModal(empId) {
                         <p class="font-bold text-slate-900 text-xs">${g.title}</p>
                         <p class="text-slate-500 text-[11px] leading-relaxed">${g.supervisor_notes || g.evidence || 'Active developmental metric.'}</p>
                         
-                        <!-- Tasks list under this goal -->
+                        <!-- Tasks list under this goal with Re-Do draft action -->
                         <div class="pt-2 border-t border-slate-100 space-y-1.5">
                             <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assigned Action Tasks (${tasks.length}):</span>
-                            ${tasks.length > 0 ? tasks.map(t => `
-                                <div class="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-xl border border-slate-100">
-                                    <span class="text-slate-700 font-medium">${t.title}</span>
-                                    <span class="text-[10px] font-bold ${t.status === 'completed' ? 'text-emerald-700' : 'text-slate-500'}">
-                                        ${t.status === 'completed' ? '✓ Completed' : 'Pending'}
-                                    </span>
-                                </div>
-                            `).join('') : '<p class="text-slate-400 italic text-[10px]">No specific tasks assigned yet.</p>'}
+                            ${tasks.length > 0 ? tasks.map(t => {
+                                const isDone = t.status === 'completed';
+                                const needsTraining = typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(emp.id);
+                                const isAlreadyDraft = (window.dbDraftPlans?.[emp.id]?.tasks || []).some(st => st.source_task_id === t.id || st.title === `[Re-Do] ${t.title}` || st.title === t.title);
+                                return `
+                                    <div class="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-xl border border-slate-100 gap-2">
+                                        <span class="text-slate-700 font-medium truncate flex-1" title="${t.title}">${t.title}</span>
+                                        <div class="flex items-center space-x-1.5 shrink-0">
+                                            <span class="text-[10px] font-bold ${isDone ? 'text-emerald-700' : 'text-slate-500'}">
+                                                ${isDone ? '✓ Completed' : 'Pending'}
+                                            </span>
+                                            ${isDone ? (needsTraining ? `
+                                                <button disabled class="px-2 py-0.5 bg-slate-100 text-slate-400 font-bold rounded-lg text-[10px] border border-slate-200 cursor-not-allowed opacity-60 flex items-center space-x-1" title="Reset to Re-Do is disabled because this employee requires training.">
+                                                    <i class="fas fa-ban text-[8px]"></i>
+                                                    <span>Re-Do</span>
+                                                </button>
+                                            ` : (isAlreadyDraft ? `
+                                                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded-lg text-[10px] border border-amber-200 flex items-center space-x-1">
+                                                    <i class="fas fa-check text-[8px] text-amber-700"></i>
+                                                    <span>In Draft</span>
+                                                </span>
+                                            ` : `
+                                                <button onclick="addRetestTaskToDraft('${emp.id}', '${t.id}', '${g.id}'); openViewIDPPlanModal('${emp.id}');" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg text-[10px] border border-amber-200 shadow-2xs transition flex items-center space-x-1 cursor-pointer" title="Add as Re-Do task to Stage 6 Draft Plan">
+                                                    <i class="fas fa-rotate-left text-[8px]"></i>
+                                                    <span>Re-Do</span>
+                                                </button>
+                                            `)) : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') : '<p class="text-slate-400 italic text-[10px]">No specific tasks assigned yet.</p>'}
                         </div>
                     </div>
                 `;
@@ -541,6 +564,136 @@ window.removeStagedIdpBook = function(empId, bookId, rowId) {
         });
     }
 };
+
+/**
+ * Add a remedial LMS handbook requiring re-test to the Stage 6 draft plan
+ */
+async function addRetestBookToDraft(empId, bookId) {
+    if (typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(empId)) {
+        if (typeof showToast === 'function') showToast('Adding development items is disabled because this associate requires training.', 'warning');
+        return;
+    }
+    const docs = window.dynamicLmsState?.documents || [];
+    const doc = docs.find(d => String(d.id) === String(bookId)) || {};
+    const bookTitle = doc.title || `LMS Handbook [${bookId}]`;
+
+    window.dbDraftPlans = window.dbDraftPlans || {};
+    window.dbDraftPlans[empId] = window.dbDraftPlans[empId] || { tasks: [], lms_books: [], task_count: 0, book_count: 0, total: 0 };
+    
+    const alreadyStaged = (window.dbDraftPlans[empId].lms_books || []).some(b => String(b.lms_document_id) === String(bookId) || String(b.id) === String(bookId));
+    if (alreadyStaged) {
+        if (typeof showToast === 'function') showToast(`"${bookTitle}" is already in draft plan.`, 'info');
+        return;
+    }
+
+    const tempItem = {
+        id: 'temp_book_' + Date.now(),
+        employee_id: empId,
+        lms_document_id: bookId,
+        book_title: bookTitle,
+        status: 'Draft',
+        item_type: 'lms_book'
+    };
+
+    window.dbDraftPlans[empId].lms_books = window.dbDraftPlans[empId].lms_books || [];
+    window.dbDraftPlans[empId].lms_books.push(tempItem);
+    window.dbDraftPlans[empId].book_count = window.dbDraftPlans[empId].lms_books.length;
+    window.dbDraftPlans[empId].total = (window.dbDraftPlans[empId].tasks?.length || 0) + window.dbDraftPlans[empId].book_count;
+
+    showIDPDetail(empId);
+    if (typeof showToast === 'function') showToast(`📖 Re-test handbook "${bookTitle}" added to Stage 6 draft plan.`, 'success');
+
+    try {
+        if (typeof PerformanceAPI !== 'undefined' && typeof PerformanceAPI.addDraftLmsBook === 'function') {
+            const res = await PerformanceAPI.addDraftLmsBook({
+                employee_id: empId,
+                lms_document_id: bookId,
+                book_title: bookTitle,
+                plan_type: 'IDP'
+            });
+            if (res && res.id) tempItem.id = res.id;
+        }
+    } catch (err) {
+        console.error('Error adding re-test book to draft:', err);
+    }
+}
+window.addRetestBookToDraft = addRetestBookToDraft;
+
+/**
+ * Add a completed action task as a Re-Do item in Stage 6 IDP draft plan
+ */
+async function addRetestTaskToDraft(empId, taskId, goalId = null) {
+    if (typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(empId)) {
+        if (typeof showToast === 'function') showToast('Reset to Re-Do is disabled because this employee requires training.', 'warning');
+        return;
+    }
+
+    let task = null;
+    let targetGoalId = goalId;
+    (window.dbGoals || []).forEach(g => {
+        if (!task && g.tasks) {
+            const found = g.tasks.find(t => String(t.id) === String(taskId));
+            if (found) {
+                task = found;
+                if (!targetGoalId) targetGoalId = g.id;
+            }
+        }
+    });
+
+    if (!task) {
+        if (typeof showToast === 'function') showToast('Task not found.', 'warning');
+        return;
+    }
+
+    const reDoTitle = task.title.startsWith('[Re-Do]') ? task.title : `[Re-Do] ${task.title}`;
+    const desc = task.description || 'Action task re-assigned in Stage 6 Development Plan for re-execution.';
+
+    window.dbDraftPlans = window.dbDraftPlans || {};
+    window.dbDraftPlans[empId] = window.dbDraftPlans[empId] || { tasks: [], lms_books: [], task_count: 0, book_count: 0, total: 0 };
+
+    const alreadyStaged = (window.dbDraftPlans[empId].tasks || []).some(t => t.source_task_id === taskId || t.title === reDoTitle);
+    if (alreadyStaged) {
+        if (typeof showToast === 'function') showToast(`"${reDoTitle}" is already staged in draft plan.`, 'info');
+        return;
+    }
+
+    const tempItem = {
+        id: 'temp_task_' + Date.now(),
+        employee_id: empId,
+        goal_id: targetGoalId,
+        source_task_id: taskId,
+        title: reDoTitle,
+        target_date: task.target_date || '2 Weeks',
+        description: desc,
+        status: 'Draft',
+        item_type: 'task'
+    };
+
+    window.dbDraftPlans[empId].tasks = window.dbDraftPlans[empId].tasks || [];
+    window.dbDraftPlans[empId].tasks.push(tempItem);
+    window.dbDraftPlans[empId].task_count = window.dbDraftPlans[empId].tasks.length;
+    window.dbDraftPlans[empId].total = window.dbDraftPlans[empId].task_count + (window.dbDraftPlans[empId].lms_books?.length || 0);
+
+    showIDPDetail(empId);
+    if (typeof showToast === 'function') showToast(`✏️ Re-Do task "${reDoTitle}" added to Stage 6 draft plan.`, 'success');
+
+    try {
+        if (typeof PerformanceAPI !== 'undefined' && typeof PerformanceAPI.addDraftTask === 'function') {
+            const res = await PerformanceAPI.addDraftTask({
+                employee_id: empId,
+                goal_id: targetGoalId,
+                title: reDoTitle,
+                target_date: task.target_date || '2 Weeks',
+                description: desc,
+                plan_type: 'IDP'
+            });
+            if (res && res.id) tempItem.id = res.id;
+        }
+    } catch (err) {
+        console.error('Error adding re-do task to draft:', err);
+    }
+}
+window.addRetestTaskToDraft = addRetestTaskToDraft;
 
 function showEmptyIDPDetail() {
     const titleEl = document.getElementById('idp-detail-title');
@@ -1458,6 +1611,42 @@ function showIDPDetail(empId, openModalImmediately = false) {
                             </span>
                         </div>
                     </div>
+                    ${(g.tasks && g.tasks.length > 0) ? `
+                        <div class="pt-2 border-t border-slate-100 space-y-1.5">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Assigned Tasks (${g.tasks.length}):</span>
+                            ${g.tasks.map(t => {
+                                const isDone = t.status === 'completed';
+                                const needsTraining = typeof isEmployeeNeedsTraining === 'function' && isEmployeeNeedsTraining(emp.id);
+                                const isAlreadyDraft = (stagedTasks || []).some(st => st.source_task_id === t.id || st.title === `[Re-Do] ${t.title}` || st.title === t.title);
+                                return `
+                                    <div class="flex items-center justify-between text-[11px] p-2 bg-slate-50/80 hover:bg-slate-100/80 rounded-xl border border-slate-100 transition gap-2">
+                                        <span class="text-slate-700 font-medium truncate flex-1" title="${t.title}">${t.title}</span>
+                                        <div class="flex items-center space-x-1.5 shrink-0">
+                                            <span class="text-[9px] font-bold ${isDone ? 'text-emerald-700 bg-emerald-50 border border-emerald-100' : 'text-slate-500 bg-slate-100'} px-1.5 py-0.5 rounded">
+                                                ${isDone ? '✓ Completed' : 'Pending'}
+                                            </span>
+                                            ${isDone ? (needsTraining ? `
+                                                <button disabled class="px-2 py-0.5 bg-slate-100 text-slate-400 font-bold rounded-lg text-[9px] border border-slate-200 cursor-not-allowed opacity-60 flex items-center space-x-1" title="Reset to Re-Do is disabled because this employee requires training.">
+                                                    <i class="fas fa-ban text-[8px]"></i>
+                                                    <span>Re-Do</span>
+                                                </button>
+                                            ` : (isAlreadyDraft ? `
+                                                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold rounded-lg text-[9px] border border-amber-200 flex items-center space-x-1">
+                                                    <i class="fas fa-check text-[8px] text-amber-700"></i>
+                                                    <span>In Draft</span>
+                                                </span>
+                                            ` : `
+                                                <button onclick="addRetestTaskToDraft('${emp.id}', '${t.id}', '${g.id}')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg text-[9px] border border-amber-200 shadow-2xs transition flex items-center space-x-1 cursor-pointer" title="Add as Re-Do task to Stage 6 Draft Plan">
+                                                    <i class="fas fa-rotate-left text-[8px]"></i>
+                                                    <span>Re-Do</span>
+                                                </button>
+                                            `)) : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             `).join('');
         } else {
