@@ -1787,14 +1787,19 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                             const isSupervisor = (typeof isCurrentUserSupervisor === 'function') ? isCurrentUserSupervisor() : (window.activePersonaRole === 'Supervisor');
                             const isGoalApproved = goalStatus.toLowerCase() === 'approved' || goalStatus.toLowerCase() === 'in progress' || goalStatus.toLowerCase() === 'active';
                             const isGoalConcluded = isCompleted || isFailed;
-                            const isEditDisabled = isSupervisor || isGoalConcluded || !isGoalApproved;
+                            const lmsInfo = (typeof checkLmsTaskProgress === 'function') ? checkLmsTaskProgress(t, g.employee_id) : { isLmsTask: false };
+                            const isLmsBlocked = lmsInfo.isLmsTask && (lmsInfo.needsRetest || !lmsInfo.isPassed);
+                            const isEditDisabled = isSupervisor || isGoalConcluded || !isGoalApproved || isLmsBlocked;
                             const cannotEditReason = isSupervisor
                                 ? 'Supervisor cannot edit employee Action Checklist'
-                                : (!isGoalApproved
-                                    ? `Action Checklist is locked: Objective is ${goalStatus || 'Pending Approval'}. Tasks can only be completed on Approved objectives.`
-                                    : (isGoalConcluded ? `Action Checklist is locked: Objective is ${goalStatus}` : ''));
+                                : (isLmsBlocked
+                                    ? (lmsInfo.needsRetest
+                                        ? `Task locked: Quiz re-test required (${lmsInfo.score || 0}% scored - 80% passing threshold needed)`
+                                        : 'Task locked: You must study the LMS Handbook and pass the quiz (≥80%) before checking this task')
+                                    : (!isGoalApproved
+                                        ? `Action Checklist is locked: Objective is ${goalStatus || 'Pending Approval'}. Tasks can only be completed on Approved objectives.`
+                                        : (isGoalConcluded ? `Action Checklist is locked: Objective is ${goalStatus}` : '')));
                             const completedDateStr = t.completed_at ? new Date(t.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-                            const lmsInfo = (typeof checkLmsTaskProgress === 'function') ? checkLmsTaskProgress(t, g.employee_id) : { isLmsTask: false };
                             return `
                                 <div class="p-2.5 rounded-xl border ${isDone ? (dueStatus.isCompletedLate ? 'bg-amber-50/60 border-amber-200/90 text-amber-950 shadow-2xs' : 'bg-emerald-50/60 border-emerald-200/90 text-emerald-950 shadow-2xs') : (dueStatus.isOverdue ? 'bg-rose-50/60 border-rose-200/90 text-rose-950 shadow-2xs' : 'bg-white border-slate-200 text-slate-800 hover:border-primary/30')} text-[11px] space-y-1.5 transition">
                                     <div class="flex items-start justify-between gap-2">
@@ -1834,10 +1839,17 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                                                     ✓ Done ${completedDateStr ? `(${completedDateStr})` : ''}
                                                 </span>
                                             `) : (isEditDisabled ? `
-                                                <button disabled class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60 shadow-none inline-flex items-center space-x-1" title="${cannotEditReason}">
-                                                    <i class="fas fa-lock text-[8px]"></i>
-                                                    <span>${!isGoalApproved ? 'Not Approved' : (isSupervisor ? 'Employee Task' : 'Locked')}</span>
-                                                </button>
+                                                ${isLmsBlocked ? `
+                                                    <button type="button" onclick="closeModal('modal-view-goal'); openBookReader('${lmsInfo.lmsId || ''}')" class="px-2 py-0.5 rounded text-[9px] font-bold ${lmsInfo.needsRetest ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200' : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'} transition inline-flex items-center space-x-1 shadow-2xs cursor-pointer" title="${cannotEditReason}">
+                                                        <i class="fas ${lmsInfo.needsRetest ? 'fa-rotate-left' : 'fa-book-open'} text-[8px]"></i>
+                                                        <span>${lmsInfo.needsRetest ? 'Retake Quiz' : 'Take Quiz'}</span>
+                                                    </button>
+                                                ` : `
+                                                    <button disabled class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60 shadow-none inline-flex items-center space-x-1" title="${cannotEditReason}">
+                                                        <i class="fas fa-lock text-[8px]"></i>
+                                                        <span>${!isGoalApproved ? 'Not Approved' : (isSupervisor ? 'Employee Task' : 'Locked')}</span>
+                                                    </button>
+                                                `}
                                                 ${dueStatus.isOverdue ? `
                                                     <span class="text-[9px] font-mono text-rose-800 bg-rose-100 border border-rose-300 px-1.5 py-0.5 rounded font-bold animate-pulse" title="Target date ${t.target_date} has passed">
                                                         <i class="fas fa-triangle-exclamation mr-0.5"></i>Overdue: ${t.target_date || 'Q3'}

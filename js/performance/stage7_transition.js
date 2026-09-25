@@ -220,17 +220,6 @@ window.checkEmployeeStage7Tasks = checkEmployeeStage7Tasks;
                 </td>
                 <td class="px-5 py-4 text-right">
                     <div class="flex items-center justify-end space-x-1.5">
-                        ${hasDraft ? (!isObj100 ? `
-                            <button disabled class="px-2.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 font-bold rounded-xl text-xs cursor-not-allowed flex items-center space-x-1" title="Objectives Progress is not 100% (${taskCheck.progressPct}%). Deploy locked. Only view is allowed.">
-                                <i class="fas fa-lock text-[10px]"></i>
-                                <span>Deploy</span>
-                            </button>
-                        ` : `
-                            <button onclick="deployDraftPlan('${emp.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center space-x-1" title="Deploy draft plan to live tasks & LMS">
-                                <i class="fas fa-rocket text-[10px]"></i>
-                                <span>Deploy</span>
-                            </button>
-                        `) : ''}
                         ${isGoalDone ? (!isObj100 ? `
                             <button disabled class="px-2.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 font-bold rounded-xl text-xs cursor-not-allowed flex items-center space-x-1" title="Objectives Progress is not 100% (${taskCheck.progressPct}%). Revert locked. Only view is allowed.">
                                 <i class="fas fa-lock text-[10px]"></i>
@@ -672,27 +661,14 @@ function showCycleDetail(empId, openModalImmediately = false) {
                         ${hasDraft ? `
                             <!-- Staged Performance Development Plan Card -->
                             <div class="p-4 bg-indigo-50 rounded-2xl border border-indigo-200 shadow-2xs space-y-2">
-                                <div class="flex items-center justify-between flex-wrap gap-2">
-                                    <div class="flex items-center space-x-2">
-                                        <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                                            <i class="fas fa-clipboard-list"></i>
-                                        </div>
-                                        <div>
-                                            <p class="font-bold text-slate-900 text-xs">Stage 6 Performance Development Plan (Draft Staged)</p>
-                                            <p class="text-[10px] text-slate-500">${draftTaskCount} Action Task(s) · ${draftBookCount} LMS Handbook(s) staged in Stage 6</p>
-                                        </div>
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                                        <i class="fas fa-clipboard-list"></i>
                                     </div>
-                                    ${!isObj100 ? `
-                                        <button disabled class="px-3.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl font-bold text-xs cursor-not-allowed flex items-center space-x-1" title="Objectives Progress is not 100% (${taskCheck.progressPct}%). Deploy locked.">
-                                            <i class="fas fa-lock text-[10px]"></i>
-                                            <span>Deploy Plan (Locked)</span>
-                                        </button>
-                                    ` : `
-                                        <button onclick="deployDraftPlan('${emp.id}')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition flex items-center space-x-1">
-                                            <i class="fas fa-rocket text-[10px]"></i>
-                                            <span>Deploy Plan</span>
-                                        </button>
-                                    `}
+                                    <div>
+                                        <p class="font-bold text-slate-900 text-xs">Stage 6 Performance Development Plan (Draft Staged)</p>
+                                        <p class="text-[10px] text-slate-500">${draftTaskCount} Action Task(s) · ${draftBookCount} LMS Handbook(s) staged in Stage 6</p>
+                                    </div>
                                 </div>
                             </div>
                         ` : ''}
@@ -962,18 +938,7 @@ function renderReviewModalDevPlan(emp, draftSummary, isObj100, taskCheck) {
                 </div>
 
                 <div class="pt-2 border-t border-indigo-100 flex items-center justify-between text-[11px]">
-                    <span class="text-indigo-900 font-medium"><i class="fas fa-circle-info mr-1 text-indigo-600"></i> Deploying copies tasks to <code>performance_tasks</code> &amp; handbooks to <code>lms_prescribed</code>.</span>
-                    ${!isObj100 ? `
-                        <button disabled class="px-3.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl font-bold text-xs cursor-not-allowed flex items-center space-x-1" title="Objectives Progress is not 100% (${taskCheck.progressPct}%). Deploy locked.">
-                            <i class="fas fa-lock text-[10px]"></i>
-                            <span>Deploy Draft Plan (Locked)</span>
-                        </button>
-                    ` : `
-                        <button onclick="deployDraftPlanFromModal('${emp.id}')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition flex items-center space-x-1">
-                            <i class="fas fa-rocket text-[10px]"></i>
-                            <span>Deploy Draft Plan Now</span>
-                        </button>
-                    `}
+                    <span class="text-indigo-900 font-medium"><i class="fas fa-circle-info mr-1 text-indigo-600"></i> Staged development tasks &amp; handbooks from Stage 6 IDP.</span>
                 </div>
             </div>
         `;
@@ -1017,13 +982,6 @@ function renderReviewModalFooterActions(emp, draftSummary, isObj100, needsTraini
             <button onclick="closeModal('modal-review-tasks'); openRemedialBooksModal('${emp.id}');" class="btn-primary px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 border-rose-600 shadow-xs flex items-center space-x-2">
                 <i class="fas fa-graduation-cap"></i>
                 <span>Need Training &rarr; Assign Formal Program</span>
-            </button>
-        `;
-    } else if (hasDraft) {
-        footerActions.innerHTML = `
-            <button onclick="deployAndProceedToMonitoring('${emp.id}')" class="btn-primary px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 border-emerald-600 shadow-xs flex items-center space-x-2">
-                <i class="fas fa-rocket"></i>
-                <span>Deploy Plan &amp; Proceed to Monitoring (Stage 3)</span>
             </button>
         `;
     } else {

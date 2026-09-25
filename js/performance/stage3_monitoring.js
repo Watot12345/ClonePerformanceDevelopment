@@ -63,8 +63,8 @@ function checkLmsTaskProgress(task, empId = null) {
         isLmsTask: true,
         lmsId: lmsId,
         lmsTitle: record?.document_title || title,
-        canComplete: hasAttemptedQuiz || progress >= 100,
-        progress: hasAttemptedQuiz ? 100 : progress,
+        canComplete: isPassed && !needsRetest,
+        progress: hasAttemptedQuiz ? (isPassed ? 100 : progress) : progress,
         status: record?.status || 'Pending',
         score: score,
         isPassed: isPassed,
@@ -135,7 +135,11 @@ function triggerTaskCompletionModal(taskId, goalId, checkboxEl) {
     if (lmsInfo.isLmsTask && !lmsInfo.canComplete) {
         if (checkboxEl) checkboxEl.checked = false;
         if (typeof showToast === 'function') {
-            showToast(` LMS Quiz Attempt Required: You must study the LMS Handbook ("${task?.title || 'Prescribed Module'}") and take the certification quiz before completing this task!`, 'warning');
+            if (lmsInfo.needsRetest) {
+                showToast(` LMS Quiz Retake Required: Score (${lmsInfo.score || 0}%) is below 80%. You must retake and pass the quiz before completing this task!`, 'warning');
+            } else {
+                showToast(` LMS Quiz Attempt Required: You must study the LMS Handbook ("${task?.title || 'Prescribed Module'}") and pass the certification quiz before completing this task!`, 'warning');
+            }
         }
         return;
     }
@@ -224,7 +228,11 @@ function openCompleteTaskModal(taskId, goalId) {
     if (lmsInfo.isLmsTask && !lmsInfo.canComplete) {
         if (window.lastActiveTaskCheckbox) window.lastActiveTaskCheckbox.checked = false;
         if (typeof showToast === 'function') {
-            showToast(` LMS Quiz Attempt Required: You must study the LMS Handbook ("${task?.title || 'Prescribed Module'}") and take the certification quiz before completing this task!`, 'warning');
+            if (lmsInfo.needsRetest) {
+                showToast(` LMS Quiz Retake Required: Score (${lmsInfo.score || 0}%) is below 80%. You must retake and pass the quiz before completing this task!`, 'warning');
+            } else {
+                showToast(` LMS Quiz Attempt Required: You must study the LMS Handbook ("${task?.title || 'Prescribed Module'}") and pass the certification quiz before completing this task!`, 'warning');
+            }
         }
         return;
     }
@@ -1018,9 +1026,9 @@ function renderEmployeeMonitoringStream(emp) {
                                         `;
                                     }
                                     return `
-                                        <button type="button" onclick="triggerTaskCompletionModal('${task.id}', '${goal.id}', null)" class="px-2.5 py-1 ${isLmsBlocked ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer'} text-[10px] font-bold rounded-lg transition inline-flex items-center space-x-1" title="${isLmsBlocked ? 'Must take LMS quiz before completing' : (lmsInfo.needsRetest ? 'Quiz completed (Needs Re-test). Click to record reflections and complete task' : 'Log your experience and finish task')}">
+                                        <button type="button" onclick="triggerTaskCompletionModal('${task.id}', '${goal.id}', null)" class="px-2.5 py-1 ${isLmsBlocked ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer'} text-[10px] font-bold rounded-lg transition inline-flex items-center space-x-1" title="${isLmsBlocked ? (lmsInfo.needsRetest ? 'Quiz retake required (Score below 80%)' : 'Must pass LMS quiz before completing') : 'Log your experience and finish task'}">
                                             <i class="fas ${isLmsBlocked ? 'fa-lock' : 'fa-check'} text-[8px]"></i>
-                                            <span>${isLmsBlocked ? 'Take Quiz First' : (lmsInfo.needsRetest ? 'Complete Task (Re-test Needed)' : 'Complete Task')}</span>
+                                            <span>${isLmsBlocked ? (lmsInfo.needsRetest ? 'Retake Quiz First' : 'Take Quiz First') : 'Complete Task'}</span>
                                         </button>
                                     `;
                                 })() : '<div></div>'}
