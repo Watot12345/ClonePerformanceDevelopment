@@ -2981,6 +2981,55 @@
         <!-- MODAL: DIGITAL TRAINING CERTIFICATE (STAGE 6)             -->
         <!-- ======================================================== -->
         <div id="modal-training-certificate" class="fixed inset-0 modal-overlay z-50 hidden items-center justify-center p-4">
+            <!-- Cert-only printing: reuses the already-loaded global stylesheet so the
+                 printed output is identical to this on-screen preview (WYSIWYG). -->
+            <style>
+                @media print {
+                    /* Release the dashboard's fixed-height flex shell for the print flow */
+                    body.printing-training-certificate {
+                        display: block !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                        background: #ffffff !important;
+                    }
+                    /* Hide every sibling of the certificate modal (nav, other modals, dashboard) */
+                    body.printing-training-certificate > *:not(#modal-training-certificate) {
+                        display: none !important;
+                    }
+                    body.printing-training-certificate #modal-training-certificate {
+                        position: static !important;
+                        display: block !important;
+                        inset: auto !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        background: #ffffff !important;
+                        z-index: 99999 !important;
+                    }
+                    body.printing-training-certificate #modal-training-certificate .modal-card {
+                        display: block !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        max-height: none !important;
+                        border: none !important;
+                        border-radius: 0 !important;
+                        box-shadow: none !important;
+                        overflow: visible !important;
+                    }
+                    /* Hide the modal chrome (top "Print / PDF" bar + bottom "Done" bar) */
+                    body.printing-training-certificate #modal-training-certificate .modal-card > .p-4 {
+                        display: none !important;
+                    }
+                    body.printing-training-certificate #modal-training-certificate .modal-card > .p-8 {
+                        margin: 0 !important;
+                        page-break-inside: avoid !important;
+                    }
+                    body.printing-training-certificate #modal-training-certificate * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    @page { margin: 12mm; }
+                }
+            </style>
             <div class="modal-card max-w-2xl w-full overflow-hidden max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-100">
                 <div class="p-4 border-b border-brand-border flex items-center justify-between bg-brand-canvas">
                     <div class="flex items-center space-x-2">
@@ -3196,7 +3245,7 @@
                     <span class="text-[11px] text-slate-500 font-medium">Auto-recorded &amp; synchronized across Hotel Systems</span>
                     <div class="flex items-center space-x-2">
                         <button type="button" onclick="closeModal('modal-training-exam-details')" class="btn-secondary px-4 py-2 text-xs font-bold">Close</button>
-                        <button type="button" id="btn-exam-detail-retest" onclick="" class="hidden px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center space-x-1.5 shadow-xs transition">
+                        <button type="button" id="btn-exam-detail-retest" onclick="" class="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center space-x-1.5 shadow-xs transition">
                             <i class="fas fa-rotate-right"></i>
                             <span>Retake Exam (Re-test)</span>
                         </button>

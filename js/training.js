@@ -138,12 +138,37 @@ let trainingResultsState = [];
 let trainingCertificatesState = [];
 let trainingEmployeesState = [];
 
-window.trainingNeedsState = trainingNeedsState;
-window.trainingProgramsState = trainingProgramsState;
-window.trainingSessionsState = trainingSessionsState;
-window.trainingResultsState = trainingResultsState;
-window.trainingCertificatesState = trainingCertificatesState;
-window.trainingEmployeesState = trainingEmployeesState;
+// Keep window references live — supabase.js channel 7 reads/writes these directly
+Object.defineProperty(window, 'trainingNeedsState', {
+    get: () => trainingNeedsState,
+    set: (v) => { trainingNeedsState = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'trainingProgramsState', {
+    get: () => trainingProgramsState,
+    set: (v) => { trainingProgramsState = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'trainingSessionsState', {
+    get: () => trainingSessionsState,
+    set: (v) => { trainingSessionsState = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'trainingResultsState', {
+    get: () => trainingResultsState,
+    set: (v) => { trainingResultsState = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'trainingCertificatesState', {
+    get: () => trainingCertificatesState,
+    set: (v) => { trainingCertificatesState = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'trainingEmployeesState', {
+    get: () => trainingEmployeesState,
+    set: (v) => { trainingEmployeesState = v; },
+    configurable: true
+});
 
 let activeAttendanceSessionId = 'sess-101';
 
@@ -401,7 +426,23 @@ async function initTrainingManagement() {
         }
 
         if (bootstrapData) {
-            if (Array.isArray(bootstrapData.needs)) trainingNeedsState = bootstrapData.needs.map(normalizeTrainingNeed);
+            if (Array.isArray(bootstrapData.needs)) {
+                // Preserve any synthetic in-memory competency-gap needs before overwriting
+                const syntheticNeeds = trainingNeedsState.filter(
+                    n => (n.sourceType === 'competency_gap' || n.source_type === 'competency_gap')
+                        && String(n.id || '').startsWith('need-live-')
+                );
+                trainingNeedsState = bootstrapData.needs.map(normalizeTrainingNeed);
+                // Re-merge synthetic needs that aren't already covered by a DB record
+                syntheticNeeds.forEach(sn => {
+                    const empId = String(sn.employeeId || sn.employee_id || '').toLowerCase();
+                    const alreadyCovered = trainingNeedsState.some(
+                        n => String(n.employeeId || n.employee_id || '').toLowerCase() === empId
+                            && (n.sourceType === 'competency_gap' || n.source_type === 'competency_gap')
+                    );
+                    if (!alreadyCovered) trainingNeedsState.unshift(sn);
+                });
+            }
             if (Array.isArray(bootstrapData.propertyNeeds)) {
                 window.propertyNeedsState = bootstrapData.propertyNeeds.map(normalizeTrainingNeed);
             } else if (Array.isArray(bootstrapData.allNeeds)) {
@@ -915,8 +956,8 @@ function renderTrainingNeeds() {
     const container = document.getElementById('training-needs-list');
     if (!container) return;
 
-    const isAssociate = (window.activePersonaRole === 'Associate' || window.activePersonaKey === 'associate' || window.activePersonaKey === 'employee');
-    const isSupervisor = (window.activePersonaRole === 'Supervisor' || window.activePersonaRole === 'DeptHead' || window.activePersonaKey === 'manager' || window.activePersonaKey === 'supervisor' || window.activePersonaKey === 'depthead');
+    const isAssociate = _isTrainingAssociate();
+    const isSupervisor = _isTrainingSupervisor();
     const currentEmpId = window.currentUser?.id;
     const currentUserDept = window.currentUser?.department || window.currentUser?.dept;
 
@@ -929,12 +970,26 @@ function renderTrainingNeeds() {
     const isPropertyWideTab = (needsActiveFilterTab === 'resolved' || needsActiveFilterTab === 'all');
     const showPropertyWide = isSupervisor && (window.trainingSupervisorShowAll || (isPropertyWideTab && !window.trainingSupervisorDeptOnly));
 
-    let allNormalized = (showPropertyWide && propertyNeeds.length > 0)
+    // Always merge trainingNeedsState into the pool so in-memory resolved mutations are visible
+    const mergedNeeds = (showPropertyWide && propertyNeeds.length > 0)
         ? propertyNeeds
         : trainingNeedsState.map(normalizeTrainingNeed);
 
+    // For resolved tab: also pull resolved items directly from trainingNeedsState in case propertyNeedsState is stale
+    let allNormalized = mergedNeeds;
+    if (needsActiveFilterTab === 'resolved' || needsActiveFilterTab === 'all') {
+        const liveResolved = trainingNeedsState.map(normalizeTrainingNeed).filter(n => n.status === 'Resolved' || n.status === 'Completed');
+        const existingIds = new Set(allNormalized.map(n => n.id));
+        liveResolved.forEach(n => { if (!existingIds.has(n.id)) allNormalized = [...allNormalized, n]; });
+    }
+
     if (isAssociate && currentEmpId) {
-        allNormalized = allNormalized.filter(n => n.employeeId === currentEmpId);
+        allNormalized = allNormalized.filter(n => {
+            const empId = String(n.employeeId || n.employee_id || '').toLowerCase().trim();
+            const userId = String(currentEmpId).toLowerCase().trim();
+            const nameMatch = window.currentUser?.name && String(n.associateName || '').toLowerCase().includes(String(window.currentUser.name).toLowerCase());
+            return empId === userId || nameMatch;
+        });
     } else if (isSupervisor && currentUserDept && !showPropertyWide) {
         allNormalized = allNormalized.filter(n => matchesDepartment(n.dept, currentUserDept));
     }
@@ -974,11 +1029,8 @@ function renderTrainingNeeds() {
         ? perfItems.filter(n => n.status !== 'Resolved' && n.status !== 'Completed').length
         : (window.trainingSupervisorShowAll ? propertyNeeds : deptNeeds).filter(n => n.isPerformanceGoal && n.status !== 'Resolved' && n.status !== 'Completed').length;
 
-    const deptResolvedCount = deptNeeds.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
-    const propResolvedCount = propertyNeeds.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
-    const resolvedCount = isAssociate
-        ? allNormalized.filter(n => n.status === 'Resolved' || n.status === 'Completed').length
-        : (window.trainingSupervisorDeptOnly ? deptResolvedCount : (deptResolvedCount > 0 ? deptResolvedCount : propResolvedCount));
+    // Always count resolved from the live allNormalized pool (includes in-memory mutations)
+    const resolvedCount = allNormalized.filter(n => n.status === 'Resolved' || n.status === 'Completed').length;
 
     const allCount = isAssociate
         ? allNormalized.length
@@ -1101,14 +1153,18 @@ function renderTrainingNeeds() {
 
     container.innerHTML = supervisorBannerHtml + filteredNeeds.map(need => {
         const isResolved = need.status === 'Resolved' || need.status === 'Completed';
-        const isScheduled = need.status === 'Scheduled';
         const isSkillGap = need.sourceType === 'competency_gap';
 
         const existingSession = trainingSessionsState.find(s => s.linkedNeedId === need.id && s.status !== 'Completed');
-        const isAlreadyScheduled = !!existingSession || isScheduled;
 
         // Find linked program metadata
         const prog = trainingProgramsState.find(p => p.id === need.linkedProgramId) || null;
+
+        // A deficit is only truly "scheduled" when a curriculum is linked to it.
+        // Legacy/blanket status flips may leave status = 'Scheduled' with no linked program —
+        // those must stay actionable so the supervisor can still assign a curriculum.
+        const isScheduled = need.status === 'Scheduled' && !!prog;
+        const isAlreadyScheduled = !!existingSession || isScheduled;
         const programTitle = prog ? prog.title : (need.linkedProgramTitle || need.category || 'Hospitality Mastery Program');
         const programDuration = prog ? prog.duration : (need.programDuration || '3.5 Hours (Workshop)');
         const programPassingScore = prog ? prog.passingScore : (need.programPassingScore || 8);
@@ -1317,22 +1373,21 @@ function renderTrainingNeeds() {
                         <div class="flex flex-wrap items-center gap-2 flex-shrink-0 mt-2 sm:mt-0">
                             ${isAlreadyScheduled ? `
                                 <span class="badge-sage text-xs font-bold py-1.5 px-3 whitespace-nowrap">
-                                    <i class="fas fa-calendar-check mr-1.5"></i> Training Scheduled
+                                    <i class="fas fa-calendar-check mr-1.5"></i> ${existingSession ? `Session Scheduled (${existingSession.date})` : 'Training Scheduled'}
                                 </span>
-                                ${isAssociate && existingSession ? `
+                                ${isAssociate ? `
                                     <button onclick="switchTrainingStage('attendance')" class="btn-primary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
                                         <i class="fas fa-calendar-check mr-1"></i>
                                         <span>Open Schedule &rarr;</span>
                                     </button>
-                                ` : existingSession ? `
+                                ` : `
+                                    <button onclick="openAssignProgramModal('${need.id}')" class="btn-primary px-4 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-sm whitespace-nowrap">
+                                        <i class="fas fa-plus-circle mr-1"></i>
+                                        <span>Assign Training Program &rarr;</span>
+                                    </button>
                                     <button onclick="switchTrainingStage('schedules')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
                                         <i class="fas fa-calendar mr-1"></i>
                                         <span>View Cohort &rarr;</span>
-                                    </button>
-                                ` : `
-                                    <button onclick="viewAssignmentDetails('${need.id}')" class="btn-secondary px-3 py-1.5 text-xs font-bold flex items-center space-x-1 shadow-2xs">
-                                        <i class="fas fa-search mr-1"></i>
-                                        <span>View Assignment &rarr;</span>
                                     </button>
                                 `}
                             ` : isAssociate ? `
@@ -1553,13 +1608,21 @@ function renderAttendanceConsole() {
         filteredSessions = trainingSessionsState.filter(s => s.roster && s.roster.some(r => r.associateId === currentEmpId));
     } else if (isSupervisor && currentUserDept) {
         filteredSessions = trainingSessionsState.filter(s => {
-            const sessDept = (s.dept || '').toLowerCase();
-            if (matchesDepartment(sessDept, currentUserDept) || sessDept === '') return true;
+            const sessDept = (s.dept || '').toLowerCase().trim();
+            if (sessDept === '' || matchesDepartment(sessDept, currentUserDept)) return true;
+            // Also match if any roster member belongs to supervisor's dept
             if (s.roster && Array.isArray(s.roster)) {
-                return s.roster.some(r => matchesDepartment(r.dept || '', currentUserDept));
+                return s.roster.some(r => {
+                    const rDept = (r.dept || '').toLowerCase().trim();
+                    return rDept === '' || matchesDepartment(rDept, currentUserDept);
+                });
             }
             return false;
         });
+        // If dept filter yields nothing, fall back to showing all sessions so supervisor is never blocked
+        if (filteredSessions.length === 0) {
+            filteredSessions = trainingSessionsState;
+        }
     }
 
     if (filteredSessions.length === 0) {
@@ -2143,8 +2206,17 @@ function feedResultsIntoCompetency(result) {
     if (Array.isArray(trainingNeedsState)) {
         trainingNeedsState.forEach(resolveNeed);
     }
+    // Sync propertyNeedsState — update matching entries in-place so resolved tab sees the change
     if (Array.isArray(window.propertyNeedsState)) {
-        window.propertyNeedsState.forEach(resolveNeed);
+        window.propertyNeedsState.forEach(pn => {
+            const live = trainingNeedsState.find(n => n.id === pn.id);
+            if (live && live.status === 'Resolved') {
+                pn.status = live.status;
+                pn.currentScore = live.currentScore;
+                pn.gap = live.gap;
+                if (live.certificateReference) pn.certificateReference = live.certificateReference;
+            }
+        });
     }
 
     if (typeof currentXP !== 'undefined' && result.xpAwarded) {
@@ -2207,12 +2279,27 @@ function setResultsDeptFilter(dept) {
 }
 window.setResultsDeptFilter = setResultsDeptFilter;
 
+function _isTrainingSupervisor() {
+    const role = String(window.activePersonaRole || '').toLowerCase();
+    const key  = String(window.activePersonaKey  || '').toLowerCase();
+    return role === 'supervisor' || role === 'depthead' || role === 'manager' || role === 'hradmin' || role === 'generalmanager'
+        || key === 'supervisor' || key === 'supervisor_hk' || key === 'housekeeping_supervisor'
+        || key === 'manager'   || key === 'depthead'      || key === 'hradmin' || key === 'generalmanager';
+}
+function _isTrainingAssociate() {
+    if (_isTrainingSupervisor()) return false;
+    const role = String(window.activePersonaRole || '').toLowerCase();
+    const key  = String(window.activePersonaKey  || '').toLowerCase();
+    return role === 'associate' || role === 'employee' || role === 'staff'
+        || key === 'associate'  || key === 'employee';
+}
+
 function renderTrainingResults() {
     const tbody = document.getElementById('training-results-tbody');
     if (!tbody) return;
 
-    const isAssociate = (window.activePersonaRole === 'Associate' || window.activePersonaKey === 'associate' || window.activePersonaKey === 'employee');
-    const isSupervisor = (window.activePersonaRole === 'Supervisor' || window.activePersonaRole === 'DeptHead' || window.activePersonaKey === 'manager' || window.activePersonaKey === 'supervisor' || window.activePersonaKey === 'depthead');
+    const isAssociate = _isTrainingAssociate();
+    const isSupervisor = _isTrainingSupervisor();
     const currentEmpId = window.currentUser?.id;
     const currentUserDept = window.currentUser?.department || window.currentUser?.dept;
 
@@ -2285,7 +2372,7 @@ function renderTrainingResults() {
     }
 
     tbody.innerHTML = resultsToRender.map(res => {
-        const isPassed = String(res.resultStatus || '').includes('Passed');
+        const isPassed = String(res.resultStatus || '').includes('Passed') || String(res.resultStatus || '').includes('Completed');
         const empDept = getEmpDept(res.associateId) || res.dept;
 
         return `
@@ -2325,12 +2412,10 @@ function renderTrainingResults() {
                             <i class="fas fa-file-lines text-indigo-600"></i>
                             <span>Exam Details</span>
                         </button>
-                        ${!isPassed ? `
-                            <button type="button" onclick="startRetestEvaluation('${res.id}')" class="btn-primary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs bg-amber-600 hover:bg-amber-700 text-white" title="Retake Evaluation Quiz (Re-test)">
-                                <i class="fas fa-rotate-right"></i>
-                                <span>Re-test</span>
-                            </button>
-                        ` : ''}
+                        <button type="button" ${isPassed || isSupervisor ? 'disabled' : `onclick="startRetestEvaluation('${res.id}')"`} class="px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs rounded-xl transition ${isPassed || isSupervisor ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60' : 'bg-amber-600 hover:bg-amber-700 text-white'}" title="${isPassed ? 'Already passed' : isSupervisor ? 'Supervisors cannot retake exams' : 'Retake Evaluation Quiz'}">
+                            <i class="fas fa-rotate-right"></i>
+                            <span>Re-test</span>
+                        </button>
                         ${isPassed && res.certificateReference ? `
                             <button type="button" onclick="viewTrainingCertificate('${res.id}')" class="btn-primary px-2.5 py-1 text-[11px] font-bold inline-flex items-center space-x-1 shadow-2xs" title="View Digital Certificate">
                                 <i class="fas fa-certificate text-amber-300"></i>
@@ -2345,6 +2430,7 @@ function renderTrainingResults() {
 }
 
 function viewExamDetails(resultId) {
+    const isSupervisor = _isTrainingSupervisor();
     const pool = (Array.isArray(window.propertyResultsState) && window.propertyResultsState.length > 0)
         ? window.propertyResultsState
         : trainingResultsState;
@@ -2390,21 +2476,28 @@ function viewExamDetails(resultId) {
     if (elXp) elXp.textContent = `+${result.xpAwarded || 150} XP Awarded`;
     if (elCertRef) elCertRef.textContent = result.certificateReference || 'OXF-CERT-2026-9508';
 
-    const isPassed = String(result.resultStatus || '').includes('Passed');
+    const isPassed = String(result.resultStatus || '').includes('Passed') || String(result.resultStatus || '').includes('Completed');
     if (elStatusBadge) {
         elStatusBadge.textContent = result.resultStatus || 'Passed & Certified';
         elStatusBadge.className = isPassed ? 'badge-sage font-bold' : 'badge-terracotta font-bold';
     }
 
     if (btnRetest) {
-        if (!isPassed) {
-            btnRetest.classList.remove('hidden');
+        btnRetest.classList.remove('hidden');
+        const retestDisabled = isPassed || isSupervisor;
+        btnRetest.disabled = retestDisabled;
+        btnRetest.title = isPassed ? 'Already passed' : isSupervisor ? 'Supervisors cannot retake exams' : 'Retake Evaluation Quiz';
+        if (retestDisabled) {
+            btnRetest.classList.add('opacity-60', 'cursor-not-allowed', 'bg-slate-200', '!text-slate-400');
+            btnRetest.classList.remove('bg-amber-600', 'hover:bg-amber-700', 'text-white');
+            btnRetest.onclick = null;
+        } else {
+            btnRetest.classList.remove('opacity-60', 'cursor-not-allowed', 'bg-slate-200', '!text-slate-400');
+            btnRetest.classList.add('bg-amber-600', 'hover:bg-amber-700', 'text-white');
             btnRetest.onclick = () => {
                 closeModal('modal-training-exam-details');
                 startRetestEvaluation(result.id);
             };
-        } else {
-            btnRetest.classList.add('hidden');
         }
     }
 
@@ -2486,7 +2579,31 @@ function viewTrainingCertificate(resultId) {
 }
 
 function printTrainingCertificate() {
-    window.print();
+    // Print ONLY the certificate, using the same stylesheet already loaded on the
+    // page so the printed output matches this preview exactly. The @media print
+    // rules scoped to #modal-training-certificate (view/modals.php) hide the rest
+    // of the dashboard while this body class is present.
+    const modal = document.getElementById('modal-training-certificate');
+    if (!modal) { window.print(); return; }
+
+    // Make sure the preview is mounted/visible before invoking the print dialog.
+    if (typeof openModal === 'function') openModal('modal-training-certificate');
+
+    document.body.classList.add('printing-training-certificate');
+
+    const cleanup = () => {
+        document.body.classList.remove('printing-training-certificate');
+        window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
+
+    // Give the browser a tick to apply the print styles before printing.
+    setTimeout(() => {
+        window.print();
+        // Fallback cleanup for browsers that never fire `afterprint`.
+        setTimeout(cleanup, 1500);
+    }, 200);
 }
 
 // =========================================================================
@@ -2659,7 +2776,10 @@ function scheduleFromNeed(needId) {
         (s.linkedNeedId === need.id || ((s.roster || []).some(r => (r.associateId === need.employeeId || (r.name && need.associateName && r.name.toLowerCase() === need.associateName.toLowerCase())) && (s.programId === need.linkedProgramId || s.title?.includes(need.targetCompetency))))) &&
         s.status !== 'Completed'
     );
-    if (existingSession || need.status === 'Scheduled') {
+    // A pending cohort for the associate always blocks duplicate scheduling.
+    // A bare 'Scheduled' status with no curriculum linked is a stale state — allow scheduling.
+    const hasLinkedProgram = !!(need.linkedProgramId || need.linked_program_id);
+    if (existingSession || (hasLinkedProgram && need.status === 'Scheduled')) {
         showToast(`A training cohort is already scheduled for ${need.associateName}. Duplicate scheduling is disabled.`, 'warning');
         switchTrainingStage('schedules');
         return;
@@ -2888,16 +3008,26 @@ async function saveScheduledSession() {
             }
         }
 
-        // If scheduled from a specific Need, update that need's status to Scheduled
+        // If scheduled from a specific Need, adopt this session's curriculum and mark it Scheduled.
+        // A deficit without any linked curriculum is never marked Scheduled on its own.
         if (currentSchedulingNeedId) {
-            const need = findAnyTrainingNeed(currentSchedulingNeedId);
-            if (need) {
-                need.status = 'Scheduled';
-            }
-            const inProp = (window.propertyNeedsState || []).find(n => n.id === currentSchedulingNeedId);
-            if (inProp) inProp.status = 'Scheduled';
-            const inState = trainingNeedsState.find(n => n.id === currentSchedulingNeedId);
-            if (inState) inState.status = 'Scheduled';
+            const sessionProgramId = (newSession && newSession.programId) || (prog && prog.id) || null;
+            const targetNeedIds = new Set([currentSchedulingNeedId]);
+
+            const applyScheduleState = (n) => {
+                if (!n) return;
+                if (!n.linkedProgramId && !n.linked_program_id && sessionProgramId) {
+                    n.linkedProgramId = sessionProgramId;
+                    n.linked_program_id = sessionProgramId;
+                }
+                if (n.linkedProgramId || n.linked_program_id) {
+                    n.status = 'Scheduled';
+                }
+            };
+
+            applyScheduleState(findAnyTrainingNeed(currentSchedulingNeedId));
+            applyScheduleState((window.propertyNeedsState || []).find(n => targetNeedIds.has(n.id)));
+            applyScheduleState(trainingNeedsState.find(n => targetNeedIds.has(n.id)));
             renderTrainingNeeds();
             currentSchedulingNeedId = null;
         }
@@ -2986,7 +3116,11 @@ function openAssignProgramModal(needId) {
         (s.linkedNeedId === need.id || ((s.roster || []).some(r => (r.associateId === need.employeeId || (r.name && need.associateName && r.name.toLowerCase() === need.associateName.toLowerCase())) && (s.programId === need.linkedProgramId || s.title?.includes(need.targetCompetency))))) &&
         s.status !== 'Completed'
     );
-    if (existingSession || need.status === 'Scheduled') {
+    // Only lock reassignment when a curriculum is already linked AND that curriculum is scheduled.
+    // A need with no linked program must always remain assignable (blanket status flips to 'Scheduled'
+    // without a linked program would otherwise dead-end the supervisor here).
+    const hasLinkedProgram = !!(need.linkedProgramId || need.linked_program_id);
+    if (hasLinkedProgram && (existingSession || need.status === 'Scheduled')) {
         showToast(`Training session is already scheduled for ${need.associateName}. Reassignment is locked to prevent duplication.`, 'warning');
         return;
     }
@@ -3121,6 +3255,20 @@ async function submitAssignProgram(needId) {
     }
 }
 window.submitAssignProgram = submitAssignProgram;
+
+// Expose render functions and normalizers to window for Supabase Realtime (supabase.js channel 7)
+window.normalizeTrainingNeed     = normalizeTrainingNeed;
+window.normalizeTrainingProgram  = normalizeTrainingProgram;
+window.normalizeTrainingSession  = normalizeTrainingSession;
+window.normalizeTrainingResult   = normalizeTrainingResult;
+window.renderTrainingNeeds       = renderTrainingNeeds;
+window.renderTrainingPrograms    = renderTrainingPrograms;
+window.renderTrainingSessions    = renderTrainingSessions;
+window.renderAttendanceConsole   = renderAttendanceConsole;
+window.renderTrainingResults     = renderTrainingResults;
+window.renderCertsTable          = renderCertsTable;
+window.renderBasicTrainingReport = renderBasicTrainingReport;
+window.updateTrainingStats       = updateTrainingStats;
 
 document.addEventListener('DOMContentLoaded', () => {
     initTrainingManagement();
