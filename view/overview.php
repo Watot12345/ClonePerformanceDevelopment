@@ -1539,11 +1539,11 @@ $systemTabClass = $isAssociate ? '' : 'active';
 
                                 </div>
 
-                                <!-- Row 2: Property Shift Climate Pulse + Governance Highlights -->
-                                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                                <!-- Row 2: Property Shift Climate Pulse -->
+                                <div class="grid grid-cols-1 gap-6 items-start">
 
-                                    <!-- Column 1: Property Shift Climate Pulse (Doughnut Chart) (5 cols) -->
-                                    <div class="lg:col-span-5 card-clean p-6 space-y-4">
+                                    <!-- Property Shift Climate Pulse (Doughnut Chart + Live Telemetry) -->
+                                    <div class="card-clean p-6 space-y-4">
                                         <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('shift_sentiment')" title="Click for full shift climate & sentiment log">
                                             <div>
                                                 <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
@@ -1554,111 +1554,49 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                             </div>
                                             <span class="badge-sage text-[10px]"><i class="fas fa-heart-pulse mr-1"></i>Live Pulse</span>
                                         </div>
-                                        <div onclick="openOverviewDrilldown('shift_sentiment')" class="h-48 w-full flex items-center justify-center relative cursor-pointer hover:scale-[1.01] transition-transform" title="Click for sentiment distribution & recent mood log">
-                                            <canvas id="chart-sentiment-doughnut"></canvas>
-                                            
-                                            <!-- Empty State for Shift Climate Pulse -->
-                                            <div id="chart-sentiment-empty-state" class="overview-loading-overlay hidden absolute inset-0 flex-col items-center justify-center text-center p-4 bg-slate-50/90 rounded-2xl border border-dashed border-slate-200">
-                                                <div class="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-lg mb-2 shadow-2xs">
-                                                    <i class="fas fa-heart-pulse text-primary/60"></i>
-                                                </div>
-                                                <p class="font-bold text-xs text-slate-700">No Shift Climate Data</p>
-                                                <p class="text-[10px] text-slate-400 mt-0.5 max-w-52.5 leading-tight">No employee shift sentiments recorded yet in Supabase. Check in above to start tracking live team pulse.</p>
-                                            </div>
-                                        </div>
-                                        <div onclick="openOverviewDrilldown('shift_sentiment')"
-                                            class="flex justify-around text-center text-xs pt-3 border-t border-brand-border cursor-pointer hover:bg-slate-50/50 transition-colors" title="Click for sentiment history">
-                                            <div>
-                                                <p id="pulse-smooth-pct" class="font-bold text-sage-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Smooth</p>
-                                            </div>
-                                            <div>
-                                                <p id="pulse-manageable-pct" class="font-bold text-dusty-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Manageable</p>
-                                            </div>
-                                            <div>
-                                                <p id="pulse-friction-pct" class="font-bold text-terracotta-dark">0.0%</p>
-                                                <p class="text-[10px] text-slate-500">Friction</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Column 2: Governance & Operational Velocity (7 cols in a single clean card) -->
-                                    <div class="lg:col-span-7 card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('governance')" title="Click for governance & SLA compliance telemetry">
-                                            <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
-                                                    <span>Governance &amp; Operational Velocity</span>
-                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
-                                                </h3>
-                                                <p class="text-xs text-slate-500">Cross-module synchronization, calibration compliance, and succession pipeline throughput</p>
-                                            </div>
-                                            <span class="badge-neutral text-[10px]">Operations</span>
-                                        </div>
-
-                                        <!-- 2-Column Analytics Grid -->
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                                            <!-- Column 1: Appraisal Calibration & Review Velocity -->
-                                            <div onclick="openOverviewDrilldown('governance')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-primary hover:shadow-xs transition-all group" title="Click to inspect appraisal calibration & SLA metrics">
-                                                <div class="space-y-2">
-                                                    <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-primary transition-colors">
-                                                            <i class="fas fa-scale-balanced text-primary text-xs"></i>
-                                                            <span>Appraisal Calibration &amp; SLA</span>
-                                                        </span>
-                                                        <span class="badge-sage text-[10px]">100% Calibrated</span>
-                                                    </div>
-                                                    <p class="text-xs text-slate-500 leading-relaxed">Enforces 15% Top / 70% Core / 15% Growth bell-curve across closed cycles. Closed scores directly feed the 9-Box matrix (40% weight).</p>
-                                                </div>
+                                        
+                                        <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center pt-2">
+                                            <!-- Doughnut Chart Canvas Container -->
+                                            <div onclick="openOverviewDrilldown('shift_sentiment')" class="md:col-span-5 h-48 w-full flex items-center justify-center relative cursor-pointer hover:scale-[1.01] transition-transform" title="Click for sentiment distribution & recent mood log">
+                                                <canvas id="chart-sentiment-doughnut"></canvas>
                                                 
-                                                <div class="space-y-2 pt-2 border-t border-brand-border">
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">Review SLA Speed:</span>
-                                                        <span class="font-bold text-sage-dark">4.2d Avg <span class="text-[10px] text-slate-400 font-normal">(&lt; 7.0d Target)</span></span>
+                                                <!-- Empty State for Shift Climate Pulse -->
+                                                <div id="chart-sentiment-empty-state" class="overview-loading-overlay hidden absolute inset-0 flex-col items-center justify-center text-center p-4 bg-slate-50/90 rounded-2xl border border-dashed border-slate-200">
+                                                    <div class="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-lg mb-2 shadow-2xs">
+                                                        <i class="fas fa-heart-pulse text-primary/60"></i>
                                                     </div>
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">AI Feedback Assists:</span>
-                                                        <span class="font-bold text-dusty-dark">312 Accepted (89%)</span>
-                                                    </div>
-                                                    <div class="flex flex-wrap gap-1 text-[10px] pt-1">
-                                                        <span class="px-2 py-0.5 bg-sage-50 text-sage-dark rounded-md font-bold border border-sage-100">15 Top</span>
-                                                        <span class="px-2 py-0.5 bg-dusty-50 text-dusty-dark rounded-md font-bold border border-dusty-100">70 Core</span>
-                                                        <span class="px-2 py-0.5 bg-terracotta-50 text-terracotta-dark rounded-md font-bold border border-terracotta-100">15 Growth</span>
-                                                    </div>
+                                                    <p class="font-bold text-xs text-slate-700">No Shift Climate Data</p>
+                                                    <p class="text-[10px] text-slate-400 mt-0.5 max-w-52.5 leading-tight">No employee shift sentiments recorded yet in Supabase. Check in above to start tracking live team pulse.</p>
                                                 </div>
                                             </div>
-
-                                            <!-- Column 2: Training Ops & Succession Pipeline -->
-                                            <div onclick="openOverviewDrilldown('sys_succession')" class="bg-brand-canvas border border-brand-border rounded-2xl p-4 space-y-3 flex flex-col justify-between cursor-pointer hover:border-dusty hover:shadow-xs transition-all group" title="Click to inspect succession bench & training metrics">
-                                                <div class="space-y-2">
-                                                    <div class="flex items-center justify-between">
-                                                        <span class="text-xs font-bold text-slate-900 flex items-center space-x-2 group-hover:text-dusty-dark transition-colors">
-                                                            <i class="fas fa-sitemap text-dusty-dark text-xs"></i>
-                                                            <span>Succession &amp; Training Pipeline</span>
-                                                        </span>
-                                                        <span class="badge-dusty text-[10px]">78.5% Bench Ready</span>
+                                            
+                                            <!-- Sentiment Breakdown Metric Cards -->
+                                            <div onclick="openOverviewDrilldown('shift_sentiment')" class="md:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-center cursor-pointer" title="Click for sentiment history">
+                                                <div class="p-4 bg-sage-50/70 rounded-2xl border border-sage-100/90 hover:bg-sage-100/70 transition-colors">
+                                                    <div class="w-8 h-8 rounded-full bg-sage-100 text-sage-dark flex items-center justify-center mx-auto mb-2 text-sm">
+                                                        <i class="fas fa-face-smile"></i>
                                                     </div>
-                                                    <p class="text-xs text-slate-500 leading-relaxed">Competency gap alerts automatically trigger Training sessions &amp; LMS SOPs. Passing upgrades competency match (60% weight) and issues XP.</p>
+                                                    <p id="pulse-smooth-pct" class="text-xl font-extrabold text-sage-dark">0.0%</p>
+                                                    <p class="text-xs font-bold text-slate-800 mt-0.5">Smooth</p>
+                                                    <p class="text-[10px] text-slate-500 mt-0.5">High morale &amp; flow</p>
                                                 </div>
-
-                                                <div class="space-y-2 pt-2 border-t border-brand-border">
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">Key Roles Covered:</span>
-                                                        <span class="font-bold text-slate-800">14 / 16 Roles <span class="text-[10px] text-sage-dark font-semibold">(2 Fast-Track)</span></span>
+                                                <div class="p-4 bg-dusty-50/70 rounded-2xl border border-dusty-100/90 hover:bg-dusty-100/70 transition-colors">
+                                                    <div class="w-8 h-8 rounded-full bg-dusty-100 text-dusty-dark flex items-center justify-center mx-auto mb-2 text-sm">
+                                                        <i class="fas fa-face-meh"></i>
                                                     </div>
-                                                    <div class="flex items-center justify-between text-[11px]">
-                                                        <span class="text-slate-500 font-medium">LMS Quiz Pass Rate:</span>
-                                                        <span class="font-bold text-primary">94.2% <span class="text-[10px] text-slate-400 font-normal">(First Attempt)</span></span>
+                                                    <p id="pulse-manageable-pct" class="text-xl font-extrabold text-dusty-dark">0.0%</p>
+                                                    <p class="text-xs font-bold text-slate-800 mt-0.5">Manageable</p>
+                                                    <p class="text-[10px] text-slate-500 mt-0.5">Steady operations</p>
+                                                </div>
+                                                <div class="p-4 bg-terracotta-50/70 rounded-2xl border border-terracotta-100/90 hover:bg-terracotta-100/70 transition-colors">
+                                                    <div class="w-8 h-8 rounded-full bg-terracotta-100 text-terracotta-dark flex items-center justify-center mx-auto mb-2 text-sm">
+                                                        <i class="fas fa-face-frown"></i>
                                                     </div>
-                                                    <div class="flex flex-wrap gap-1 text-[10px] pt-1">
-                                                        <span class="px-2 py-0.5 bg-dusty-50 text-dusty-dark rounded-md font-bold border border-dusty-100">8 Ready Now</span>
-                                                        <span class="px-2 py-0.5 bg-gold-50 text-gold-dark rounded-md font-bold border border-gold-100">6 in 1-2 Yrs</span>
-                                                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-bold border border-slate-200">+150 XP/Cert</span>
-                                                    </div>
+                                                    <p id="pulse-friction-pct" class="text-xl font-extrabold text-terracotta-dark">0.0%</p>
+                                                    <p class="text-xs font-bold text-slate-800 mt-0.5">Friction</p>
+                                                    <p class="text-[10px] text-slate-500 mt-0.5">Needs check-in</p>
                                                 </div>
                                             </div>
-
                                         </div>
                                     </div>
 
