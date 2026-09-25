@@ -1353,7 +1353,72 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                     </div>
                                 </div>
 
-                                <!-- Row 1: Top 5 Gamified XP Champions + Shift Climate Pulse -->
+                                <!-- Row 1: Department Execution Matrix (Full Width) -->
+                                <div class="grid grid-cols-1 gap-6 items-start">
+
+                                    <!-- Department Completion & Progress Comparison (Full Width) -->
+                                    <div class="card-clean p-6 space-y-4">
+                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('dept_matrix')" title="Click for detailed department execution metrics & rankings">
+                                            <div>
+                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
+                                                    <span>Department Execution Matrix</span>
+                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
+                                                </h3>
+                                                <p class="text-xs text-slate-500">Goal Approval %, LMS Completion %, and Succession Depth across all property departments</p>
+                                            </div>
+                                            <span class="badge-neutral text-[10px]">5 Departments</span>
+                                        </div>
+
+                                        <!-- Department Comparison Horizontal Bar Chart -->
+                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="h-56 sm:h-64 w-full relative cursor-pointer hover:opacity-95 transition-opacity" title="Click to view department comparison telemetry">
+                                            <canvas id="chart-system-dept-progress"></canvas>
+                                            <div id="dept-matrix-loading-overlay" class="overview-loading-overlay absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-lg hidden items-center justify-center transition-opacity">
+                                                <div class="flex items-center space-x-2 text-xs font-semibold text-slate-600 bg-white/90 shadow-sm px-3 py-1.5 rounded-full border border-slate-200">
+                                                    <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                                    <span>Syncing...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Department Breakdown Mini Table -->
+                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="overflow-x-auto custom-scrollbar pt-2 border-t border-brand-border cursor-pointer hover:bg-slate-50/40 transition-colors" title="Click to inspect full department breakdown">
+                                            <table class="w-full text-left text-xs">
+                                                <thead>
+                                                    <tr class="text-slate-400 font-semibold border-b border-brand-border">
+                                                        <th class="pb-2 font-medium">Department</th>
+                                                        <th class="pb-2 font-medium text-center">Staff</th>
+                                                        <th class="pb-2 font-medium text-center">Goals Approved</th>
+                                                        <th class="pb-2 font-medium text-center">LMS Rate</th>
+                                                        <th class="pb-2 font-medium text-center">Succession</th>
+                                                        <th class="pb-2 font-medium text-right">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="table-dept-execution-matrix-body" class="divide-y divide-brand-border">
+                                                    <?php foreach ($deptMatrixRows as $dRow): 
+                                                         $gColor = $dRow['goals_approved_pct'] > 0 ? 'text-sage-dark font-bold' : 'text-slate-400 font-medium';
+                                                         $lColor = $dRow['lms_rate_pct'] > 0 ? 'text-primary font-bold' : 'text-slate-400 font-medium';
+                                                         $sColor = $dRow['succession_ready_pct'] > 0 ? 'text-dusty-dark font-bold' : 'text-slate-400 font-medium';
+                                                     ?>
+                                                    <tr class="hover:bg-slate-50/50 transition-colors">
+                                                        <td class="py-2.5 font-bold text-slate-800"><?= htmlspecialchars($dRow['department']) ?></td>
+                                                        <td class="py-2.5 text-center text-slate-500 font-medium"><?= (int)$dRow['staff_count'] ?></td>
+                                                        <td class="py-2.5 text-center <?= $gColor ?>"><?= number_format($dRow['goals_approved_pct'], 1) ?>%</td>
+                                                        <td class="py-2.5 text-center <?= $lColor ?>"><?= number_format($dRow['lms_rate_pct'], 1) ?>%</td>
+                                                        <td class="py-2.5 text-center <?= $sColor ?>"><?= number_format($dRow['succession_ready_pct'], 1) ?>%</td>
+                                                        <td class="py-2.5 text-right"><span class="<?= $dRow['badge_class'] ?>"><?= htmlspecialchars($dRow['status']) ?></span></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                            <script>
+                                                window.initialDeptMatrixData = <?= json_encode($deptMatrixRows) ?>;
+                                            </script>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <!-- Row 2: Top 5 Gamified XP Champions + Shift Climate Pulse -->
                                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
                                     <!-- Column 1: Top 5 Highest Gamified XP Staff Leaderboard (5 cols) -->
@@ -1532,71 +1597,6 @@ $systemTabClass = $isAssociate ? '' : 'active';
                                                     <p class="text-[9px] text-slate-500 mt-0.5">Needs check</p>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
-
-                                </div>
-
-                                <!-- Row 2: Department Execution Matrix (Full Width) -->
-                                <div class="grid grid-cols-1 gap-6 items-start">
-
-                                    <!-- Department Completion & Progress Comparison (Full Width) -->
-                                    <div class="card-clean p-6 space-y-4">
-                                        <div class="flex items-center justify-between cursor-pointer group" onclick="openOverviewDrilldown('dept_matrix')" title="Click for detailed department execution metrics & rankings">
-                                            <div>
-                                                <h3 class="font-heading font-bold text-base text-slate-900 group-hover:text-primary transition-colors flex items-center space-x-1.5">
-                                                    <span>Department Execution Matrix</span>
-                                                    <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-primary transition-colors"></i>
-                                                </h3>
-                                                <p class="text-xs text-slate-500">Goal Approval %, LMS Completion %, and Succession Depth across all property departments</p>
-                                            </div>
-                                            <span class="badge-neutral text-[10px]">5 Departments</span>
-                                        </div>
-
-                                        <!-- Department Comparison Horizontal Bar Chart -->
-                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="h-56 sm:h-64 w-full relative cursor-pointer hover:opacity-95 transition-opacity" title="Click to view department comparison telemetry">
-                                            <canvas id="chart-system-dept-progress"></canvas>
-                                            <div id="dept-matrix-loading-overlay" class="overview-loading-overlay absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-lg hidden items-center justify-center transition-opacity">
-                                                <div class="flex items-center space-x-2 text-xs font-semibold text-slate-600 bg-white/90 shadow-sm px-3 py-1.5 rounded-full border border-slate-200">
-                                                    <i class="fas fa-circle-notch fa-spin text-primary"></i>
-                                                    <span>Syncing...</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Department Breakdown Mini Table -->
-                                        <div onclick="openOverviewDrilldown('dept_matrix')" class="overflow-x-auto custom-scrollbar pt-2 border-t border-brand-border cursor-pointer hover:bg-slate-50/40 transition-colors" title="Click to inspect full department breakdown">
-                                            <table class="w-full text-left text-xs">
-                                                <thead>
-                                                    <tr class="text-slate-400 font-semibold border-b border-brand-border">
-                                                        <th class="pb-2 font-medium">Department</th>
-                                                        <th class="pb-2 font-medium text-center">Staff</th>
-                                                        <th class="pb-2 font-medium text-center">Goals Approved</th>
-                                                        <th class="pb-2 font-medium text-center">LMS Rate</th>
-                                                        <th class="pb-2 font-medium text-center">Succession</th>
-                                                        <th class="pb-2 font-medium text-right">Status</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="table-dept-execution-matrix-body" class="divide-y divide-brand-border">
-                                                    <?php foreach ($deptMatrixRows as $dRow): 
-                                                         $gColor = $dRow['goals_approved_pct'] > 0 ? 'text-sage-dark font-bold' : 'text-slate-400 font-medium';
-                                                         $lColor = $dRow['lms_rate_pct'] > 0 ? 'text-primary font-bold' : 'text-slate-400 font-medium';
-                                                         $sColor = $dRow['succession_ready_pct'] > 0 ? 'text-dusty-dark font-bold' : 'text-slate-400 font-medium';
-                                                     ?>
-                                                    <tr class="hover:bg-slate-50/50 transition-colors">
-                                                        <td class="py-2.5 font-bold text-slate-800"><?= htmlspecialchars($dRow['department']) ?></td>
-                                                        <td class="py-2.5 text-center text-slate-500 font-medium"><?= (int)$dRow['staff_count'] ?></td>
-                                                        <td class="py-2.5 text-center <?= $gColor ?>"><?= number_format($dRow['goals_approved_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-center <?= $lColor ?>"><?= number_format($dRow['lms_rate_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-center <?= $sColor ?>"><?= number_format($dRow['succession_ready_pct'], 1) ?>%</td>
-                                                        <td class="py-2.5 text-right"><span class="<?= $dRow['badge_class'] ?>"><?= htmlspecialchars($dRow['status']) ?></span></td>
-                                                    </tr>
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                            <script>
-                                                window.initialDeptMatrixData = <?= json_encode($deptMatrixRows) ?>;
-                                            </script>
                                         </div>
                                     </div>
 
