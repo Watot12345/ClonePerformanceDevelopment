@@ -1,17 +1,17 @@
 {
-    "livePropertyXp": 440,
+    "livePropertyXp": 150,
     "liveKudosSent": 1,
-    "liveBadgesCount": 2,
-    "liveActiveStaffCount": 5,
+    "liveBadgesCount": 1,
+    "liveActiveStaffCount": 7,
     "liveTotalGoals": 1,
     "liveApprovedGoals": 1,
     "liveReviewGoals": 0,
     "liveReviseGoals": 0,
     "liveGoalsApprovalRate": 100,
-    "liveTotalPrescribed": 1,
-    "livePassedPrescribed": 1,
-    "liveLmsAvgScore": 100,
-    "liveLmsRate": 100,
+    "liveTotalPrescribed": 0,
+    "livePassedPrescribed": 0,
+    "liveLmsAvgScore": 0,
+    "liveLmsRate": 0,
     "totalRolesCount": 0,
     "coveredRolesCount": 0,
     "fastTrackCount": 0,
@@ -23,18 +23,6 @@
             "staff_ids": [
                 "emp-101"
             ],
-            "goals_total": 1,
-            "goals_approved": 1,
-            "lms_total": 1,
-            "lms_progress_sum": 100,
-            "lms_passed": 1,
-            "succ_candidates": 0,
-            "succ_ready": 0
-        },
-        "Food & Beverage": {
-            "department": "Food & Beverage",
-            "staff_count": 0,
-            "staff_ids": [],
             "goals_total": 0,
             "goals_approved": 0,
             "lms_total": 0,
@@ -43,10 +31,23 @@
             "succ_candidates": 0,
             "succ_ready": 0
         },
+        "Food & Beverage": {
+            "department": "Food & Beverage",
+            "staff_count": 0,
+            "staff_ids": [],
+            "goals_total": 1,
+            "goals_approved": 1,
+            "lms_total": 0,
+            "lms_progress_sum": 0,
+            "lms_passed": 0,
+            "succ_candidates": 0,
+            "succ_ready": 0
+        },
         "Kitchen & Culinary": {
             "department": "Kitchen & Culinary",
-            "staff_count": 1,
+            "staff_count": 2,
             "staff_ids": [
+                "emp-103",
                 "emp-102"
             ],
             "goals_total": 0,
@@ -76,6 +77,20 @@
                 "3a52667f-53cf-412a-b048-ef96eb407707",
                 "3bb792e6-b25e-460e-a8fa-712c65c3b2e2",
                 "b7e1a2c4-9d3f-4a1e-8c6b-1f2e3d4a5b6c"
+            ],
+            "goals_total": 0,
+            "goals_approved": 0,
+            "lms_total": 0,
+            "lms_progress_sum": 0,
+            "lms_passed": 0,
+            "succ_candidates": 0,
+            "succ_ready": 0
+        },
+        "Human Resources": {
+            "department": "Human Resources",
+            "staff_count": 1,
+            "staff_ids": [
+                "bfc42177-6006-43f4-8e0d-84bd6540d31e"
             ],
             "goals_total": 0,
             "goals_approved": 0,
@@ -163,5 +178,5 @@
             "is_ready": true
         }
     ],
-    "cached_at": 1789971148
+    "cached_at": 1790362537
 }

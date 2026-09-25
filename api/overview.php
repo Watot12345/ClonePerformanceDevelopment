@@ -604,19 +604,122 @@ try {
                 // 8. Department Execution Matrix Deep-Dive (Strictly DB data)
                 // ─────────────────────────────────────────────────────────────
                 case 'dept_matrix':
-                    $cacheFile = __DIR__ . '/../cache/overview_metrics.json';
-                    $cached = file_exists($cacheFile) ? @json_decode(file_get_contents($cacheFile), true) : null;
-                    $deptBuckets = $cached['deptBuckets'] ?? [];
+                    try {
+                        $allDepts = $pdo->query("SELECT id, name FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+                        $allEmps  = $pdo->query("SELECT id, full_name, department_id, title, status FROM employees")->fetchAll(PDO::FETCH_ASSOC);
+                        $allGoals = $pdo->query("SELECT id, employee_id, department, status, weight FROM performance_goals")->fetchAll(PDO::FETCH_ASSOC);
+                        $allLms   = $pdo->query("SELECT id, employee, status, progress FROM lms_prescribed")->fetchAll(PDO::FETCH_ASSOC);
+                        $allSucc  = $pdo->query("SELECT sc.*, sp.dept as pos_dept FROM succession_candidates sc LEFT JOIN succession_positions sp ON sc.position_id = sp.id")->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (\Throwable $dbErr) {
+                        $allDepts = [];
+                        $allEmps  = [];
+                        $allGoals = [];
+                        $allLms   = [];
+                        $allSucc  = [];
+                    }
+
+                    $deptIdMap = [];
+                    foreach ($allDepts as $d) {
+                        if (!empty($d['id']) && !empty($d['name'])) {
+                            $deptIdMap[$d['id']] = $d['name'];
+                        }
+                    }
+
+                    $empDeptMap = [];
+                    foreach ($allEmps as $emp) {
+                        $dName = '';
+                        if (!empty($emp['department_id']) && isset($deptIdMap[$emp['department_id']])) {
+                            $dName = $deptIdMap[$emp['department_id']];
+                        } else {
+                            $haystack = ($emp['title'] ?? '') . ' ' . ($emp['full_name'] ?? '');
+                            $dName = $normalizeDept($haystack);
+                        }
+                        $empDeptMap[$emp['id']] = $normalizeDept($dName);
+                    }
+
+                    $canonicalDepts = [
+                        'Front Office',
+                        'Food & Beverage',
+                        'Kitchen & Culinary',
+                        'Banquet & Events',
+                        'Housekeeping'
+                    ];
+
+                    $deptBuckets = [];
+                    foreach ($canonicalDepts as $cDept) {
+                        $deptBuckets[$cDept] = [
+                            'department'       => $cDept,
+                            'staff_count'      => 0,
+                            'goals_total'      => 0,
+                            'goals_approved'   => 0,
+                            'lms_total'        => 0,
+                            'lms_progress_sum' => 0,
+                            'succ_candidates'  => 0,
+                            'succ_ready'       => 0
+                        ];
+                    }
+
+                    foreach ($allEmps as $emp) {
+                        $d = $empDeptMap[$emp['id']] ?? 'Front Office';
+                        if (isset($deptBuckets[$d])) {
+                            $deptBuckets[$d]['staff_count']++;
+                        }
+                    }
+
+                    foreach ($allGoals as $g) {
+                        $gDept = '';
+                        if (!empty($g['department'])) {
+                            $gDept = $normalizeDept($g['department']);
+                        }
+                        if (empty($gDept) && !empty($g['employee_id'])) {
+                            $gDept = $empDeptMap[$g['employee_id']] ?? 'Front Office';
+                        }
+                        if (empty($gDept) || !isset($deptBuckets[$gDept])) {
+                            $gDept = 'Front Office';
+                        }
+                        $deptBuckets[$gDept]['goals_total']++;
+                        $st = strtolower(trim((string)($g['status'] ?? '')));
+                        if (in_array($st, ['approved', 'done', 'completed', 'active', 'endorsed', 'calibrated'])) {
+                            $deptBuckets[$gDept]['goals_approved']++;
+                        }
+                    }
+
+                    foreach ($allLms as $l) {
+                        $eId = $l['employee'] ?? '';
+                        $d = $empDeptMap[$eId] ?? 'Front Office';
+                        if (isset($deptBuckets[$d])) {
+                            $deptBuckets[$d]['lms_total']++;
+                            $prog = (float)($l['progress'] ?? 0);
+                            $deptBuckets[$d]['lms_progress_sum'] += $prog;
+                        }
+                    }
+
+                    foreach ($allSucc as $s) {
+                        $d = '';
+                        if (!empty($s['pos_dept'])) {
+                            $d = $normalizeDept($s['pos_dept']);
+                        } elseif (!empty($s['employee_id'])) {
+                            $d = $empDeptMap[$s['employee_id']] ?? 'Front Office';
+                        }
+                        if (isset($deptBuckets[$d])) {
+                            $deptBuckets[$d]['succ_candidates']++;
+                            $flag = strtolower(trim((string)($s['hr_readiness_flag'] ?? '')));
+                            if (strpos($flag, 'ready now') !== false || strpos($flag, 'ready in') !== false) {
+                                $deptBuckets[$d]['succ_ready']++;
+                            }
+                        }
+                    }
 
                     $deptMatrixRows = [];
-                    foreach ($deptBuckets as $cDept => $b) {
+                    foreach ($canonicalDepts as $cDept) {
+                        $b = $deptBuckets[$cDept];
                         $goalsPct = $b['goals_total'] > 0 ? round(($b['goals_approved'] / $b['goals_total']) * 100, 1) : 0.0;
                         $lmsPct = $b['lms_total'] > 0 ? round($b['lms_progress_sum'] / $b['lms_total'], 1) : 0.0;
                         $succPct = $b['succ_candidates'] > 0 ? round(($b['succ_ready'] / $b['succ_candidates']) * 100, 1) : 0.0;
                         $composite = round(($goalsPct * 0.35) + ($lmsPct * 0.35) + ($succPct * 0.30), 1);
 
                         $status = $composite >= 80 ? 'Optimal' : ($composite >= 50 ? 'Good' : ($composite > 0 ? 'Developing' : 'Pending'));
-                        $badgeClass = $composite >= 80 ? 'badge-sage' : ($composite >= 50 ? 'badge-dusty' : 'badge-terracotta');
+                        $badgeClass = $composite >= 80 ? 'badge-sage' : ($composite >= 50 ? 'badge-dusty' : ($composite > 0 ? 'badge-terracotta' : 'bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold px-2 py-0.5 rounded-full'));
 
                         $deptMatrixRows[] = [
                             'department'           => $cDept,
@@ -626,37 +729,34 @@ try {
                             'succession_ready_pct' => $succPct,
                             'composite_score'      => $composite,
                             'status'               => $status,
-                            'badge_class'          => $badgeClass
+                            'badge_class'          => $badgeClass,
+                            'goals_total'          => $b['goals_total'],
+                            'goals_approved'       => $b['goals_approved'],
+                            'lms_total'            => $b['lms_total']
                         ];
                     }
 
-                    // If associate, only display their own department's row
-                    if ($isAssociate) {
-                        $empRow = $pdo->prepare("SELECT department_id FROM public.employees WHERE id = :empId");
-                        $empRow->execute([':empId' => $empId]);
-                        $empDeptId = $empRow->fetchColumn();
-                        $empDeptName = $normalizeDept($empDeptId ?: 'Front Office');
-                        
-                        $deptMatrixRows = array_values(array_filter($deptMatrixRows, function($r) use ($empDeptName) {
-                            return $r['department'] === $empDeptName;
-                        }));
-                    }
+                    // Sort so top composite scores are first, or maintain canonical order
+                    $sortedRows = $deptMatrixRows;
+                    usort($sortedRows, function($a, $b) {
+                        return $b['composite_score'] <=> $a['composite_score'];
+                    });
 
-                    $topDept = $deptMatrixRows[0]['department'] ?? 'Front Office';
-                    $topScore = $deptMatrixRows[0]['composite_score'] ?? 0;
+                    $topDept = $sortedRows[0]['department'] ?? 'Front Office';
+                    $topScore = $sortedRows[0]['composite_score'] ?? 0;
 
                     $data = [
                         'metric'        => $metric,
-                        'title'         => $isAssociate ? "My Department Execution Matrix ({$topDept})" : 'Department Execution Matrix Deep-Dive',
+                        'title'         => 'Department Execution Matrix Deep-Dive',
                         'subtitle'      => 'Cross-departmental performance synthesis combining 35% Goals, 35% LMS, and 30% Succession metrics',
                         'theme'         => 'primary',
                         'target_pillar' => 'pillar-reports',
                         'action_label'  => 'Open Executive Reports Hub',
                         'summary'       => [
                             ['label' => 'Monitored Divisions', 'value' => count($deptMatrixRows), 'sub' => 'Database Departments'],
-                            ['label' => 'Department Execution', 'value' => $topDept, 'sub' => $topScore . '% Composite'],
+                            ['label' => 'Top Execution Dept', 'value' => $topDept, 'sub' => $topScore . '% Composite'],
                             ['label' => 'Weighted Formula', 'value' => '35% / 35% / 30%', 'sub' => 'Goals / LMS / Succession'],
-                            ['label' => 'Data Source', 'value' => 'Calibrated DB', 'sub' => 'Realtime Synced']
+                            ['label' => 'Data Source', 'value' => 'Live Supabase DB', 'sub' => 'Realtime Synced']
                         ],
                         'chart' => [
                             'type' => 'bar',
