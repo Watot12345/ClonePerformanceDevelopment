@@ -8,3 +8,8 @@ composer.lock
 
 # Dependencies
 /node_modules/
+
+# OS Files
+desktop.ini
+Thumbs.db
+.DS_Store
