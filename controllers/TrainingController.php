@@ -252,12 +252,23 @@ class TrainingController
         }
         $created = $this->sessionModel->createSession($data);
 
-        // Update linked training need status to Scheduled so cascade hook sets in_training=true
-        $linkedNeedId = $data['linkedNeedId'] ?? ($data['linked_need_id'] ?? null);
+        // Curriculum delivered by this session (decides which deficits are genuinely "Scheduled")
+        $sessionProgramId = trim((string)($created['program_id'] ?? ($data['program_id'] ?? ($data['programId'] ?? ''))));
+
+        // Update the explicitly linked training need so the cascade hook sets in_training = true
+        $linkedNeedId = $data['linkedNeedId'] ?? ($data['linked_need_id'] ?? ($created['linked_need_id'] ?? null));
         if (!empty($linkedNeedId)) {
             require_once __DIR__ . "/../models/TrainingNeedModel.php";
             $needModel = new TrainingNeedModel();
-            $needModel->updateStatus($linkedNeedId, "Scheduled");
+            $linkedNeed = $needModel->find($linkedNeedId);
+            $linkedProg = $linkedNeed['linked_program_id'] ?? ($linkedNeed['linkedProgramId'] ?? null);
+            if (empty($linkedProg) && $sessionProgramId !== '') {
+                // Adopt this session's curriculum as the need's assigned curriculum
+                $needModel->assignProgram($linkedNeedId, $sessionProgramId);
+            } elseif (!empty($linkedProg)) {
+                $needModel->updateStatus($linkedNeedId, "Scheduled");
+            }
+            // A deficit with no linked curriculum stays open — the supervisor must still pick a program.
         }
 
         // Notify all rostered associates and set in_training = true on their performance goals
@@ -277,13 +288,24 @@ class TrainingController
                     // Set in_training = true on active performance goals
                     $pGoalModel->setEmployeeGoalsInTraining($empId, true);
 
-                    // Update open training needs for this employee to Scheduled
+                    // Mark needs as Scheduled ONLY when a curriculum is assigned AND it is the
+                    // curriculum this session delivers. Program-less deficits stay open for
+                    // supervisor curriculum selection (they must never be flipped to Scheduled).
                     try {
                         $openNeeds = $tNeedModel->getNeeds(['employee_id' => $empId]);
                         foreach ($openNeeds as $on) {
-                            if (!in_array($on['status'] ?? '', ['Resolved', 'Completed', 'Passed', 'Failed'])) {
-                                $tNeedModel->updateStatus($on['id'], 'Scheduled');
+                            if (in_array($on['status'] ?? '', ['Resolved', 'Completed', 'Passed', 'Failed'], true)) {
+                                continue;
                             }
+                            $needProgramId = $on['linked_program_id'] ?? ($on['linkedProgramId'] ?? null);
+                            if (empty($needProgramId)) {
+                                continue; // No curriculum assigned yet — remains an active deficit
+                            }
+                            $isLinkedNeed = !empty($linkedNeedId) && ((string)$on['id'] === (string)$linkedNeedId);
+                            if (!$isLinkedNeed && $sessionProgramId !== '' && (string)$needProgramId !== (string)$sessionProgramId) {
+                                continue; // Different curriculum — its own cohort is not scheduled yet
+                            }
+                            $tNeedModel->updateStatus($on['id'], 'Scheduled');
                         }
                     } catch (\Throwable $e) {}
 

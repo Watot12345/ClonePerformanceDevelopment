@@ -587,7 +587,13 @@ function initSupabaseRealtime() {
         }
 
         // 3. Competency Evaluations Channel (Instant Score Update & Cache Invalidation)
+        //    Also drives Training Active Deficit detection purely in-memory:
+        //    when competency_assessments fires, recompute the employee's average score
+        //    and INSERT/UPDATE/DELETE the synthetic need in trainingNeedsState — no DB trigger needed.
         if (!realtimeChannels.competency_evaluations) {
+            // In-memory cache: empId -> { compId: score }
+            window._liveCompScores = window._liveCompScores || {};
+
             realtimeChannels.competency_evaluations = supabaseClient
                 .channel('realtime_competency_evals')
                 .on(
@@ -637,6 +643,121 @@ function initSupabaseRealtime() {
                                 renderSelectedEmployeeRadarView();
                             }
                         }
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'competency_assessments' },
+                    (payload) => {
+                        const newRow = payload.new || {};
+                        const oldRow = payload.old || {};
+                        const empId = newRow.employee_id || oldRow.employee_id;
+                        const compId = newRow.competency_id || oldRow.competency_id;
+                        if (!empId) return;
+
+                        // 1. Keep live per-employee score map up to date
+                        window._liveCompScores[empId] = window._liveCompScores[empId] || {};
+                        if (payload.eventType === 'DELETE') {
+                            delete window._liveCompScores[empId][compId];
+                        } else {
+                            window._liveCompScores[empId][compId] = parseFloat(newRow.score || 0);
+                        }
+
+                        // 2. Compute new overall average for this employee
+                        const scores = Object.values(window._liveCompScores[empId]);
+                        if (scores.length === 0) return;
+                        const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
+                        const overallScore = Math.round(avg * 100) / 100;
+                        const TNA_THRESHOLD = 3.8;
+                        const REQUIRED = 4.5;
+
+                        if (typeof window.normalizeTrainingNeed !== 'function') return;
+
+                        // 3. Resolve employee metadata from existing state
+                        const empMeta = (window.trainingEmployeesState || []).find(
+                            e => String(e.id).toLowerCase() === empId.toLowerCase()
+                        ) || {};
+                        const associateName = empMeta.full_name || empMeta.name || 'Associate';
+                        const associateRole = empMeta.title || empMeta.role || 'Staff';
+                        const dept          = empMeta.department || empMeta.dept || 'General';
+                        const avatar        = empMeta.avatar_url || empMeta.avatar ||
+                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+                        // 4. Find any existing synthetic need for this employee (source_type = competency_gap, no target_goal_id)
+                        const existingIdx = window.trainingNeedsState.findIndex(
+                            n => String(n.employeeId || n.employee_id || '').toLowerCase() === empId.toLowerCase()
+                                && (n.sourceType === 'competency_gap' || n.source_type === 'competency_gap')
+                                && !n.targetGoalId && !n.target_goal_id
+                        );
+
+                        if (overallScore < TNA_THRESHOLD) {
+                            // Low competency scores — low areas below threshold
+                            const lowAreas = Object.entries(window._liveCompScores[empId])
+                                .filter(([, s]) => s < TNA_THRESHOLD)
+                                .map(([cId, s]) => `${cId} (${s.toFixed(1)}/${TNA_THRESHOLD})`);
+
+                            const urgency = overallScore < 2.0 ? 'Critical' : overallScore < 3.5 ? 'High' : 'Medium';
+                            const gap     = Math.round((overallScore - REQUIRED) * 100) / 100;
+
+                            const syntheticNeed = window.normalizeTrainingNeed({
+                                id: existingIdx >= 0
+                                    ? window.trainingNeedsState[existingIdx].id
+                                    : `need-live-${empId.replace(/[^a-z0-9]/gi, '')}`,
+                                title: `Skill Gap & TNA Deficit: ${associateName}`,
+                                source_type:  'competency_gap',
+                                source_label: 'Skill Gap',
+                                category:     'Associate Skill Gap',
+                                dept,
+                                employee_id:    empId,
+                                associate_name: associateName,
+                                associate_role: associateRole,
+                                associate_avatar: avatar,
+                                target_competency: lowAreas.length
+                                    ? lowAreas.slice(0, 3).join(', ') + (lowAreas.length > 3 ? ` +${lowAreas.length - 3} more` : '')
+                                    : 'Overall Hospitality Proficiency',
+                                competency_key: 'general_tna',
+                                current_score:  overallScore,
+                                required_score: REQUIRED,
+                                gap,
+                                urgency,
+                                status: existingIdx >= 0
+                                    ? (window.trainingNeedsState[existingIdx].status || 'Identified')
+                                    : 'Identified',
+                                linked_program_id: existingIdx >= 0
+                                    ? (window.trainingNeedsState[existingIdx].linkedProgramId || null)
+                                    : null,
+                                date_identified: existingIdx >= 0
+                                    ? window.trainingNeedsState[existingIdx].dateIdentified
+                                    : new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+                                notes: `Assessed Overall Score: ${overallScore.toFixed(1)} / 5.0 (Benchmark: ${REQUIRED})\n` +
+                                    lowAreas.map(a => `• ${a}`).join('\n')
+                            });
+
+                            if (existingIdx >= 0) {
+                                window.trainingNeedsState[existingIdx] = Object.assign(
+                                    {}, window.trainingNeedsState[existingIdx], syntheticNeed
+                                );
+                            } else {
+                                window.trainingNeedsState.unshift(syntheticNeed);
+                            }
+                        } else {
+                            // Score recovered above threshold — resolve the deficit
+                            if (existingIdx >= 0) {
+                                const existing = window.trainingNeedsState[existingIdx];
+                                if (existing.status !== 'Resolved' && existing.status !== 'Completed') {
+                                    window.trainingNeedsState[existingIdx] = Object.assign({}, existing, {
+                                        status: 'Resolved',
+                                        currentScore: overallScore,
+                                        current_score: overallScore,
+                                        gap: Math.round((overallScore - REQUIRED) * 100) / 100
+                                    });
+                                }
+                            }
+                        }
+
+                        // 5. Re-render Training Needs panel instantly — no DB write, no trigger
+                        if (typeof window.renderTrainingNeeds === 'function') window.renderTrainingNeeds();
+                        if (typeof window.updateTrainingStats === 'function') window.updateTrainingStats();
                     }
                 )
                 .subscribe();
@@ -990,4 +1111,29 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(initSupabaseRealtime, 200));
 } else {
     setTimeout(initSupabaseRealtime, 200);
+}
+
+// Seed _liveCompScores from already-loaded competency state so the first
+// competency_assessments realtime event has a full baseline to average against.
+function seedLiveCompScores() {
+    window._liveCompScores = window._liveCompScores || {};
+    const employees = window.dynamicCompetencyState?.employees || [];
+    employees.forEach(emp => {
+        if (!emp.id || !emp.scores) return;
+        window._liveCompScores[emp.id] = window._liveCompScores[emp.id] || {};
+        Object.entries(emp.scores).forEach(([compId, val]) => {
+            const s = typeof val === 'object' ? (val.score ?? 0) : val;
+            window._liveCompScores[emp.id][compId] = parseFloat(s) || 0;
+        });
+    });
+}
+window.seedLiveCompScores = seedLiveCompScores;
+
+// Run after competency state is populated (competencies.js fires this event)
+document.addEventListener('competencyStateReady', seedLiveCompScores);
+// Fallback: seed 2s after DOM ready in case the event already fired
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(seedLiveCompScores, 2000));
+} else {
+    setTimeout(seedLiveCompScores, 2000);
 }
