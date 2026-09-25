@@ -1783,6 +1783,7 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                     <div class="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-0.5">
                         ${tasks.length > 0 ? tasks.map(t => {
                             const isDone = t.status === 'completed';
+                            const dueStatus = (typeof getTaskDueStatus === 'function') ? getTaskDueStatus(t) : { isOverdue: false, isCompletedLate: false, pillHtml: '' };
                             const isSupervisor = (typeof isCurrentUserSupervisor === 'function') ? isCurrentUserSupervisor() : (window.activePersonaRole === 'Supervisor');
                             const isGoalApproved = goalStatus.toLowerCase() === 'approved' || goalStatus.toLowerCase() === 'in progress' || goalStatus.toLowerCase() === 'active';
                             const isGoalConcluded = isCompleted || isFailed;
@@ -1795,7 +1796,7 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                             const completedDateStr = t.completed_at ? new Date(t.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
                             const lmsInfo = (typeof checkLmsTaskProgress === 'function') ? checkLmsTaskProgress(t, g.employee_id) : { isLmsTask: false };
                             return `
-                                <div class="p-2.5 rounded-xl border ${isDone ? 'bg-emerald-50/60 border-emerald-200/90 text-emerald-950 shadow-2xs' : 'bg-white border-slate-200 text-slate-800 hover:border-primary/30'} text-[11px] space-y-1.5 transition">
+                                <div class="p-2.5 rounded-xl border ${isDone ? (dueStatus.isCompletedLate ? 'bg-amber-50/60 border-amber-200/90 text-amber-950 shadow-2xs' : 'bg-emerald-50/60 border-emerald-200/90 text-emerald-950 shadow-2xs') : (dueStatus.isOverdue ? 'bg-rose-50/60 border-rose-200/90 text-rose-950 shadow-2xs' : 'bg-white border-slate-200 text-slate-800 hover:border-primary/30')} text-[11px] space-y-1.5 transition">
                                     <div class="flex items-start justify-between gap-2">
                                         <label class="flex items-start space-x-2.5 ${isEditDisabled ? 'cursor-not-allowed' : 'cursor-pointer'} flex-1 select-none">
                                             <input type="checkbox" ${isDone ? 'checked disabled' : (isEditDisabled ? `disabled title="${cannotEditReason}"` : `onchange="triggerTaskCompletionModal('${t.id}', '${g.id}', this)"`)} class="mt-0.5 w-4 h-4 rounded border-slate-300 ${isEditDisabled ? 'opacity-40 cursor-not-allowed text-slate-400' : 'text-emerald-600 focus:ring-emerald-500 cursor-pointer'}">
@@ -1822,27 +1823,44 @@ function openViewGoalModal(targetId, isSilentLiveSync = false) {
                                                 ` : ''}
                                             </div>
                                         </label>
-                                        <div class="flex items-center space-x-1.5 shrink-0">
-                                            ${isDone ? `
+                                        <div class="flex items-center space-x-1.5 shrink-0 flex-wrap justify-end">
+                                            ${isDone ? (dueStatus.isCompletedLate ? `
+                                                <span class="text-[9px] font-mono text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full font-bold flex items-center space-x-1" title="Target: ${t.target_date || 'N/A'}, Completed: ${completedDateStr || 'Late'}">
+                                                    <i class="fas fa-clock-rotate-left text-[8px] text-amber-700"></i>
+                                                    <span>Done Late ${completedDateStr ? `(${completedDateStr})` : ''}</span>
+                                                </span>
+                                            ` : `
                                                 <span class="text-[9px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
                                                     ✓ Done ${completedDateStr ? `(${completedDateStr})` : ''}
                                                 </span>
-                                            ` : (isEditDisabled ? `
+                                            `) : (isEditDisabled ? `
                                                 <button disabled class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60 shadow-none inline-flex items-center space-x-1" title="${cannotEditReason}">
                                                     <i class="fas fa-lock text-[8px]"></i>
                                                     <span>${!isGoalApproved ? 'Not Approved' : (isSupervisor ? 'Employee Task' : 'Locked')}</span>
                                                 </button>
-                                                <span class="text-[9px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                                    Due: ${t.target_date || 'Q3'}
-                                                </span>
+                                                ${dueStatus.isOverdue ? `
+                                                    <span class="text-[9px] font-mono text-rose-800 bg-rose-100 border border-rose-300 px-1.5 py-0.5 rounded font-bold animate-pulse" title="Target date ${t.target_date} has passed">
+                                                        <i class="fas fa-triangle-exclamation mr-0.5"></i>Overdue: ${t.target_date || 'Q3'}
+                                                    </span>
+                                                ` : `
+                                                    <span class="text-[9px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                        Due: ${t.target_date || 'Q3'}
+                                                    </span>
+                                                `}
                                             ` : `
                                                 <button type="button" onclick="openCompleteTaskModal('${t.id}', '${g.id}')" class="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition inline-flex items-center space-x-1 shadow-2xs" title="Click to log reflections and complete task">
                                                     <i class="fas fa-feather-pointed text-[8px]"></i>
                                                     <span>Log Experience</span>
                                                 </button>
-                                                <span class="text-[9px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
-                                                    Due: ${t.target_date || 'Q3'}
-                                                </span>
+                                                ${dueStatus.isOverdue ? `
+                                                    <span class="text-[9px] font-mono text-rose-800 bg-rose-100 border border-rose-300 px-1.5 py-0.5 rounded font-bold animate-pulse" title="Target date ${t.target_date} has passed">
+                                                        <i class="fas fa-triangle-exclamation mr-0.5"></i>Overdue: ${t.target_date || 'Q3'}
+                                                    </span>
+                                                ` : `
+                                                    <span class="text-[9px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
+                                                        Due: ${t.target_date || 'Q3'}
+                                                    </span>
+                                                `}
                                             `)}
                                         </div>
                                     </div>

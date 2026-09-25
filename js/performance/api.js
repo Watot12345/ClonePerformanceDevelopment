@@ -936,3 +936,91 @@ window.PerfCache = {
     }
 };
 
+/**
+ * Global helper to evaluate if a task is overdue or completed after target_date
+ */
+function getTaskDueStatus(task) {
+    if (!task) return { isOverdue: false, isCompletedLate: false, label: '', badgeClass: '', detailText: '', pillHtml: '' };
+
+    const isDone = (task.status || '').toLowerCase() === 'completed';
+    const targetDateStr = task.target_date;
+    const completedAtStr = task.completed_at;
+
+    let targetDate = null;
+    let formattedTarget = targetDateStr || '';
+    if (targetDateStr) {
+        const parsed = new Date(targetDateStr);
+        if (!isNaN(parsed.getTime())) {
+            targetDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 23, 59, 59, 999);
+            formattedTarget = parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    }
+
+    let completedDate = null;
+    let formattedCompleted = '';
+    if (completedAtStr) {
+        const parsed = new Date(completedAtStr);
+        if (!isNaN(parsed.getTime())) {
+            completedDate = parsed;
+            formattedCompleted = parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    }
+
+    if (isDone) {
+        if (completedDate && targetDate && completedDate.getTime() > targetDate.getTime()) {
+            const diffDays = Math.ceil((completedDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+            return {
+                isOverdue: false,
+                isCompletedLate: true,
+                diffDays: diffDays,
+                formattedTarget: formattedTarget,
+                formattedCompleted: formattedCompleted,
+                badgeClass: 'bg-amber-100 text-amber-900 border border-amber-300',
+                pillHtml: `<span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300" title="Completed late by ${diffDays} day(s) (Target: ${formattedTarget}, Done: ${formattedCompleted})"><i class="fas fa-clock-rotate-left text-[8px] text-amber-700"></i><span>Completed Late (+${diffDays}d)</span></span>`,
+                label: 'Completed Late',
+                detailText: `Completed ${formattedCompleted} (Target: ${formattedTarget})`
+            };
+        }
+        return {
+            isOverdue: false,
+            isCompletedLate: false,
+            diffDays: 0,
+            formattedTarget: formattedTarget,
+            formattedCompleted: formattedCompleted,
+            badgeClass: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+            pillHtml: `<span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800" title="Completed on time"><i class="fas fa-check text-[8px] text-emerald-600"></i><span>Completed</span></span>`,
+            label: 'Completed',
+            detailText: formattedCompleted ? `Completed on ${formattedCompleted}` : 'Completed'
+        };
+    } else {
+        const now = new Date();
+        if (targetDate && now.getTime() > targetDate.getTime()) {
+            const diffDays = Math.ceil((now.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+            return {
+                isOverdue: true,
+                isCompletedLate: false,
+                diffDays: diffDays,
+                formattedTarget: formattedTarget,
+                formattedCompleted: '',
+                badgeClass: 'bg-rose-100 text-rose-800 border border-rose-300',
+                pillHtml: `<span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse" title="Overdue by ${diffDays} day(s) (Target was ${formattedTarget})"><i class="fas fa-triangle-exclamation text-[8px] text-rose-600"></i><span>Overdue (${diffDays}d late)</span></span>`,
+                label: 'Overdue',
+                detailText: `Overdue by ${diffDays}d (Due: ${formattedTarget})`
+            };
+        }
+        return {
+            isOverdue: false,
+            isCompletedLate: false,
+            diffDays: 0,
+            formattedTarget: formattedTarget,
+            formattedCompleted: '',
+            badgeClass: 'bg-amber-100 text-amber-800',
+            pillHtml: `<span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800"><i class="fas fa-hourglass-half text-[8px] text-amber-700"></i><span>Pending</span></span>`,
+            label: 'Pending',
+            detailText: formattedTarget ? `Due: ${formattedTarget}` : 'Due Soon'
+        };
+    }
+}
+window.getTaskDueStatus = getTaskDueStatus;
+
+

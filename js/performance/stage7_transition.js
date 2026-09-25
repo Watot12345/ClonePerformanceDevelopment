@@ -1094,14 +1094,22 @@ function openReviewTasksModal(empId) {
         if (allTasks.length > 0) {
             listEl.innerHTML = allTasks.map(t => {
                 const isDone = t.status === 'completed';
+                const dueStatus = (typeof getTaskDueStatus === 'function') ? getTaskDueStatus(t) : { isOverdue: false, isCompletedLate: false, pillHtml: '' };
+                const dateDisplay = dueStatus.isCompletedLate 
+                    ? `<span class="text-amber-700 font-bold"><i class="fas fa-clock mr-1"></i>Completed Late (Due: ${t.target_date || 'N/A'})</span>`
+                    : (dueStatus.isOverdue 
+                        ? `<span class="text-rose-700 font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>Overdue (Due: ${t.target_date || 'N/A'})</span>`
+                        : (t.target_date || 'Due Soon'));
                 return `
-                    <div class="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div class="p-3.5 bg-white rounded-2xl border ${isDone ? (dueStatus.isCompletedLate ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200') : (dueStatus.isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200')} shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                         <div class="space-y-1">
-                            <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                    ${isDone ? '✓ Completed' : 'Pending'}
-                                </span>
-                                <span class="text-[10px] text-slate-400 font-mono">${t.target_date || 'Due Soon'}</span>
+                            <div class="flex items-center space-x-2 flex-wrap">
+                                ${dueStatus.pillHtml || `
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                        ${isDone ? '✓ Completed' : 'Pending'}
+                                    </span>
+                                `}
+                                <span class="text-[10px] font-mono">${dateDisplay}</span>
                             </div>
                             <p class="font-bold text-slate-900">${t.title}</p>
                             <p class="text-[10px] text-slate-500">Goal: ${t.goal_title}</p>

@@ -905,22 +905,37 @@ function renderEmployeeMonitoringStream(emp) {
                     </p>
                 ` : filteredTasks.map(task => {
             const isDone = task.status === 'completed';
+            const dueStatus = typeof getTaskDueStatus === 'function' ? getTaskDueStatus(task) : { isOverdue: false, isCompletedLate: false, pillHtml: '' };
             const lmsInfo = checkLmsTaskProgress(task, emp.id);
-            const dateStr = task.completed_at ? new Date(task.completed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : `Target: ${task.target_date}`;
+            const dateStr = task.completed_at ? new Date(task.completed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : `Target: ${task.target_date || 'N/A'}`;
 
             return `
-                        <div class="p-3 rounded-xl border ${isDone ? 'bg-emerald-50/40 border-emerald-200/70' : 'bg-slate-50 border-slate-200/70'} space-y-2 text-xs transition">
+                        <div class="p-3 rounded-xl border ${isDone ? (dueStatus.isCompletedLate ? 'bg-amber-50/40 border-amber-200/70' : 'bg-emerald-50/40 border-emerald-200/70') : (dueStatus.isOverdue ? 'bg-rose-50/40 border-rose-200/80' : 'bg-slate-50 border-slate-200/70')} space-y-2 text-xs transition">
                             <div class="flex items-center justify-between flex-wrap gap-1.5">
-                                <div class="flex items-center space-x-2">
-                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                        ${isDone ? '✓ Completed' : '⏳ Pending'}
-                                    </span>
+                                <div class="flex items-center space-x-2 flex-wrap">
+                                    ${dueStatus.pillHtml || `
+                                        <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                            ${isDone ? '✓ Completed' : '⏳ Pending'}
+                                        </span>
+                                    `}
                                     <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${task.task_type === 'specific' ? 'bg-purple-100 text-purple-800' : 'bg-slate-200 text-slate-700'}">
                                         ${task.task_type === 'specific' ? 'Specific Action' : 'General SOP'}
                                     </span>
                                     <span class="font-bold text-slate-900 text-xs">${task.title}</span>
                                 </div>
-                                <span class="text-slate-400 font-mono text-[10px]">${dateStr}</span>
+                                <div class="flex items-center space-x-2">
+                                    ${dueStatus.isCompletedLate ? `
+                                        <span class="text-[10px] font-mono text-amber-800 bg-amber-100/80 border border-amber-300 px-1.5 py-0.5 rounded font-bold" title="Target: ${task.target_date}, Completed: ${dateStr}">
+                                            <i class="fas fa-clock mr-1"></i>Late (Due: ${task.target_date})
+                                        </span>
+                                    ` : ''}
+                                    ${dueStatus.isOverdue ? `
+                                        <span class="text-[10px] font-mono text-rose-800 bg-rose-100/80 border border-rose-300 px-1.5 py-0.5 rounded font-bold" title="Missed Target Date: ${task.target_date}">
+                                            <i class="fas fa-triangle-exclamation mr-1"></i>Overdue (Due: ${task.target_date})
+                                        </span>
+                                    ` : ''}
+                                    <span class="text-slate-400 font-mono text-[10px]">${dateStr}</span>
+                                </div>
                             </div>
 
                             ${lmsInfo.isLmsTask ? `
