@@ -685,7 +685,9 @@ async function addRetestTaskToDraft(empId, taskId, goalId = null) {
                 title: reDoTitle,
                 target_date: task.target_date || '2 Weeks',
                 description: desc,
-                plan_type: 'IDP'
+                plan_type: 'IDP',
+                source_task_id: taskId,
+                notes: 'source_task:' + taskId
             });
             if (res && res.id) tempItem.id = res.id;
         }

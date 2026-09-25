@@ -111,7 +111,7 @@ class PerformanceDevelopmentPlanModel extends BaseModel
             'target_date' => !empty($data['target_date']) ? $data['target_date'] : null,
             'lms_document_id' => null,
             'status'      => 'Draft',
-            'notes'       => trim($data['notes'] ?? ''),
+            'notes'       => trim($data['notes'] ?? (!empty($data['source_task_id']) ? "source_task:{$data['source_task_id']}" : '')),
             'created_by'  => $data['created_by'] ?? null,
             'created_at'  => date('c'),
             'updated_at'  => date('c'),
@@ -195,8 +195,8 @@ class PerformanceDevelopmentPlanModel extends BaseModel
 
     /**
      * Deploy all Draft items for an employee:
-     *  - 'task' rows → POST to performance_tasks via supabaseRequest
-     *  - 'lms_book' rows → POST to lms_prescribed via supabaseRequest
+     *  - 'task' rows → POST to performance_tasks or PATCH existing to 'pending'
+     *  - 'lms_book' rows → POST to lms_prescribed or PATCH to 'Needs Retake'
      *  - All deployed rows → status = 'Committed'
      *
      * Returns summary of deployed items.
@@ -221,25 +221,73 @@ class PerformanceDevelopmentPlanModel extends BaseModel
             $type = $item['item_type'] ?? '';
 
             if ($type === 'task') {
-                // Build performance_tasks payload
-                $taskPayload = [
-                    'id'          => 'task-' . substr(bin2hex(random_bytes(5)), 0, 10),
-                    'goal_id'     => $goalId ?? ($item['goal_id'] ?? null),
-                    'employee_id' => $empId,
-                    'task_type'   => 'specific',
-                    'title'       => $item['title'] ?? 'Development Task',
-                    'description' => $item['description'] ?? '',
-                    'target_date' => $item['target_date'] ?? date('Y-m-d', strtotime('+14 days')),
-                    'status'      => 'pending',
-                    'created_at'  => date('c'),
-                    'updated_at'  => date('c'),
-                ];
-                $res = supabaseRequest('performance_tasks', 'POST', $taskPayload, true);
-                if ($res['status'] >= 200 && $res['status'] < 300) {
-                    $tasksDeployed++;
-                    $this->update((string)$item['id'], ['status' => 'Committed']);
+                $sourceTaskId = null;
+                if (!empty($item['notes']) && preg_match('/source_task:([^\s]+)/', $item['notes'], $m)) {
+                    $sourceTaskId = trim($m[1]);
+                }
+
+                $existingTask = null;
+                if ($sourceTaskId) {
+                    $tRes = supabaseRequest("performance_tasks?id=eq." . urlencode($sourceTaskId) . "&select=*");
+                    if ($tRes['status'] >= 200 && !empty($tRes['data']) && is_array($tRes['data'])) {
+                        $existingTask = $tRes['data'][0];
+                    }
+                }
+
+                if (!$existingTask && !empty($item['title'])) {
+                    $cleanTitle = trim(str_replace('[Re-Do]', '', $item['title']));
+                    $tRes = supabaseRequest("performance_tasks?employee_id=eq." . urlencode($empId) . "&select=*");
+                    if ($tRes['status'] >= 200 && !empty($tRes['data']) && is_array($tRes['data'])) {
+                        foreach ($tRes['data'] as $t) {
+                            if (trim($t['title']) === $cleanTitle || trim($t['title']) === trim($item['title'])) {
+                                $existingTask = $t;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($existingTask) {
+                    // Reset existing task to pending (makes it not done again for next cycle)
+                    $resetPayload = [
+                        'status'                    => 'pending',
+                        'completed_at'              => null,
+                        'employee_learnings'        => null,
+                        'employee_feedback'         => null,
+                        'supervisor_feedback'       => null,
+                        'supervisor_accomplishment' => null,
+                        'target_date'               => !empty($item['target_date']) ? $item['target_date'] : date('Y-m-d', strtotime('+14 days')),
+                        'updated_at'                => date('c'),
+                    ];
+                    $tId = $existingTask['id'];
+                    $res = supabaseRequest("performance_tasks?id=eq." . urlencode($tId), 'PATCH', $resetPayload, true);
+                    if ($res['status'] >= 200 && $res['status'] < 300) {
+                        $tasksDeployed++;
+                        $this->update((string)$item['id'], ['status' => 'Committed']);
+                    } else {
+                        $errors[] = "Task '{$item['title']}': Reset failed";
+                    }
                 } else {
-                    $errors[] = "Task '{$item['title']}': " . ($res['data']['message'] ?? 'Insert failed');
+                    // Build performance_tasks payload for new task
+                    $taskPayload = [
+                        'id'          => 'task-' . substr(bin2hex(random_bytes(5)), 0, 10),
+                        'goal_id'     => $goalId ?? ($item['goal_id'] ?? null),
+                        'employee_id' => $empId,
+                        'task_type'   => 'specific',
+                        'title'       => $item['title'] ?? 'Development Task',
+                        'description' => $item['description'] ?? '',
+                        'target_date' => $item['target_date'] ?? date('Y-m-d', strtotime('+14 days')),
+                        'status'      => 'pending',
+                        'created_at'  => date('c'),
+                        'updated_at'  => date('c'),
+                    ];
+                    $res = supabaseRequest('performance_tasks', 'POST', $taskPayload, true);
+                    if ($res['status'] >= 200 && $res['status'] < 300) {
+                        $tasksDeployed++;
+                        $this->update((string)$item['id'], ['status' => 'Committed']);
+                    } else {
+                        $errors[] = "Task '{$item['title']}': " . ($res['data']['message'] ?? 'Insert failed');
+                    }
                 }
 
             } elseif ($type === 'lms_book') {

@@ -1783,6 +1783,15 @@ class PerformanceController
             error_log('[PerformanceController::retryPlan] Error syncing deficits: ' . $e->getMessage());
         }
 
+        // Deploy all staged draft items from performance_development_plans into performance_tasks / lms_prescribed
+        try {
+            require_once __DIR__ . '/../models/PerformanceDevelopmentPlanModel.php';
+            $pdpModel = new PerformanceDevelopmentPlanModel();
+            $pdpModel->deployPlan($empId);
+        } catch (\Throwable $e) {
+            error_log('[PerformanceController::retryPlan] Error deploying PDP plan: ' . $e->getMessage());
+        }
+
         return [
             'success' => true,
             'needs_formal_training' => $needsTraining,
