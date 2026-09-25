@@ -234,12 +234,13 @@ class PerformanceDevelopmentPlanModel extends BaseModel
                     }
                 }
 
-                if (!$existingTask && !empty($item['title'])) {
+                // If explicit [Re-Do] prefix was used and sourceTaskId was missing:
+                if (!$existingTask && !empty($item['title']) && strpos($item['title'], '[Re-Do]') !== false) {
                     $cleanTitle = trim(str_replace('[Re-Do]', '', $item['title']));
                     $tRes = supabaseRequest("performance_tasks?employee_id=eq." . urlencode($empId) . "&select=*");
                     if ($tRes['status'] >= 200 && !empty($tRes['data']) && is_array($tRes['data'])) {
                         foreach ($tRes['data'] as $t) {
-                            if (trim($t['title']) === $cleanTitle || trim($t['title']) === trim($item['title'])) {
+                            if (trim($t['title']) === $cleanTitle) {
                                 $existingTask = $t;
                                 break;
                             }
